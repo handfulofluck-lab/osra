@@ -85,6 +85,10 @@ class PairingActivity : ComponentActivity() {
     /** Issue #229: re-check the call/SMS grants on a permission result and on every resume. */
     @Inject lateinit var commsCapture: CommsCapture
 
+    /** C-01 (#1179): rule/usage snapshots and time-request posting for Child home. */
+    @Inject lateinit var rules: com.familyshield.agent.data.RuleRepository
+    @Inject lateinit var api: com.familyshield.agent.network.ApiService
+
     /** When the admin sheet was launched, so a self-closing refusal can be told from a parent's Cancel. */
     private var adminSheetLaunchedAtMs = 0L
 
@@ -287,6 +291,7 @@ class PairingActivity : ComponentActivity() {
     private var activeGuidedStage: GuidedStage? = null
     private var guidedFirstRun = true
     private var forceChecklistView = false
+    private var forceLegacyStatusView = false
     private val skippedPermissionSteps = mutableSetOf<OnboardingPolicy.Grant>()
 
     /**
@@ -1070,6 +1075,8 @@ class PairingActivity : ComponentActivity() {
         }
         activeGuidedStage = GuidedStage.STATUS
         statusScreenShown = true
+        val forceLegacy = forceLegacyStatusView
+        forceLegacyStatusView = false
         lifecycleScope.launch {
             val childId = settings.childId() ?: "-"
             val deviceId = settings.deviceId() ?: "-"
@@ -1108,6 +1115,36 @@ class PairingActivity : ComponentActivity() {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("PairingActivity", "location grant report failed", e)
+            }
+
+            if (!forceLegacy && com.familyshield.agent.ui.theme.ChildUxFlags.c01ChildHomeEnabled) {
+                val initialCopy = buildChildHomeCopy()
+                childHomeCopyState.value = initialCopy
+                replaceWithCompose {
+                    com.familyshield.agent.ui.home.ChildHomeScreen(
+                        copy = childHomeCopyState.value ?: initialCopy,
+                        onCallParent = {
+                            runCatching {
+                                startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                        },
+                        onRequestMoreTime = { minutes -> sendChildHomeTimeRequest(minutes) },
+                        onSendSos = {
+                            runCatching {
+                                startActivity(
+                                    Intent(this@PairingActivity, com.familyshield.agent.sos.SosActivity::class.java)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        },
+                        onOpenDeviceSetup = {
+                            forceLegacyStatusView = true
+                            showStatus()
+                        },
+                        requestSendState = childHomeSendState.value,
+                    )
+                }
+                return@launch
             }
 
             val tier = deviceAdmin.tier()
@@ -1427,6 +1464,264 @@ class PairingActivity : ComponentActivity() {
         WorkScheduler.scheduleAll(this)
         WorkScheduler.syncNow(this)
         CommandPollWorker.requestFetchNow(this)
+    }
+
+    private val childHomeSendState = androidx.compose.runtime.mutableStateOf(
+        com.familyshield.agent.ui.home.TimeRequestSendState.IDLE,
+    )
+    private val childHomeCopyState = androidx.compose.runtime.mutableStateOf<com.familyshield.agent.ui.home.ChildHomeCopy?>(null)
+
+    private fun sendChildHomeTimeRequest(minutes: Int) {
+        if (childHomeSendState.value == com.familyshield.agent.ui.home.TimeRequestSendState.SENDING) return
+        childHomeSendState.value = com.familyshield.agent.ui.home.TimeRequestSendState.SENDING
+        val nowMs = System.currentTimeMillis()
+        lifecycleScope.launch {
+            val succeeded = com.familyshield.agent.ui.home.ChildHomePolicy.submitTimeRequest(
+                minutes = minutes,
+                nowMs = nowMs,
+                postRequest = { allowed ->
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching {
+                            api.postInternalAlert(
+                                com.familyshield.agent.network.dto.AlertDto(
+                                    childId = settings.childId(),
+                                    deviceId = settings.deviceId(),
+                                    severity = "info",
+                                    category = "app_blocked",
+                                    title = "Screen time requested",
+                                    body = "Child asked for $allowed more minutes of screen time",
+                                    metadata = mapOf(
+                                        "requestType" to "time",
+                                        "minutes" to allowed.toString(),
+                                        "reason" to "daily_limit",
+                                    ),
+                                ),
+                            )
+                            Unit
+                        }.onFailure { err ->
+                            android.util.Log.w("PairingActivity", "C-01 time request failed", err)
+                        }
+                    }
+                },
+                persistPending = { pending ->
+                    com.familyshield.agent.ui.home.ChildHomeStore.savePendingRequest(this@PairingActivity, pending)
+                },
+            )
+            if (succeeded) {
+                childHomeSendState.value = com.familyshield.agent.ui.home.TimeRequestSendState.IDLE
+                childHomeCopyState.value = buildChildHomeCopy()
+            } else {
+                childHomeSendState.value = com.familyshield.agent.ui.home.TimeRequestSendState.FAILED
+            }
+        }
+    }
+
+    private fun formatChildHomeDuration(totalMinutes: Int): String {
+        val safe = totalMinutes.coerceAtLeast(0)
+        val hours = safe / 60
+        val mins = safe % 60
+        val hoursWestern = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(hours)
+        val minsWestern = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(mins)
+        return when {
+            hours > 0 && mins > 0 -> getString(
+                R.string.c01_hours_and_minutes,
+                resources.getQuantityString(R.plurals.c01_hours, hours, hoursWestern),
+                resources.getQuantityString(R.plurals.c01_minutes, mins, minsWestern),
+            )
+            hours > 0 -> resources.getQuantityString(R.plurals.c01_hours, hours, hoursWestern)
+            else -> resources.getQuantityString(R.plurals.c01_minutes, mins, minsWestern)
+        }
+    }
+
+    private fun buildChildHomeCopy(): com.familyshield.agent.ui.home.ChildHomeCopy {
+        val now = java.time.ZonedDateTime.now()
+        val nowMs = System.currentTimeMillis()
+        val ruleSet = rules.cachedRules()
+        val usageSnapshot = rules.minutesSnapshot()
+        val storedDecisions = com.familyshield.agent.ui.home.ChildHomeStore.decisions(this)
+        // G5 (#1191 B1): sum only today's accepted bonus_time grants; never read ruleSet.bonusMinutesToday.
+        val bonusMinutes = com.familyshield.agent.ui.home.ChildHomePolicy.bonusMinutesForToday(storedDecisions, now)
+        val isArabic = resources.configuration.locales[0]?.language == "ar"
+
+        val adultNames = ruleSet?.adultNames.orEmpty()
+        val adultsSpeaking = com.familyshield.agent.ui.home.AdultsNameFormatter.format(
+            names = adultNames,
+            fallback = getString(R.string.c01_adults_fallback_speaking),
+            isArabic = isArabic,
+        )
+        val adultsAddressing = com.familyshield.agent.ui.home.AdultsNameFormatter.format(
+            names = adultNames,
+            fallback = getString(R.string.c01_adults_fallback_addressing),
+            isArabic = isArabic,
+        )
+
+        val budget = com.familyshield.agent.ui.home.ChildHomePolicy.timeBudget(
+            ruleSet = ruleSet,
+            now = now,
+            minutesUsedToday = usageSnapshot,
+            localBonusMinutes = bonusMinutes,
+        )
+        val windDownMins = com.familyshield.agent.ui.home.ChildHomeStore.windDownMinutesLeft(this, nowMs)
+        val nextRoutine = com.familyshield.agent.ui.home.ChildHomePolicy.nextRoutine(ruleSet, now)
+        val bedtime = com.familyshield.agent.ui.home.ChildHomePolicy.bedtimeStart(ruleSet)
+            ?.let { com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(it) }
+
+        val pending = com.familyshield.agent.ui.home.ChildHomeStore.pendingRequest(this)
+        val pendingState = com.familyshield.agent.ui.home.ChildHomePolicy.pendingStatus(pending, nowMs)
+        val pendingTitle = when {
+            pending == null || pendingState == com.familyshield.agent.ui.home.PendingRequestStatus.NONE -> null
+            pending.requestType == "time" -> getString(
+                R.string.c01_pending_time_title,
+                com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(pending.minutes ?: 15),
+            )
+            else -> getString(
+                R.string.c01_pending_access_title,
+                com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(pending.appLabel ?: getString(R.string.app_name)),
+            )
+        }
+        val pendingSentLine = if (pending != null && pendingTitle != null) {
+            val hhMm = com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(
+                com.familyshield.agent.ui.home.ChildHomePolicy.formatClockHhMm(pending.sentAtMs),
+            )
+            getString(R.string.c01_sent_to_line, adultsSpeaking, hhMm)
+        } else {
+            null
+        }
+        val pendingBadge = when (pendingState) {
+            com.familyshield.agent.ui.home.PendingRequestStatus.WAITING -> getString(R.string.c01_waiting_reply)
+            com.familyshield.agent.ui.home.PendingRequestStatus.NO_ANSWER_YET -> getString(R.string.c01_no_answer_yet)
+            com.familyshield.agent.ui.home.PendingRequestStatus.NONE -> null
+        }
+
+        val decisionsUi = storedDecisions.map { item ->
+            val timeStr = com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(
+                com.familyshield.agent.ui.home.ChildHomePolicy.formatClockHhMm(item.timestampMs),
+            )
+            val title = when (item.kind) {
+                "bonus_time" -> {
+                    val minsWestern = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(item.minutes ?: 15)
+                    if (!item.byName.isNullOrBlank()) {
+                        getString(
+                            R.string.c01_decision_bonus_named,
+                            minsWestern,
+                            com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(item.byName),
+                        )
+                    } else {
+                        getString(R.string.c01_decision_bonus_unnamed, minsWestern)
+                    }
+                }
+                "pause_internet" -> getString(R.string.c01_decision_pause_internet)
+                "resume_internet" -> getString(R.string.c01_decision_resume_internet)
+                else -> getString(R.string.c01_decision_rules_updated)
+            }
+            val badge = if (item.todayOnly) {
+                getString(R.string.c01_badge_today_only)
+            } else {
+                getString(R.string.c01_badge_working_on_phone)
+            }
+            com.familyshield.agent.ui.home.ChildDecisionItemUi(
+                title = title,
+                subtitle = timeStr,
+                badge = badge,
+            )
+        }
+
+        val activityItems = usageSnapshot.entries
+            .filter { it.value > 0 }
+            .sortedByDescending { it.value }
+            .take(10)
+            .map { (pkg, mins) ->
+                val resolved = runCatching {
+                    packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+                }.getOrNull()?.takeIf { it.isNotBlank() } ?: pkg
+                com.familyshield.agent.ui.home.ChildActivityItemUi(
+                    appName = com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(resolved),
+                    durationText = formatChildHomeDuration(mins),
+                )
+            }
+
+        val hasLimit = budget.effectiveLimitMinutes != null && budget.remainingMinutes != null
+        val ringNumber = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(budget.remainingMinutes ?: 0)
+        val timeLeftHeadline = if (hasLimit) {
+            getString(R.string.c01_time_left_today, formatChildHomeDuration(budget.remainingMinutes!!))
+        } else {
+            getString(R.string.c01_no_daily_limit)
+        }
+        val usedOfLimitLine = if (hasLimit) {
+            getString(
+                R.string.c01_used_of_limit,
+                formatChildHomeDuration(budget.usedMinutes),
+                formatChildHomeDuration(budget.effectiveLimitMinutes!!),
+            )
+        } else {
+            getString(R.string.c01_used_today_only, formatChildHomeDuration(budget.usedMinutes))
+        }
+
+        val nextRoutineLine = if (nextRoutine != null) {
+            getString(
+                R.string.c01_next_routine_line,
+                com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(nextRoutine.name),
+                com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(nextRoutine.startHhMm),
+                formatChildHomeDuration(nextRoutine.startsInMinutes),
+            )
+        } else {
+            getString(R.string.c01_next_routine_none)
+        }
+
+        val headerTitle = getString(R.string.c01_header_title)
+        val avatarInitial = headerTitle.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "O"
+
+        return com.familyshield.agent.ui.home.ChildHomeCopy(
+            avatarInitial = avatarInitial,
+            headerTitle = headerTitle,
+            callParentLabel = getString(R.string.c01_call_parent),
+            windDownBanner = windDownMins?.let { getString(R.string.c01_wind_down_banner, formatChildHomeDuration(it)) },
+            hasDailyLimit = hasLimit,
+            ringNumber = com.familyshield.agent.ui.home.AdultsNameFormatter.ltrIsolate(ringNumber),
+            ringUnit = getString(R.string.c01_ring_unit_min),
+            ringFraction = budget.remainingFraction,
+            timeLeftHeadline = timeLeftHeadline,
+            usedOfLimitLine = usedOfLimitLine,
+            askMoreTimeLabel = getString(R.string.c01_ask_more_time),
+            nextLabel = getString(R.string.c01_next_label),
+            nextRoutineLine = nextRoutineLine,
+            bedtimeLabel = getString(R.string.c01_bedtime_label),
+            bedtimeValue = bedtime,
+            pendingTitle = pendingTitle,
+            pendingSentLine = pendingSentLine,
+            pendingBadge = pendingBadge,
+            pendingIsWaiting = pendingState == com.familyshield.agent.ui.home.PendingRequestStatus.WAITING,
+            latestSectionLabel = getString(R.string.c01_latest_from_adults, adultsSpeaking),
+            seeAllLabel = getString(R.string.c01_see_all),
+            latestDecision = decisionsUi.firstOrNull(),
+            whatAdultsSeeTitle = getString(R.string.c01_what_adults_see, adultsSpeaking),
+            whatAdultsSeeSubtitle = getString(R.string.c01_rules_and_shared),
+            myActivityTitle = getString(R.string.c01_my_activity),
+            myActivitySubtitle = getString(R.string.c01_same_numbers, adultsSpeaking),
+            openLabel = getString(R.string.c01_open),
+            sendSosLabel = getString(R.string.c01_send_sos, adultsSpeaking),
+            tabTodayLabel = getString(R.string.c01_tab_today),
+            tabRequestsLabel = getString(R.string.c01_tab_requests),
+            tabMessagesLabel = getString(R.string.c01_tab_messages),
+            requestsHeaderTitle = getString(R.string.c01_requests_title),
+            requestsGoesToLine = getString(R.string.c01_goes_to, adultsAddressing),
+            request15Label = getString(R.string.c01_request_15_min),
+            request30Label = getString(R.string.c01_request_30_min),
+            requestsDisabledLine = getString(R.string.c01_requests_no_limit),
+            requestFailedLine = getString(R.string.c01_request_failed),
+            messagesHeaderTitle = getString(R.string.c01_messages_title),
+            messagesEmptyLine = getString(R.string.c01_messages_empty, adultsSpeaking),
+            allDecisions = decisionsUi,
+            transparencyLines = listOf(
+                getString(R.string.c01_transparency_apps),
+                getString(R.string.c01_transparency_location),
+                getString(R.string.c01_transparency_safety, adultsAddressing),
+            ),
+            openDeviceSetupLabel = getString(R.string.c01_open_device_setup),
+            activityItems = activityItems,
+            activityEmptyLine = getString(R.string.c01_activity_empty),
+            dialogCloseLabel = getString(R.string.c01_close),
+        )
     }
 
     // ---- view helpers ----

@@ -1154,7 +1154,8 @@ adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNA
 adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
 adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
 adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
-# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+# pause-internet (#1183/#1240): POST /v1/devices/:id/command {"command":"pause_internet"} → network-only
+#   (non-blocking notification, no full-screen overlay; offline apps stay open) AND
 adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
 adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
 # resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"
@@ -1165,6 +1166,12 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the SafeSearch row (#1226), use the approved paired test family and keep the supported
+browser open while the parent changes SafeSearch. Use a neutral query and check that the browser's
+SafeSearch settings report the requested state. With SafeSearch on, the `FilterVpn` diagnostic
+should record the search host and the `REWRITE` decision. Check that the diagnostic omits the
+query text and full URL. Record the exact Child build and restore the test family's prior setting.
 
 For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
 each request. The existing `paused` field reports the requested setting. Its optional

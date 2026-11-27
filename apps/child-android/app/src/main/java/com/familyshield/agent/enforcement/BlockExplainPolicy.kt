@@ -161,8 +161,10 @@ object BlockExplainPolicy {
         var usedMinutes: Int? = null
         var limitMinutes: Int? = null
 
+        // #1240 (B1): pause_internet is network-only (`RuleEngine` never blocks app launches on pause),
+        // so `pausedInternet` must not outrank the rule that actually blocked the app, mark the block
+        // indefinite, or suppress the daily-limit "+15 min" ask.
         when {
-            pausedInternet -> primaryCause = BlockCause.PAUSED_INTERNET
             activeRoutines.isNotEmpty() -> {
                 primaryCause = BlockCause.ROUTINE
                 routineName = activeRoutines.first().name.takeIf { it.isNotBlank() }
@@ -186,7 +188,7 @@ object BlockExplainPolicy {
 
         // 2. Compute "Back again" as the LATER of all active rules, extending across contiguous
         // scheduled windows (e.g. overnight bedtime handing off directly into morning school hours).
-        val hasIndefiniteBlock = pausedInternet || explicitBlock || defaultProtected
+        val hasIndefiniteBlock = explicitBlock || defaultProtected
         val backAt: LocalDateTime? = if (hasIndefiniteBlock) {
             null
         } else {
@@ -219,7 +221,6 @@ object BlockExplainPolicy {
         // 3. G3: offer "Ask for 15 more minutes of screen time" ONLY when daily limit is blocking
         // and no other active rule would still keep the app blocked after a bonus grant.
         val canAskTime = primaryCause == BlockCause.DAILY_LIMIT &&
-            !pausedInternet &&
             activeRoutines.isEmpty() &&
             !explicitBlock &&
             !appLimitReached &&
