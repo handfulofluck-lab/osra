@@ -1,0 +1,1 @@
+- API: blocked-site and blocked-app retry receipts in Redis now hold a keyed fingerprint of the phone's own key instead of the key itself, so no site name is stored there while site names are off (osra-security#88).

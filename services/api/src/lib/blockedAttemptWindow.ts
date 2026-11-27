@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import type { Alert, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
@@ -140,9 +141,33 @@ export function parseBlockedGroup(raw: unknown): BlockedGroupState | null {
   };
 }
 
-/** Device retries: the phone's own per-day count, remembered per (device, category, producer key). */
-export function blockedSeenKey(deviceId: string, category: string, producerKey: string): string {
-  return `blocked:seen:${deviceId}:${category}:${producerKey}`;
+/**
+ * osra-security#88: the producer key can carry a site or app name (for example a host), and receipt keys outlive
+ * the alert. Receipt keys therefore hold only a keyed, domain-separated fingerprint of the producer key, never the
+ * key itself, so a Redis dump shows no site even while site names are off. Same secrets as the social contact key.
+ */
+function blockedReceiptSalt(env: NodeJS.ProcessEnv = process.env): Buffer {
+  const baseSecret = env.VAULT_KEY || env.INTERNAL_HMAC_SECRET;
+  if (baseSecret) return createHmac("sha256", baseSecret).update("osra:blocked-receipt:v1").digest();
+  if (env.NODE_ENV === "production") throw new Error("VAULT_KEY or INTERNAL_HMAC_SECRET is required in production");
+  return Buffer.from("dev-blocked-receipt-salt", "utf8");
+}
+
+export function blockedProducerFingerprint(
+  deviceId: string,
+  category: string,
+  producerKey: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return createHmac("sha256", blockedReceiptSalt(env))
+    .update(`${deviceId}\u0000${category}\u0000${producerKey}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+/** Device retries: the phone's own per-day count, remembered per (device, category, producer key fingerprint). */
+export function blockedSeenKey(deviceId: string, category: string, producerKey: string, env: NodeJS.ProcessEnv = process.env): string {
+  return `blocked:seen:${deviceId}:${category}:${blockedProducerFingerprint(deviceId, category, producerKey, env)}`;
 }
 
 export const BLOCKED_SEEN_TTL_SECONDS = 2 * 24 * 60 * 60;
@@ -182,15 +207,21 @@ export interface RecordBlockedAttemptResult {
  * attempt with a lower producer count that arrives after a higher one (reconnect, reordering) is new and counted;
  * only the very same (key, count) is a retry.
  */
-export function blockedClaimKey(deviceId: string, category: string, producerKey: string, count: number): string {
-  return `blocked:claim:${deviceId}:${category}:${producerKey}:${count}`;
+export function blockedClaimKey(
+  deviceId: string,
+  category: string,
+  producerKey: string,
+  count: number,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return `blocked:claim:${deviceId}:${category}:${blockedProducerFingerprint(deviceId, category, producerKey, env)}:${count}`;
 }
 
 type Claim = { key: string } | null | "lost";
 
 async function claimAttempt(redis: ReturnType<typeof getRedis>, input: RecordBlockedAttemptInput): Promise<Claim> {
   if (!input.deviceId || !input.producerKey || !input.producerAttemptCount) return null;
-  const key = blockedClaimKey(input.deviceId, input.category, input.producerKey, input.producerAttemptCount);
+  const key = blockedClaimKey(input.deviceId, input.category, input.producerKey, input.producerAttemptCount, input.env ?? process.env);
   try {
     const ok = await redis.set(key, "1", "EX", BLOCKED_SEEN_TTL_SECONDS, "NX");
     return ok === "OK" ? { key } : "lost";
@@ -206,7 +237,7 @@ async function releaseClaim(redis: ReturnType<typeof getRedis>, claim: Claim): P
 async function rememberSeen(redis: ReturnType<typeof getRedis>, input: RecordBlockedAttemptInput): Promise<void> {
   if (!input.deviceId || !input.producerKey || !input.producerAttemptCount) return;
   await redis
-    .set(blockedSeenKey(input.deviceId, input.category, input.producerKey), String(input.producerAttemptCount), "EX", BLOCKED_SEEN_TTL_SECONDS)
+    .set(blockedSeenKey(input.deviceId, input.category, input.producerKey, input.env ?? process.env), String(input.producerAttemptCount), "EX", BLOCKED_SEEN_TTL_SECONDS)
     .catch(() => undefined);
 }
 

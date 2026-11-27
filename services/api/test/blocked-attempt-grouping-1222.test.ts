@@ -10,9 +10,11 @@ vi.mock("ioredis", async () => {
   return { Redis: MockRedis };
 });
 const pushes: Array<{ id: string; seq: unknown }> = [];
+const pushedPayloads: string[] = [];
 vi.mock("../src/lib/push/notify.js", () => ({
   notifyParentsOfAlert: vi.fn(async (_familyId: string, alert: { id: string; metadata: Record<string, unknown> }) => {
     pushes.push({ id: alert.id, seq: alert.metadata?.pushDeliverySeq });
+    pushedPayloads.push(JSON.stringify(alert));
   }),
 }));
 vi.mock("../src/realtime/gateway.js", () => ({ publishFamilyEvent: vi.fn(async () => undefined) }));
@@ -94,6 +96,7 @@ describe("#1222 blocked attempts follow the #1139 grouped-alert rule", () => {
     resetPrismaMock();
     rows = [];
     pushes.length = 0;
+    pushedPayloads.length = 0;
     kv.clear();
     clock = Date.parse("2026-11-26T18:00:00.000Z");
     installRedis(() => nowMs);
@@ -241,5 +244,48 @@ describe("#1222 blocked attempts follow the #1139 grouped-alert rule", () => {
     expect(rows[0].metadata.latestAt).toBe(at(5).toISOString());
     expect((rows[0].metadata.blockGroup as Record<string, unknown>).latestAt).toBe(at(5).toISOString());
     expect(entries(rows[0]).map((e) => e.at)).toEqual([5, 3, 0].map((m) => at(m).toISOString()));
+  });
+
+  it("names off: no stored receipt key, alert field or push names the site (osra-security#88)", async () => {
+    // The producer's own key carries the host; the route has already redacted metadata, title and body.
+    const site = "secret-site.test";
+    const key = { producerKey: `web:www.${site}:2026-11-26` };
+    await attempt("web_threat", 0, { ...key, producerAttemptCount: 1 });
+    await attempt("web_threat", 1, { ...key, producerAttemptCount: 2 });
+    const retry = await attempt("web_threat", 2, { ...key, producerAttemptCount: 2 });
+    expect(retry.retry).toBe(true);
+    for (let i = 3; i <= 5; i += 1) await attempt("web_threat", i, { ...key, producerAttemptCount: i });
+    clock += 30 * 60_000;
+    nowMs = clock;
+    await runBlockedAttemptSummarySweep(at(0), env);
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(pushes.length).toBeGreaterThan(3); // three pushes and the grouped summary
+    expect(kv.size).toBeGreaterThan(0);
+    const keys = [...kv.keys()];
+    expect(keys.some((k) => k.startsWith("blocked:claim:"))).toBe(true);
+    expect(keys.some((k) => k.startsWith("blocked:seen:"))).toBe(true);
+    for (const k of keys) {
+      expect(k).not.toContain(site);
+      expect(k).not.toContain("secret");
+    }
+    for (const r of rows) expect(JSON.stringify(r)).not.toContain(site);
+    for (const p of pushedPayloads) expect(p).not.toContain(site);
+  });
+
+  it("the receipt fingerprint is keyed: stable for one secret, different under another, never the raw key", async () => {
+    const { blockedProducerFingerprint, blockedSeenKey, blockedClaimKey } = await import("../src/lib/blockedAttemptWindow.js");
+    const a = { VAULT_KEY: "k-one", NODE_ENV: "test" } as NodeJS.ProcessEnv;
+    const b = { VAULT_KEY: "k-two", NODE_ENV: "test" } as NodeJS.ProcessEnv;
+    const fp = blockedProducerFingerprint("dev-1", "web_threat", "web:www.secret-site.test:2026-11-26", a);
+    expect(fp).toMatch(/^[0-9a-f]{32}$/);
+    expect(blockedProducerFingerprint("dev-1", "web_threat", "web:www.secret-site.test:2026-11-26", a)).toBe(fp);
+    expect(blockedProducerFingerprint("dev-1", "web_threat", "web:www.secret-site.test:2026-11-26", b)).not.toBe(fp);
+    expect(blockedProducerFingerprint("dev-2", "web_threat", "web:www.secret-site.test:2026-11-26", a)).not.toBe(fp);
+    expect(blockedSeenKey("dev-1", "web_threat", "web:www.secret-site.test:2026-11-26", a)).toBe(`blocked:seen:dev-1:web_threat:${fp}`);
+    expect(blockedClaimKey("dev-1", "web_threat", "web:www.secret-site.test:2026-11-26", 4, a)).toBe(`blocked:claim:dev-1:web_threat:${fp}:4`);
+    expect(() => blockedProducerFingerprint("dev-1", "web_threat", "x", { NODE_ENV: "production" } as NodeJS.ProcessEnv)).toThrow(
+      /VAULT_KEY or INTERNAL_HMAC_SECRET/,
+    );
   });
 });
