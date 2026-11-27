@@ -201,7 +201,7 @@ class BlockExplainPolicyTest {
     }
 
     @Test
-    fun `explicit block or pause internet never fabricates a return time even during bedtime`() {
+    fun `explicit block never fabricates a return time even during bedtime`() {
         val rules = RuleSetDto(
             screenTime = ScreenTimeRuleDto(bedtimeStart = "21:00", bedtimeEnd = "07:00"),
             appRules = listOf(AppRuleDto(packageId = minecraft, action = "block")),
@@ -220,8 +220,13 @@ class BlockExplainPolicyTest {
         assertEquals(BlockCause.APP_BLOCKED, blockedExp.cause)
         assertNull(blockedExp.backAtTime)
         assertFalse(blockedExp.canAskForMoreTime)
+    }
 
-        val pausedExp = BlockExplainPolicy.explain(
+    @Test
+    fun `pause internet is not a blocking cause - bedtime wins with Back at time`() {
+        // #1240 B1: pause_internet is network-only, so a concurrent pause must never mask bedtime
+        // or strip its "Back at 07:00" return time.
+        val exp = BlockExplainPolicy.explain(
             ruleSet = RuleSetDto(screenTime = ScreenTimeRuleDto(bedtimeStart = "21:00", bedtimeEnd = "07:00")),
             packageId = minecraft,
             now = wedNight,
@@ -232,9 +237,37 @@ class BlockExplainPolicyTest {
             fallbackReason = BlockActivity.REASON_BLOCKED,
             fallbackWindow = null,
         )
-        assertEquals(BlockCause.PAUSED_INTERNET, pausedExp.cause)
-        assertNull(pausedExp.backAtTime)
-        assertFalse(pausedExp.canAskForMoreTime)
+        assertEquals(BlockCause.BEDTIME, exp.cause)
+        assertEquals("07:00", exp.backAtTime)
+        assertTrue(exp.backAtTomorrow)
+        assertFalse(exp.canAskForMoreTime)
+    }
+
+    @Test
+    fun `pause internet is not a blocking cause - daily limit wins with Back at and +15 min ask`() {
+        // #1240 B1: concurrent pause must not block the daily-limit explanation, return time, or
+        // the "+15 min" ask-time action.
+        val exp = BlockExplainPolicy.explain(
+            ruleSet = RuleSetDto(
+                screenTime = ScreenTimeRuleDto(
+                    dailyLimitMinutes = 60,
+                    bedtimeStart = "21:00",
+                    bedtimeEnd = "07:00",
+                ),
+            ),
+            packageId = minecraft,
+            now = wedAfternoon,
+            minutesUsedToday = mapOf(minecraft to 60),
+            blocklist = emptyMap(),
+            pausedInternet = true,
+            bonusMinutes = 0,
+            fallbackReason = BlockActivity.REASON_TIME_LIMIT,
+            fallbackWindow = null,
+        )
+        assertEquals(BlockCause.DAILY_LIMIT, exp.cause)
+        assertEquals("07:00", exp.backAtTime)
+        assertTrue(exp.backAtTomorrow)
+        assertTrue(exp.canAskForMoreTime)
     }
 
     @Test

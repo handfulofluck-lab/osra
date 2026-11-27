@@ -284,6 +284,8 @@
     <string name="lock_paused_body">Your parent will resume it shortly. · أسرة</string>
     <string name="lock_paused_internet_title">Internet paused by your parent</string>
     <string name="lock_paused_internet_body">Educational apps still work. · أسرة</string>
+    <string name="notification_paused_internet_body">Offline apps still work while internet is paused.</string>
+    <string name="lock_always_allowed_heading">Always allowed</string>
 
     <!-- C-02 Time's up / blocked (#1179). -->
     <string name="c02_paused_title">%1$s is paused</string>
