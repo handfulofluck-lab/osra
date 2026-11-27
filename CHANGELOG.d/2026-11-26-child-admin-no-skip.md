@@ -1,0 +1,1 @@
+- Child Android: remove the unconditional Skip path from `PairingActivity.showProtectionSetup()` so first-run setup cannot reach Complete while Device Admin is inactive, and add unit-test coverage (`ProtectionSetupNoSkipTest`) (#1175).
