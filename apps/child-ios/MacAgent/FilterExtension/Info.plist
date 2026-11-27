@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The bundle description of the Mac content filter system extension (roadmap 5.9, step (iii), #988).
+
+  This is the **system-extension** format, not the app-extension one (Codex, #989 `7073424029`, with Apple's
+  host-bundle-layout reference). The differences that matter, and that a wrong plist silently loses:
+
+  * `NSExtension` is replaced by a `NetworkExtension` dictionary whose `NEProviderClasses` maps the extension
+    point to the module-qualified provider class. A provider declared the app-extension way loads and then
+    never receives a flow.
+  * The executable is a real entry point that calls `NEProvider.startSystemExtensionMode()` (see
+    `../SystemExtension/main.swift`), not a copied dynamic library.
+  * `CFBundlePackageType` is `SYSX`, and the whole bundle is embedded in the host's
+    `Contents/Library/SystemExtensions/` — the layout `MacAgent/project.yml` generates.
+
+  CI lints this file with `plutil -lint`; it neither signs nor loads it.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>OSRA Filter</string>
+    <key>CFBundleExecutable</key>
+    <string>OSRAFilter</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.osratech.agent.filter</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>OSRAFilter</string>
+    <key>CFBundlePackageType</key>
+    <string>SYSX</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NetworkExtension</key>
+    <dict>
+        <key>NEProviderClasses</key>
+        <dict>
+            <key>com.apple.networkextension.filter-data</key>
+            <string>OSRAMacAgentFilterProvider.FilterDataProvider</string>
+        </dict>
+    </dict>
+</dict>
+</plist>

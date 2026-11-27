@@ -112,6 +112,13 @@ jobs:
       - name: Check the launchd job description
         run: plutil -lint apps/child-ios/MacAgent/launchd/com.osratech.agent.plist
 
+      # Mac step (iii), #988: the filter's bundle description and entitlements are linted here for the same reason
+      # the launchd plist is — a typo in either is invisible until a signed Mac refuses to load the extension.
+      - name: Check the filter extension's bundle description and entitlements
+        run: |
+          plutil -lint apps/child-ios/MacAgent/FilterExtension/Info.plist
+          plutil -lint apps/child-ios/MacAgent/FilterExtension/OSRAFilter.entitlements
+
       - name: Build the Mac agent
         working-directory: apps/child-ios/MacAgent
         run: swift build
@@ -119,6 +126,34 @@ jobs:
       - name: Test the Mac agent
         working-directory: apps/child-ios/MacAgent
         run: swift test
+
+      # Mac step (iii), #988: the signed route is a system extension inside a host app, which SwiftPM cannot
+      # produce. This compiles that layout — the host's activation delegate, the extension's entry point, the
+      # generated project and the embedded-bundle shape — with code signing disabled, so a mistake in any of them
+      # is caught here rather than on the test Mac. Signing and activation stay a device row.
+      - name: Install XcodeGen ${{ env.XCODEGEN_VERSION }} for the Mac host
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/xcodegen.zip"             "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Build the Mac host and its system extension (unsigned)
+        working-directory: apps/child-ios/MacAgent
+        run: |
+          xcodegen --version
+          xcodegen generate --spec project.yml
+          xcodebuild \
+            -project OSRAMacAgent.xcodeproj \
+            -scheme OSRAMacHost \
+            -configuration Release \
+            -derivedDataPath .build/hostDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          # The layout is the thing Apple documents: the extension is embedded, not linked.
+          find .build/hostDerivedData/Build/Products/Release -name '*.systemextension' -print -quit \
+            | grep . \
+            || { echo "no system extension in the host's SystemExtensions directory" >&2; exit 1; }
 
   test-ios:
     name: Build & Test iOS Agent (Simulator + SwiftPM + app with extensions)

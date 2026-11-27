@@ -1,5 +1,6 @@
 import Foundation
 import FamilyShieldAgent
+import OSRAMacAgentFilter
 
 /// The daemon's cycle: prove the secret, drain the command queue, sync the rules, send the heartbeat.
 ///
@@ -190,7 +191,14 @@ extension AgentLoop.Dependencies {
                                        revoked: result.deviceRevoked)
             },
             syncRules: { await AgentRuntime.syncRules(log: log).summary },
-            heartbeat: { await HeartbeatClient().send($0) },
+            heartbeat: { identity in
+                // Step (iii), #988: the report reads the extension's liveness file for "is anything filtering",
+                // and the snapshot for whether the family wants SafeSearch — which the Mac cannot enforce, so it
+                // degrades the report rather than vanishing from it.
+                let snapshot = PolicySnapshotStore().read()
+                let status = FilterObservation.current(safeSearchRequested: snapshot?.policy.safeSearchEnforced ?? false)
+                return await HeartbeatClient().send(identity, report: MacCapabilityReport(filterStatus: status))
+            },
             childAccount: { MacAgentState.childUser().map(ChildAccount.kind(ofUser:)) },
             log: log
         )
@@ -227,9 +235,29 @@ public enum AgentRuntime {
         case .synced(let rules):
             MacAgentState.setRulesVersion(rules.effectiveRulesVersion)
             log("event=rules_synced version=\(rules.effectiveRulesVersion)")
+            // Step (iii), #988: the content filter reads this file, not the server. A publish failure is logged
+            // and survived — the daemon keeps the rules it has and the extension keeps the policy it read.
+            do {
+                let published = try MacPolicyPublisher.publish(rules)
+                log(published.changed
+                    ? "event=policy_published version=\(published.version) rules=\(rules.effectiveRulesVersion)"
+                    : "event=policy_unchanged version=\(published.version) rules=\(rules.effectiveRulesVersion)")
+            } catch {
+                log("event=policy_publish_failed")
+            }
             return (outcome, .synced(version: rules.effectiveRulesVersion))
         case .consentWithdrawn:
             MacAgentState.setRulesVersion(nil)
+            // Step (iii), #988: the filter stops enforcing too. Leaving the last policy in place would keep
+            // sinking domains after the family revoked consent.
+            do {
+                let cleared = try MacPolicyPublisher.clear()
+                log(cleared.changed
+                    ? "event=policy_cleared version=\(cleared.version)"
+                    : "event=policy_already_clear version=\(cleared.version)")
+            } catch {
+                log("event=policy_clear_failed")
+            }
             log("event=rules_cleared reason=consent_withdrawn")
             return (outcome, .consentWithdrawn)
         case .notPaired:
