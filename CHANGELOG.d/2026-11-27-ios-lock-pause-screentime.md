@@ -6,7 +6,8 @@
   the internet. iOS cannot cut the network itself, so the honest description is "apps and websites".
 - Lock and Pause leave OSRA Kids and Phone unshielded, so a force-quit child can reopen the app and receive
   the parent's Unlock; the parent's always-on app list is honoured too. A shield without Screen Time
-  authorization is refused (`not_authorized`) instead of being reported as applied.
+  authorization (`not_authorized`) or without a resolvable OSRA exemption (`osra_token_unavailable`) is refused
+  instead of being reported as applied.
 - As a second recovery path, a parent Lock or Pause lifts by itself after 24 hours even if the child never
   reopens OSRA; a shield whose safety interval cannot be scheduled is refused (`failsafe_not_scheduled`).
 - Pause internet also applies the WebKit filter, so uncategorised sites do not remain open in Safari.

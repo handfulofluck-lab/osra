@@ -86,6 +86,11 @@ public struct LiveDeviceShield: DeviceShielding {
         // Then the safety net: a shield that cannot lift by itself is never applied (Ahmed, #1275).
         guard Self.startFailsafe(for: set) else { return .failed("failsafe_not_scheduled") }
         let store = set.store
+        // OSRA's own exemption is the recovery path, so a token that did not resolve must refuse the lock rather
+        // than shield the one app that can receive Unlock. The other exemptions are best effort.
+        guard Application(bundleIdentifier: "com.osratech.child").token != nil else {
+            return .failed("osra_token_unavailable")
+        }
         let exceptions = Set(ShieldSet.alwaysAllowedBundleIdentifiers.compactMap {
             Application(bundleIdentifier: $0).token
         })
