@@ -11,6 +11,7 @@ import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/pairing_session_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'pair_qr_payload.dart';
 
@@ -126,6 +127,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         _expiresAt = expiresAt;
         _loading = false;
       });
+      ref.read(activePairingSessionProvider.notifier).state = ActivePairingSession(code: code, childId: widget.childId, expiresAt: expiresAt);
       _startCountdown();
       _startClaimWatch();
     } on DioException catch (e) {
@@ -184,6 +186,9 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       setState(() => _claim = data);
       if (data['status'] == 'paired') {
         _claimTimer?.cancel();
+        if (ref.read(activePairingSessionProvider)?.code == code) {
+          ref.read(activePairingSessionProvider.notifier).state = null;
+        }
         ref.invalidate(familyProvider);
       }
     } catch (_) {
@@ -209,7 +214,12 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         _deciding = false;
         _claim = {...?_claim, 'status': allow ? 'approved' : 'denied'};
       });
-      if (!allow) _claimTimer?.cancel();
+      if (!allow) {
+        _claimTimer?.cancel();
+        if (ref.read(activePairingSessionProvider)?.code == _code) {
+          ref.read(activePairingSessionProvider.notifier).state = null;
+        }
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
