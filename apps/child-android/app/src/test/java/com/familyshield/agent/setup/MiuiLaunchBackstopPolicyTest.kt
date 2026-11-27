@@ -162,6 +162,7 @@ class MiuiLaunchBackstopPolicyTest {
             tunnelRunning = true,
             backgroundLocation = true,
             callSmsGranted = true,
+            profiles = null,
         )
         val withoutMiui = CapabilitiesPolicy.grants(base)
         assertFalse(withoutMiui.containsKey(CapabilitiesPolicy.GRANT_MIUI_POPUP))
