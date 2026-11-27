@@ -475,6 +475,93 @@ void main() {
     await tester.pump();
   });
 
+  /// Mutant: omit terminal-state / monotonic read-order recheck after `await` in `_readClaim()` ->
+  /// when an earlier in-flight poll resolves after a later poll already reached `paired`, Connected
+  /// (`p05ConnectedCard`) disappears and cannot recover because `_claimTimer` already stopped.
+  testWidgets('#1190 P-05 out-of-order poll guard: delayed earlier poll within same generation never overwrites Connected', (tester) async {
+    final now = DateTime(2026, 11, 27, 8, 20);
+    final exp = now.add(const Duration(minutes: 10)).toUtc().toIso8601String();
+    var claimReadCount = 0;
+    final delayedWaitingRead = Completer<void>();
+    final delayedApprovedRead = Completer<void>();
+
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/devices/pair': (_) => {'code': '482910', 'expiresAt': exp},
+      'GET /v1/devices/pair/482910/claim': (_) {
+        claimReadCount += 1;
+        if (claimReadCount == 1) {
+          return FakeDeferred(
+            delayedWaitingRead.future.then(
+              (_) => const {'status': 'waiting'},
+            ),
+          );
+        }
+        if (claimReadCount == 2) {
+          return FakeDeferred(
+            delayedApprovedRead.future.then(
+              (_) => const {
+                'claimId': 'claim-1',
+                'status': 'approved',
+                'deviceName': 'Yusuf Galaxy',
+              },
+            ),
+          );
+        }
+        return const {
+          'claimId': 'claim-1',
+          'status': 'paired',
+          'deviceName': 'Yusuf Galaxy',
+        };
+      },
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p05PairEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PairingQrScreen(
+            childId: 'child-1',
+            childName: 'Alex',
+            clock: () => now,
+            onContinue: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Read #1 (t=2s) and Read #2 (t=4s) remain suspended; Read #3 (t=6s) finishes first with `paired`.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('p05ConnectedCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05ContinueButton')), findsOneWidget);
+
+    // Delayed Read #1 (`waiting`) and Read #2 (`approved`) resolve AFTER `paired` -> Connected stays intact!
+    delayedWaitingRead.complete();
+    delayedApprovedRead.complete();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('p05ConnectedCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05ContinueButton')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05WaitingLine')), findsNothing);
+    expect(find.byKey(const ValueKey('p05ApprovedCard')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   for (final cfg in [
     (locale: const Locale('en'), dark: false, size: const Size(390, 844), scale: 1.0),
     (locale: const Locale('en'), dark: true, size: const Size(390, 844), scale: 1.0),

@@ -54,6 +54,8 @@ class PairingQrScreen extends ConsumerStatefulWidget {
 
 class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   int _generation = 0;
+  int _claimReadSeq = 0;
+  int _latestAppliedClaimReadSeq = 0;
   String? _code;
   String? _payload;
   DateTime? _expiresAt;
@@ -95,8 +97,17 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     super.dispose();
   }
 
+  static int _claimStatusRank(Object? status) => switch (status) {
+        'paired' || 'denied' => 3,
+        'approved' => 2,
+        'pending' => 1,
+        _ => 0,
+      };
+
   Future<void> _generate() async {
     final generation = ++_generation;
+    _claimReadSeq = 0;
+    _latestAppliedClaimReadSeq = 0;
     _timer?.cancel();
     _claimTimer?.cancel();
     setState(() {
@@ -194,6 +205,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       _claimTimer?.cancel();
       return;
     }
+    final readSeq = ++_claimReadSeq;
     try {
       final res = await ref
           .read(apiClientProvider)
@@ -202,12 +214,23 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       if (!mounted ||
           generation != _generation ||
           code != _code ||
-          _deciding) {
+          _deciding ||
+          readSeq < _latestAppliedClaimReadSeq) {
+        return;
+      }
+      final currentStatus = _claim?['status'];
+      if (currentStatus == 'paired' || currentStatus == 'denied') {
+        _claimTimer?.cancel();
         return;
       }
       final data = Map<String, dynamic>.from(res.data as Map);
+      final incomingStatus = data['status'];
+      if (_claimStatusRank(incomingStatus) < _claimStatusRank(currentStatus)) {
+        return;
+      }
+      _latestAppliedClaimReadSeq = readSeq;
       setState(() => _claim = data);
-      if (data['status'] == 'paired') {
+      if (incomingStatus == 'paired') {
         _claimTimer?.cancel();
         if (mounted && generation == _generation) {
           ref.invalidate(familyProvider);
