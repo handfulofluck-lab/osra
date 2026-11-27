@@ -53,7 +53,7 @@ object WebFilterConnectionReset {
         private val activeModeOnServiceThread: () -> String?,
         private val openModeOnServiceThread: (String, PolicySnapshot) -> Boolean,
         private val closeTunnelOnServiceThread: () -> Unit,
-        private val onTerminalTunnelLossOnServiceThread: (Long, String) -> Unit = { _, _ -> },
+        private val onTerminalTunnelLossOnServiceThread: (Long, Long) -> Unit = { _, _ -> },
         private val isInternetPausedOnServiceThread: () -> Boolean,
         private val isConsentPausedOnServiceThread: () -> Boolean,
         private val isLockActiveOnServiceThread: () -> Boolean,
@@ -88,6 +88,8 @@ object WebFilterConnectionReset {
 
         fun isStoppingOnServiceThread(): Boolean = stopping
 
+        fun currentAuthorityEpochOnServiceThread(): Long = tunnelEpoch
+
         fun interruptTransientHold() {
             currentDelaySignal?.complete(Unit)
         }
@@ -111,13 +113,13 @@ object WebFilterConnectionReset {
 
         fun handleConsentChangedOnServiceThread(consentPausedNow: Boolean) {
             if (!consentPausedNow || stopping) return
+            tunnelEpoch += 1L
             val activeTransient = transientTunnelEpoch ?: return
             consentCleanedEpochs.add(activeTransient)
             currentDelaySignal?.complete(Unit)
             val policy = readCommittedPolicyOnServiceThread()
             applyPolicyOnServiceThread(policy)
             if (!isInternetPausedOnServiceThread() && authorizedMode == FilterVpnService.MODE_DNS) {
-                tunnelEpoch += 1L
                 val ok = runCatching { openModeOnServiceThread(FilterVpnService.MODE_DNS, policy) }.getOrDefault(false)
                 if (ok && activeModeOnServiceThread() == FilterVpnService.MODE_DNS) {
                     lastAppliedBypassApps = policy.alwaysAllowedApps
@@ -135,6 +137,32 @@ object WebFilterConnectionReset {
             transientTunnelEpoch = null
             currentDelaySignal?.complete(Unit)
             runCatching { closeTunnelOnServiceThread() }
+        }
+
+        fun executeScheduledRestartOnServiceThread(
+            expectedInstanceId: Long,
+            expectedAuthorityEpoch: Long,
+        ): Boolean {
+            if (stopping ||
+                expectedInstanceId <= 0L ||
+                expectedInstanceId != serviceInstanceId() ||
+                tunnelEpoch != expectedAuthorityEpoch ||
+                transientTunnelEpoch != null ||
+                activeModeOnServiceThread() != null ||
+                isConsentPausedOnServiceThread()
+            ) {
+                return false
+            }
+            val policy = readCommittedPolicyOnServiceThread()
+            applyPolicyOnServiceThread(policy)
+            val target = expectedAuthoritativeModeOnServiceThread()
+            tunnelEpoch += 1L
+            val ok = runCatching { openModeOnServiceThread(target, policy) }.getOrDefault(false) &&
+                activeModeOnServiceThread() == target
+            if (ok) {
+                lastAppliedBypassApps = policy.alwaysAllowedApps
+            }
+            return ok
         }
 
         suspend fun executeReset(requestInstanceId: Long = serviceInstanceId()): TransitionOutcome {
@@ -159,6 +187,12 @@ object WebFilterConnectionReset {
         private sealed interface RestoreStep {
             data class Done(val outcome: TransitionOutcome, val appliedPolicy: PolicySnapshot) : RestoreStep
             data object Retry : RestoreStep
+        }
+
+        private sealed interface PostHopCheck {
+            data object Done : PostHopCheck
+            data object FollowUpReset : PostHopCheck
+            data class ReopenFailed(val reopenEpoch: Long) : PostHopCheck
         }
 
         private suspend fun executeResetLocked(
@@ -225,19 +259,29 @@ object WebFilterConnectionReset {
                     val (outcome, restoredPolicy) = resolved
                     if (outcome == TransitionOutcome.COMPLETED) {
                         runCatching { prepareCommittedPolicy() }
-                        val needFollowUp = runOnService {
-                            if (stopping || requestInstanceId != serviceInstanceId()) return@runOnService false
+                        val postCheck = runOnService {
+                            if (stopping) return@runOnService PostHopCheck.Done
+                            if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
+                                return@runOnService PostHopCheck.Done
+                            }
                             val finalPolicy = readCommittedPolicyOnServiceThread()
                             applyPolicyOnServiceThread(finalPolicy)
                             val target = expectedAuthoritativeModeOnServiceThread()
                             if (activeModeOnServiceThread() == target &&
                                 lastAppliedBypassApps != finalPolicy.alwaysAllowedApps
                             ) {
-                                if (runCatching { openModeOnServiceThread(target, finalPolicy) }.getOrDefault(false)) {
+                                val reopenEpoch = ++tunnelEpoch
+                                transientTunnelEpoch = reopenEpoch
+                                val reopened = runCatching { openModeOnServiceThread(target, finalPolicy) }.getOrDefault(false) &&
+                                    activeModeOnServiceThread() == target
+                                if (reopened) {
                                     lastAppliedBypassApps = finalPolicy.alwaysAllowedApps
+                                    transientTunnelEpoch = null
+                                } else {
+                                    return@runOnService PostHopCheck.ReopenFailed(reopenEpoch)
                                 }
                             }
-                            allowFollowUp &&
+                            val needFollowUp = allowFollowUp &&
                                 restoredPolicy != null &&
                                 hasNewEffectivePolicyBlock(restoredPolicy, finalPolicy) &&
                                 !isConsentPausedOnServiceThread() &&
@@ -245,9 +289,34 @@ object WebFilterConnectionReset {
                                 !isLockActiveOnServiceThread() &&
                                 authorizedMode == FilterVpnService.MODE_DNS &&
                                 activeModeOnServiceThread() == FilterVpnService.MODE_DNS
+                            if (needFollowUp) PostHopCheck.FollowUpReset else PostHopCheck.Done
                         }
-                        if (needFollowUp) {
-                            return executeResetLocked(requestInstanceId = requestInstanceId, allowFollowUp = false)
+                        when (postCheck) {
+                            PostHopCheck.Done -> return outcome
+                            PostHopCheck.FollowUpReset -> {
+                                return executeResetLocked(requestInstanceId = requestInstanceId, allowFollowUp = false)
+                            }
+                            is PostHopCheck.ReopenFailed -> {
+                                val (reopenOutcome, reopenedPolicy) = withContext(NonCancellable) {
+                                    restoreAfterWindow(requestInstanceId = requestInstanceId, hopEpoch = postCheck.reopenEpoch)
+                                }
+                                if (reopenOutcome == TransitionOutcome.COMPLETED && allowFollowUp && restoredPolicy != null && reopenedPolicy != null) {
+                                    val followUpAfterReopen = runOnService {
+                                        !stopping &&
+                                            requestInstanceId == serviceInstanceId() &&
+                                            hasNewEffectivePolicyBlock(restoredPolicy, reopenedPolicy) &&
+                                            !isConsentPausedOnServiceThread() &&
+                                            !isInternetPausedOnServiceThread() &&
+                                            !isLockActiveOnServiceThread() &&
+                                            authorizedMode == FilterVpnService.MODE_DNS &&
+                                            activeModeOnServiceThread() == FilterVpnService.MODE_DNS
+                                    }
+                                    if (followUpAfterReopen) {
+                                        return executeResetLocked(requestInstanceId = requestInstanceId, allowFollowUp = false)
+                                    }
+                                }
+                                return reopenOutcome
+                            }
                         }
                     }
                     return outcome
@@ -347,7 +416,7 @@ object WebFilterConnectionReset {
                     transientTunnelEpoch = null
                 }
                 if (activeModeOnServiceThread() == null) {
-                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, target) }
+                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, tunnelEpoch) }
                 }
                 TransitionOutcome.FAILED_ENTRY_CLOSED
             }
@@ -439,7 +508,7 @@ object WebFilterConnectionReset {
                     transientTunnelEpoch = null
                 }
                 if (activeModeOnServiceThread() == null) {
-                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, target) }
+                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, tunnelEpoch) }
                 }
                 TransitionOutcome.RESTORE_FAILED_CLOSED to null
             }

@@ -29,6 +29,7 @@ class WebFilterConnectionResetTest {
         initialStopping: Boolean = false,
         var committedPolicy: WebFilterConnectionReset.PolicySnapshot = WebFilterConnectionReset.PolicySnapshot(),
         val onEstablish: (SyntheticServiceHarness, String, Int, WebFilterConnectionReset.PolicySnapshot) -> Boolean = { _, _, _, _ -> true },
+        val onPreparePolicy: suspend SyntheticServiceHarness.(Int) -> Unit = {},
         val onWait: suspend SyntheticServiceHarness.(Long) -> Unit = { ms -> nowMs += ms },
     ) {
         var nowMs: Long = 0L
@@ -40,6 +41,8 @@ class WebFilterConnectionResetTest {
         var recordedLossEpoch: Long? = null
         var lossAlertsEnqueued: Int = 0
         val scheduledAuthoritativeRestarts = mutableListOf<Pair<Long, String>>()
+        val pendingRestartTasks = ArrayDeque<Pair<Long, Long>>()
+        var prepareCalls: Int = 0
         val isFilterLost: Boolean
             get() = FilterLossPolicy.isLost(
                 recordedEpoch = recordedLossEpoch,
@@ -72,6 +75,10 @@ class WebFilterConnectionResetTest {
                             currentThreadOnService = false
                         }
                     }
+                },
+                prepareCommittedPolicy = {
+                    prepareCalls += 1
+                    onPreparePolicy(prepareCalls)
                 },
                 readCommittedPolicyOnServiceThread = {
                     assertTrue("policy read must run on service thread", currentThreadOnService)
@@ -108,7 +115,7 @@ class WebFilterConnectionResetTest {
                     activeMode = null
                     log += "close@${nowMs}"
                 },
-                onTerminalTunnelLossOnServiceThread = { expectedInstanceId, _ ->
+                onTerminalTunnelLossOnServiceThread = { expectedInstanceId, authorityEpoch ->
                     assertTrue("terminal loss handler must run on service thread", currentThreadOnService)
                     if (!controllerStopping &&
                         expectedInstanceId > 0L &&
@@ -132,6 +139,7 @@ class WebFilterConnectionResetTest {
                         }
                         if (vpnEnabled && !consentPaused) {
                             scheduledAuthoritativeRestarts += (instanceId to persistedVpnMode)
+                            pendingRestartTasks.addLast(instanceId to authorityEpoch)
                         }
                     }
                 },
@@ -208,6 +216,30 @@ class WebFilterConnectionResetTest {
                     currentThreadOnService = false
                 }
             }
+
+        suspend fun executeNextScheduledRestart(): Boolean {
+            val (expectedInstance, expectedAuthorityEpoch) = pendingRestartTasks.removeFirstOrNull() ?: return false
+            return serviceThreadMutex.withLock {
+                currentThreadOnService = true
+                try {
+                    if (!controllerStopping &&
+                        effectiveLiveInstanceId() == expectedInstance &&
+                        activeMode == null &&
+                        vpnEnabled &&
+                        !consentPaused
+                    ) {
+                        controller.executeScheduledRestartOnServiceThread(
+                            expectedInstanceId = expectedInstance,
+                            expectedAuthorityEpoch = expectedAuthorityEpoch,
+                        )
+                    } else {
+                        false
+                    }
+                } finally {
+                    currentThreadOnService = false
+                }
+            }
+        }
     }
 
     @Test
@@ -649,10 +681,115 @@ class WebFilterConnectionResetTest {
                     """TamperAlertWorker\.enqueue\(this, TamperAlertWorker\.TYPE_VPN_REVOKED\)""",
             ).containsMatchIn(terminalHandler),
         )
-        assertTrue(terminalHandler.contains("start(this, VpnState.mode(this))"))
+        assertTrue(terminalHandler.contains("transientResetController.executeScheduledRestartOnServiceThread("))
+        assertTrue(terminalHandler.contains("expectedInstanceId = restartInstanceId"))
+        assertTrue(terminalHandler.contains("expectedAuthorityEpoch = authorityEpoch"))
 
         val consentCode = stripComments(sourceFile("app/src/main/java/com/familyshield/agent/data/ConsentState.kt"))
         assertTrue(consentCode.contains("FilterVpnService.onConsentChanged("))
+    }
+
+    @Test
+    fun `final policy refresh reopen failure routes through bounded restore and terminal loss handler`() = runBlocking {
+        // Mutant A: ignore failed openModeOnServiceThread during final post-hop policy refresh ->
+        // returns COMPLETED (acknowledged = true) with activeMode == null, isFilterLost == false, and 0 alerts.
+        // Subcase 1: reopen fails once, then recovers via bounded restore retries -> COMPLETED with new bypass list.
+        val recoverableReopen = SyntheticServiceHarness(
+            onPreparePolicy = { callIndex ->
+                if (callIndex == 3) {
+                    committedPolicy = WebFilterConnectionReset.PolicySnapshot(
+                        alwaysAllowedApps = listOf("com.khanacademy.android"),
+                    )
+                }
+            },
+            onEstablish = { _, wanted, attempt, _ ->
+                // DNS attempt #1 is post-window restore (succeeds); DNS attempt #2 is post-hop reopen (fails);
+                // DNS attempt #3 is bounded retry #1 (succeeds).
+                !(wanted == FilterVpnService.MODE_DNS && attempt == 2)
+            },
+        )
+        val recOut = recoverableReopen.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.COMPLETED, recOut)
+        assertTrue(recOut.acknowledged)
+        assertEquals(FilterVpnService.MODE_DNS, recoverableReopen.activeMode)
+        assertEquals(listOf("com.khanacademy.android"), recoverableReopen.appliedBypassApps)
+        assertFalse(recoverableReopen.isFilterLost)
+        assertEquals(0, recoverableReopen.lossAlertsEnqueued)
+
+        // Subcase 2: post-hop reopen and all bounded retries fail -> RESTORE_FAILED_CLOSED, 1 alert, guarded restart.
+        var allowScheduledRecovery = false
+        val terminalReopen = SyntheticServiceHarness(
+            onPreparePolicy = { callIndex ->
+                if (callIndex == 3) {
+                    committedPolicy = WebFilterConnectionReset.PolicySnapshot(
+                        alwaysAllowedApps = listOf("com.duolingo"),
+                    )
+                }
+            },
+            onEstablish = { _, wanted, attempt, _ ->
+                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL) true
+                else if (attempt == 1) true
+                else allowScheduledRecovery
+            },
+        )
+        val termOut = terminalReopen.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, termOut)
+        assertFalse("failed final-refresh reopen must never return acknowledged COMPLETED", termOut.acknowledged)
+        assertNull(terminalReopen.activeMode)
+        assertTrue(terminalReopen.isFilterLost)
+        assertEquals(1, terminalReopen.lossAlertsEnqueued)
+        assertEquals(1, terminalReopen.pendingRestartTasks.size)
+
+        allowScheduledRecovery = true
+        assertTrue(terminalReopen.executeNextScheduledRestart())
+        assertEquals(FilterVpnService.MODE_DNS, terminalReopen.activeMode)
+        assertEquals(listOf("com.duolingo"), terminalReopen.appliedBypassApps)
+        assertFalse(terminalReopen.isFilterLost)
+    }
+
+    @Test
+    fun `scheduled authoritative restart enforces execution-time instance and authority checks`() = runBlocking {
+        // Mutant A: capture mode at scheduling time or skip execution-time authority epoch check ->
+        // queued restart overwrites a newer pause_internet or consent transition that took ownership.
+        var allowEstablish = false
+        val newerCommandHarness = SyntheticServiceHarness(
+            onEstablish = { _, wanted, attempt, _ ->
+                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL && attempt == 1) true else allowEstablish
+            },
+        )
+        val outA = newerCommandHarness.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, outA)
+        assertEquals(1, newerCommandHarness.pendingRestartTasks.size)
+
+        // A newer pause_internet command takes ownership BEFORE the queued restart runs (even if establish fails!).
+        allowEstablish = false
+        assertFalse(newerCommandHarness.serviceAuthoritativeStart(FilterVpnService.MODE_SINKHOLE_ALL, pausedFlag = true))
+        allowEstablish = true
+        // Now the older scheduled restart runs — its authority epoch is stale, so it MUST NOT execute!
+        assertFalse(
+            "stale scheduled restart must be rejected after newer command took ownership",
+            newerCommandHarness.executeNextScheduledRestart(),
+        )
+
+        // Mutant B: skip execution-time live-instance check -> queued restart runs on superseded service instance.
+        var allowReplacedEstablish = false
+        val replacedRestartHarness = SyntheticServiceHarness(
+            instanceId = 11L,
+            onEstablish = { _, wanted, _, _ ->
+                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL) true else allowReplacedEstablish
+            },
+        )
+        val outB = replacedRestartHarness.controller.executeReset(requestInstanceId = 11L)
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, outB)
+        assertEquals(1, replacedRestartHarness.pendingRestartTasks.size)
+
+        replacedRestartHarness.liveInstanceId = 12L
+        allowReplacedEstablish = true
+        assertFalse(
+            "scheduled restart from superseded instance must be rejected at execution time",
+            replacedRestartHarness.executeNextScheduledRestart(),
+        )
+        assertNull(replacedRestartHarness.activeMode)
     }
 
     private fun stripComments(src: String): String =

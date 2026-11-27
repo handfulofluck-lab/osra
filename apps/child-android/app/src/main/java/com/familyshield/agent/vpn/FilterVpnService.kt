@@ -119,8 +119,8 @@ class FilterVpnService : VpnService() {
         activeModeOnServiceThread = { tunnelMode },
         openModeOnServiceThread = { wanted, snapshot -> openTunnelForMode(wanted, snapshot) },
         closeTunnelOnServiceThread = { stopTunnel() },
-        onTerminalTunnelLossOnServiceThread = { expectedInstance, _ ->
-            handleTerminalResetLossOnMain(expectedInstance)
+        onTerminalTunnelLossOnServiceThread = { expectedInstance, authorityEpoch ->
+            handleTerminalResetLossOnMain(expectedInstance, authorityEpoch)
         },
         isInternetPausedOnServiceThread = { rules.isInternetPaused() },
         isConsentPausedOnServiceThread = { consent.isPaused() },
@@ -167,7 +167,10 @@ class FilterVpnService : VpnService() {
                         transientResetController.executeReset(requestInstanceId = targetInstance)
                     } catch (e: Exception) {
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
-                            handleTerminalResetLossOnMain(targetInstance)
+                            handleTerminalResetLossOnMain(
+                                expectedInstanceId = targetInstance,
+                                authorityEpoch = transientResetController.currentAuthorityEpochOnServiceThread(),
+                            )
                         }
                         WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED
                     }
@@ -595,7 +598,7 @@ class FilterVpnService : VpnService() {
         }
     }
 
-    private fun handleTerminalResetLossOnMain(expectedInstanceId: Long) {
+    private fun handleTerminalResetLossOnMain(expectedInstanceId: Long, authorityEpoch: Long) {
         if (serviceStopping ||
             expectedInstanceId <= 0L ||
             expectedInstanceId != instanceId ||
@@ -615,9 +618,13 @@ class FilterVpnService : VpnService() {
                 activeInstance === this &&
                 tunnelMode == null &&
                 VpnState.isEnabled(this) &&
-                !consent.isPaused()
+                !consent.isPaused() &&
+                isPrepared(this)
             ) {
-                start(this, VpnState.mode(this))
+                transientResetController.executeScheduledRestartOnServiceThread(
+                    expectedInstanceId = restartInstanceId,
+                    expectedAuthorityEpoch = authorityEpoch,
+                )
             }
         }
     }
