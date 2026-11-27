@@ -97,6 +97,11 @@ struct DailyScreenTimeState: Codable, Equatable {
     private var reachedDay: Date?
     private var reachedMinutes: Int?
 
+    init(deviceID: String, limits: DailyScreenTimeLimits) {
+        self.deviceID = deviceID
+        self.limits = limits
+    }
+
     func isExhausted(at date: Date, calendar: Calendar) -> Bool {
         guard let threshold = limits.threshold(at: date, calendar: calendar, bonuses: bonuses),
               let reachedDay, calendar.isDate(reachedDay, inSameDayAs: date),
