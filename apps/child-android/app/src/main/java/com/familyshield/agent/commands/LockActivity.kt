@@ -9,19 +9,27 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,11 +38,38 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.R
+import com.familyshield.agent.di.WorkerEntryPoint
+import com.familyshield.agent.enforcement.AndroidPackageFacts
 import com.familyshield.agent.enforcement.KeyguardPolicy
+import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockScreenPolicy
 import com.familyshield.agent.enforcement.LockPeriodTracker
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.network.DeviceUnlinker
+import dagger.hilt.android.EntryPointAccessors
+
+/** Launchable always-allowed app shortcut shown on [LockActivity] when the device is locked (#1183). */
+data class AlwaysAllowedShortcut(val packageId: String, val label: String)
+
+/** Pure JVM filter/sorter for always-allowed app buttons displayed under Lock (#1183 + #1240 R3). */
+object LockAlwaysAllowedPolicy {
+    fun resolveLaunchable(
+        alwaysAllowedPackages: Collection<String>,
+        ownPackage: String,
+        homePackages: Set<String> = emptySet(),
+        resolveLabel: (String) -> String?,
+    ): List<AlwaysAllowedShortcut> = alwaysAllowedPackages
+        .asSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && it != ownPackage }
+        .filterNot { LockEnforcementPolicy.isLockAllowlistDenied(it, homePackages) }
+        .distinct()
+        .mapNotNull { pkg ->
+            resolveLabel(pkg)?.trim()?.takeIf { it.isNotEmpty() }?.let { AlwaysAllowedShortcut(pkg, it) }
+        }
+        .sortedBy { it.label.lowercase() }
+        .toList()
+}
 
 /**
  * Full-screen overlay used by CommandDispatcher. MODE_LOCKED shows "device locked by your
@@ -49,6 +84,8 @@ import com.familyshield.agent.network.DeviceUnlinker
  * through [LockScreenPolicy], so a replayed MODE_UNLOCK cannot finish a lock a later `lock` raised.
  */
 class LockActivity : ComponentActivity() {
+
+    private val allowedAppsState = mutableStateOf<List<AlwaysAllowedShortcut>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,6 +152,7 @@ class LockActivity : ComponentActivity() {
         // stale instance finishes instead of re-asserting a restriction that is no longer stored.
         val decision = LockScreenPolicy.resolve(LockState.mode(this), intent.getStringExtra(EXTRA_MODE))
         if (decision !is LockScreenPolicy.Decision.Show) finish()
+        else allowedAppsState.value = loadAlwaysAllowedShortcuts(decision.mode)
     }
 
     override fun onUserLeaveHint() {
@@ -151,10 +189,15 @@ class LockActivity : ComponentActivity() {
                     finish()
                     return
                 }
+                allowedAppsState.value = loadAlwaysAllowedShortcuts(decision.mode)
                 setContent {
                     MaterialTheme {
                         Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {
-                            OverlayScreen(decision.mode)
+                            OverlayScreen(
+                                mode = decision.mode,
+                                alwaysAllowedApps = allowedAppsState.value,
+                                onOpenAllowedApp = ::openAllowedApp,
+                            )
                         }
                     }
                 }
@@ -167,6 +210,39 @@ class LockActivity : ComponentActivity() {
             }
             LockScreenPolicy.Decision.Finish -> finish()
         }
+    }
+
+    private fun loadAlwaysAllowedShortcuts(mode: String): List<AlwaysAllowedShortcut> {
+        if (mode != MODE_LOCKED && mode != MODE_PAUSED) return emptyList()
+        val packages = runCatching {
+            EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
+                .ruleRepository()
+                .cachedRules()
+                ?.alwaysAllowedApps
+                .orEmpty()
+        }.getOrDefault(emptyList())
+        val homePackages = runCatching { AndroidPackageFacts(applicationContext).homePackages() }
+            .getOrDefault(emptySet())
+        return LockAlwaysAllowedPolicy.resolveLaunchable(
+            alwaysAllowedPackages = packages,
+            ownPackage = packageName,
+            homePackages = homePackages,
+            resolveLabel = { pkg ->
+                if (packageManager.getLaunchIntentForPackage(pkg) == null) {
+                    null
+                } else {
+                    runCatching {
+                        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+                    }.getOrNull()
+                }
+            },
+        )
+    }
+
+    private fun openAllowedApp(packageId: String) {
+        val launch = packageManager.getLaunchIntentForPackage(packageId) ?: return
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { startActivity(launch) }
     }
 
     companion object {
@@ -213,7 +289,11 @@ class LockActivity : ComponentActivity() {
 }
 
 @Composable
-private fun OverlayScreen(mode: String) {
+private fun OverlayScreen(
+    mode: String,
+    alwaysAllowedApps: List<AlwaysAllowedShortcut> = emptyList(),
+    onOpenAllowedApp: (String) -> Unit = {},
+) {
     val title = when (mode) {
         LockActivity.MODE_PAUSED -> R.string.lock_paused_title
         LockActivity.MODE_PAUSED_INTERNET -> R.string.lock_paused_internet_title
@@ -227,7 +307,8 @@ private fun OverlayScreen(mode: String) {
     // #489: at targetSdk 35 the screen is drawn edge to edge, so in landscape the title sat under the
     // status bar and the cutout. The root keeps its 32 dp and adds whatever the system bars take.
     Column(
-        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
+        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -243,5 +324,25 @@ private fun OverlayScreen(mode: String) {
             color = Color(0xFFAEB0B8),
             textAlign = TextAlign.Center,
         )
+        if (alwaysAllowedApps.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(28.dp))
+            Text(
+                text = stringResource(R.string.lock_always_allowed_heading),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color(0xFFCBD0DC),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            alwaysAllowedApps.forEach { app ->
+                OutlinedButton(
+                    onClick = { onOpenAllowedApp(app.packageId) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 4.dp),
+                    border = BorderStroke(1.dp, Color(0xFF475569)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                ) {
+                    Text(text = app.label, textAlign = TextAlign.Center)
+                }
+            }
+        }
     }
 }

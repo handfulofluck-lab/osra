@@ -234,6 +234,16 @@ node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count g
 node scripts/qa-probe.mjs   # 151 passed / 0 failed / 0 targets at 2026-10-21 — any failure exits 1
 ```
 
+The [daily-limit request decision](adr/0049-time-request-resolution.md) route has focused API
+coverage in `test/timeRequests.test.ts`. Run it with `pnpm --filter @familyshield/api test
+test/timeRequests.test.ts` from the repository root. It checks duplicate submissions, competing
+caregivers, rollback if acknowledgement fails, decline, unsupported duration, consent and ordinary
+acknowledgement. For a PostgreSQL check, apply the migrations to a fresh disposable database and
+decide the same synthetic request concurrently from two allowed caregiver sessions. Expect one
+success, one conflict with that success's receipt, one bonus increment and one queued command per
+paired device. A device run is separate and must confirm that an approved grant takes effect on the
+child device.
+
 `O14`–`O23` are the ADR-0031 MFA-reset group (ten checks, plus a `setup:` check that builds the family
 they need; the dated counts above are the last measured run, not a prediction): `O14`
 `/mfa/reset/request` refuses a wrong password and an unknown
@@ -1154,7 +1164,8 @@ adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNA
 adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
 adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
 adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
-# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+# pause-internet (#1183/#1240): POST /v1/devices/:id/command {"command":"pause_internet"} → network-only
+#   (non-blocking notification, no full-screen overlay; offline apps stay open) AND
 adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
 adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
 # resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"
@@ -1165,6 +1176,12 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the SafeSearch row (#1226), use the approved paired test family and keep the supported
+browser open while the parent changes SafeSearch. Use a neutral query and check that the browser's
+SafeSearch settings report the requested state. With SafeSearch on, the `FilterVpn` diagnostic
+should record the search host and the `REWRITE` decision. Check that the diagnostic omits the
+query text and full URL. Record the exact Child build and restore the test family's prior setting.
 
 For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
 each request. The existing `paused` field reports the requested setting. Its optional
