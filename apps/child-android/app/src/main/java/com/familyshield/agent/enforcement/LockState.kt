@@ -1,6 +1,7 @@
 package com.familyshield.agent.enforcement
 
 import android.content.Context
+import com.familyshield.agent.security.TamperScreenPolicy
 
 /**
  * Persisted "what should be on the screen right now" for the parent's lock / pause commands
@@ -26,7 +27,28 @@ object LockState {
         prefs(context).edit().putString(KEY_MODE, MODE_NONE).remove(KEY_SINCE).apply()
     }
 
-    fun mode(context: Context): String = prefs(context).getString(KEY_MODE, MODE_NONE) ?: MODE_NONE
+    /**
+     * #1240 (B2): upgrade migration for devices that held pre-#1183 `"paused_internet"` in
+     * `osra_lock_state`. Pause is network-only now, so drop the legacy overlay mode without
+     * touching an active `"locked"` or `"paused"` lock or the VPN sinkhole.
+     *
+     * @return true if a legacy `"paused_internet"` overlay state was present and cleared.
+     */
+    fun clearLegacyPausedOverlay(context: Context): Boolean {
+        val raw = prefs(context).getString(KEY_MODE, MODE_NONE)
+        if (!LockEnforcementPolicy.isLegacyOverlayMode(raw)) return false
+        clear(context)
+        return true
+    }
+
+    fun mode(context: Context): String {
+        val raw = prefs(context).getString(KEY_MODE, MODE_NONE)
+        if (LockEnforcementPolicy.isLegacyOverlayMode(raw)) {
+            clear(context)
+            return MODE_NONE
+        }
+        return LockEnforcementPolicy.normalizeStoredMode(raw)
+    }
 
     fun isActive(context: Context): Boolean = LockEnforcementPolicy.isLockingMode(mode(context))
 
@@ -39,7 +61,17 @@ object LockState {
  * emergency dialer, and never over our own windows (that would loop).
  */
 object LockEnforcementPolicy {
-    private val LOCKING_MODES = setOf("locked", "paused", "paused_internet")
+    /** Pre-#1183 overlay mode retired by network-only pause (#1183/#1240 B2). */
+    const val LEGACY_PAUSED_INTERNET_MODE = "paused_internet"
+
+    private val LOCKING_MODES = setOf("locked", "paused")
+
+    /** True when [mode] is the retired pre-#1183 full-screen pause-internet overlay mode. */
+    fun isLegacyOverlayMode(mode: String?): Boolean = mode == LEGACY_PAUSED_INTERNET_MODE
+
+    /** Normalizes persisted [LockState] values on upgrade: legacy `paused_internet` becomes `none`. */
+    fun normalizeStoredMode(raw: String?): String =
+        if (raw.isNullOrBlank() || isLegacyOverlayMode(raw)) LockState.MODE_NONE else raw
 
     /**
      * Packages the lock must never cover: in-call UI, the emergency dialer, the system UI itself.
@@ -76,9 +108,50 @@ object LockEnforcementPolicy {
     /** Segments that name an emergency/call surface in any OEM's package namespace. */
     private val EXEMPT_SEGMENTS = setOf("emergency", "incallui", "dialer")
 
-    /** Whether [pkg] is a package the lock must never cover (issue #80, review of #83 F1). */
-    fun isExemptPackage(pkg: String?, facts: PackageFacts): Boolean {
+    /**
+     * #1240 Ahmed R3 ([Sat]): hard deny-set that can NEVER bypass Lock via `alwaysAllowedApps`,
+     * whatever the parent's list contains — Settings, OEM settings/security centers, package
+     * installers, Play Store, and VPN dialogs (plus dynamic `CATEGORY_HOME` launchers from
+     * [PackageFacts.homePackages]).
+     */
+    val LOCK_ALLOWLIST_DENIED_PACKAGES: Set<String> = TamperScreenPolicy.SYSTEM_PACKAGES + setOf(
+        TamperScreenPolicy.VPN_DIALOG_PACKAGE,
+        "com.samsung.android.settings",
+        "com.coloros.safecenter",
+        "com.oplus.safecenter",
+        "com.oppo.safe",
+        "com.vivo.permissionmanager",
+        "com.huawei.systemmanager",
+        "com.miui.packageinstaller",
+        "com.oplus.appdetail",
+        "com.android.vending",
+    )
+
+    /** True when [pkg] must never be granted a Lock exemption or shortcut through `alwaysAllowedApps`. */
+    fun isLockAllowlistDenied(pkg: String?, homePackages: Set<String> = emptySet()): Boolean {
+        val trimmed = pkg?.trim().orEmpty()
+        if (trimmed.isEmpty()) return true
+        return trimmed in LOCK_ALLOWLIST_DENIED_PACKAGES || trimmed in homePackages
+    }
+
+    /**
+     * Whether [pkg] is a package the lock must never cover (issue #80, review of #83 F1), plus
+     * parent-configured always-allowed apps when [alwaysAllowedPackages] is supplied (issue #1183)
+     * — subject to [isLockAllowlistDenied] so Settings/installers/Play Store/launchers can never
+     * become a door out of Lock (#1240 R3).
+     */
+    fun isExemptPackage(
+        pkg: String?,
+        facts: PackageFacts,
+        alwaysAllowedPackages: Set<String> = emptySet(),
+    ): Boolean {
         if (pkg.isNullOrBlank()) return false
+        if (pkg in alwaysAllowedPackages && !isLockAllowlistDenied(pkg, facts.homePackages())) return true
+        return isEmergencyOrSystemExempt(pkg, facts)
+    }
+
+    /** Emergency dialer, in-call UI and system UI only — never includes parent app allowlists. */
+    private fun isEmergencyOrSystemExempt(pkg: String, facts: PackageFacts): Boolean {
         if (pkg in facts.dialerRoleHolders()) return true
         val lower = pkg.lowercase()
         // Boundary, not substring: `com.android.phonebook.game` is not `com.android.phone`.
@@ -90,22 +163,31 @@ object LockEnforcementPolicy {
     fun isLockingMode(mode: String?): Boolean = mode != null && mode in LOCKING_MODES
 
     /** Whether seeing [foregroundPackage] on top while [mode] is active means the overlay must be re-raised. */
-    fun shouldReraise(mode: String?, foregroundPackage: String?, ownPackage: String, facts: PackageFacts): Boolean {
+    fun shouldReraise(
+        mode: String?,
+        foregroundPackage: String?,
+        ownPackage: String,
+        facts: PackageFacts,
+        alwaysAllowedPackages: Set<String> = emptySet(),
+    ): Boolean {
         if (!isLockingMode(mode) || foregroundPackage.isNullOrBlank()) return false
         if (foregroundPackage == ownPackage) return false
-        return !isExemptPackage(foregroundPackage, facts)
+        return !isExemptPackage(foregroundPackage, facts, alwaysAllowedPackages)
     }
 
     /**
-     * Issue #175: the multi-window form. A blocked app can be visible without being active — in the
-     * other half of a split screen or in a picture-in-picture window over the launcher — and the
-     * active-window-only check never brought the overlay back over it.
+     * Issue #175 + #1183: the multi-window form. A blocked app can be visible without being active —
+     * in the other half of a split screen or in a picture-in-picture window over the launcher — and
+     * the active-window-only check never brought the overlay back over it.
      *
      * Order matters:
-     * 1. An active call surface is never covered, whatever else is visible (issue #80).
-     * 2. Any other visible window that is not ours and not exempt means the overlay is not covering
-     *    the screen, whether it is active, beside us, or floating in PiP.
-     * 3. Our own overlay in PiP is not coverage either: a PiP window floats above the app behind it,
+     * 1. An active call / emergency surface is never covered, whatever else is visible (issue #80).
+     * 2. An active app that is neither ours nor exempt (including non-denied [alwaysAllowedPackages])
+     *    raises the overlay immediately.
+     * 3. An active always-allowed app (#1183) stays uncovered ONLY if no non-exempt app is visible
+     *    beside it in split screen or PiP — so an always-allowed app cannot be used to prop open a
+     *    blocked app in the other half of the screen.
+     * 4. Our own overlay in PiP is not coverage either: a PiP window floats above the app behind it,
      *    so the policy allows the service to replace (and expand) it. The service bounds that retry
      *    ([OverlayRetryBudget]) because the platform may refuse to leave PiP.
      */
@@ -114,15 +196,24 @@ object LockEnforcementPolicy {
         snapshot: WindowSnapshot,
         ownPackage: String,
         facts: PackageFacts,
+        alwaysAllowedPackages: Set<String> = emptySet(),
     ): Boolean {
         if (!isLockingMode(mode)) return false
         val active = snapshot.activePackage
-        if (!active.isNullOrBlank() && active != ownPackage && isExemptPackage(active, facts)) return false
-        if (!active.isNullOrBlank() && active != ownPackage) return true
+        if (!active.isNullOrBlank() && active != ownPackage && isEmergencyOrSystemExempt(active, facts)) {
+            return false
+        }
+        val activeAllowed = !active.isNullOrBlank() &&
+            active != ownPackage &&
+            active in alwaysAllowedPackages &&
+            !isLockAllowlistDenied(active, facts.homePackages())
+        if (!active.isNullOrBlank() && active != ownPackage && !activeAllowed) {
+            return true
+        }
         if (snapshot.windows.any { it.packageName == ownPackage && it.inPictureInPicture }) return true
         return snapshot.windows.any { window ->
             val pkg = window.packageName
-            !pkg.isNullOrBlank() && pkg != ownPackage && !isExemptPackage(pkg, facts)
+            !pkg.isNullOrBlank() && pkg != ownPackage && !isExemptPackage(pkg, facts, alwaysAllowedPackages)
         }
     }
 

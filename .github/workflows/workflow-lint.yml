@@ -358,3 +358,10 @@ jobs:
         run: |
           node scripts/check-parent-staging-build.mjs --selftest
           node scripts/check-parent-staging-build.mjs
+
+      - name: The staging Child Full APK proof is synthetic-only and Full signing requires Firebase
+        # Issue #1217 (sibling of #1216): ensures Full-signed releases fail closed without
+        # app/google-services.json and proves the Child Full staging build script with synthetic inputs only.
+        run: |
+          node scripts/check-child-staging-build.mjs --selftest
+          node scripts/check-child-staging-build.mjs
