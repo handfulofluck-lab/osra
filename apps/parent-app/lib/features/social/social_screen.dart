@@ -583,6 +583,13 @@ class _ConcernCard extends ConsumerStatefulWidget {
 
 class _ConcernCardState extends ConsumerState<_ConcernCard> {
   late bool _expanded = widget.initiallyExpanded;
+  bool _editingVote = false;
+
+  @override
+  void didUpdateWidget(covariant _ConcernCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.event.id != widget.event.id) _editingVote = false;
+  }
 
   double _textWidth(BuildContext context, String text) {
     final painter = TextPainter(
@@ -605,7 +612,12 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
     final contactText =
         socialSenderDisplayName(e.contact) ?? l10n.unknownContact;
     final contact = Text(contactText);
-    final controls = SocialVoteControls(eventId: e.id, compact: true);
+    final controls = SocialVoteControls(
+      eventId: e.id,
+      compact: true,
+      editing: _editingVote,
+      onEditingChanged: (editing) => setState(() => _editingVote = editing),
+    );
     return Card(
       color: socialSeverityColor(e.severity, context).withValues(alpha: 0.07),
       child: LayoutBuilder(builder: (context, constraints) {
@@ -613,7 +625,10 @@ class _ConcernCardState extends ConsumerState<_ConcernCard> {
         final trailingRowWidth = rowWidth - 120;
         final controlsWidth = vote.isUnavailable
             ? 0.0
-            : measureCompactVoteControlWidth(context, vote.ownVerdict);
+            : measureCompactVoteControlWidth(
+                context,
+                _editingVote ? null : vote.ownVerdict,
+              );
         final stacked = controlsWidth > 0 &&
             (controlsWidth + AppSpace.sm > trailingRowWidth / 2 ||
                 _textWidth(context, contactText) + AppSpace.sm + controlsWidth >
