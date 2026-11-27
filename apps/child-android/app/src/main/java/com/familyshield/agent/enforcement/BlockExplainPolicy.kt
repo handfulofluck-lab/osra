@@ -139,9 +139,11 @@ object BlockExplainPolicy {
         val screenTime = ruleSet.screenTime
         val effectiveDailyLimit = effectiveDailyLimit(ruleSet, local, bonusMinutes)
         val totalUsed = minutesUsedToday.values.sum()
-        val dailyLimitReached = effectiveDailyLimit > 0 && totalUsed >= effectiveDailyLimit
 
         val explicitAllow = appRule?.action == "allow"
+        // RuleEngine.evaluateWithReason: an explicit parent "allow" short-circuits the global daily limit,
+        // so an allowed app held only by a routine returns when the routine ends (Codex #1188, 27 Nov).
+        val dailyLimitReached = !explicitAllow && effectiveDailyLimit > 0 && totalUsed >= effectiveDailyLimit
         val explicitBlock = appRule?.action == "block"
         val defaultProtected = !explicitAllow && (blocklist.containsKey(packageId) || declaresVpnService)
 
