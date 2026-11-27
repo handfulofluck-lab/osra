@@ -515,6 +515,11 @@ void main() {
         devices: [p06Device()],
       ));
       await pumpStep(tester, const SetupDoneScreen(), api);
+      final indicator = tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      );
+      expect(indicator.minHeight, 4);
+      expect(tester.getSize(find.byType(LinearProgressIndicator)).height, 4);
       expect(find.text(expectedCount(7, 7)), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
       await tester
@@ -597,16 +602,15 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets(
-        'Android-only rows are unavailable on iPhone but real iOS grants remain',
-        (tester) async {
+    testWidgets('iPhone lists and counts only real iOS grants', (tester) async {
       p06Prefs();
       final api = FakeApiClient(onboardingRoutes(
         children: [childJson('child-1', 'Alex')],
         devices: [p06Device(platform: 'ios')],
       ));
       await pumpStep(tester, const SetupDoneScreen(), api);
-      expect(find.text('Not yet available on iPhone'), findsNWidgets(7));
+      expect(find.text('Not yet available on iPhone'), findsNothing);
+      expect(find.text(expectedCount(2, 2)), findsOneWidget);
       expect(find.text('Confirmed'), findsNWidgets(2));
       expect(find.text('Done'), findsNothing);
     });

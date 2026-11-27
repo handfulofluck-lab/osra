@@ -109,8 +109,9 @@ class _SetupDoneScreenState extends ConsumerState<SetupDoneScreen> {
                   final device = devices.first;
                   final isIos = device.platform.toLowerCase() == 'ios';
                   final isAndroid = device.platform.toLowerCase() == 'android';
-                  final requiredGrants =
-                      SetupDoneScreen._requiredGrantsFor(device);
+                  final requiredGrants = isIos
+                      ? const ['family_controls', 'background_refresh']
+                      : SetupDoneScreen._requiredGrantsFor(device);
                   final confirmed = requiredGrants
                       .where((key) => device.capabilityGrants[key] == 'granted')
                       .length;
@@ -126,8 +127,9 @@ class _SetupDoneScreenState extends ConsumerState<SetupDoneScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           ExcludeSemantics(
-                            child: CircularProgressIndicator(
+                            child: LinearProgressIndicator(
                               value: confirmed / requiredGrants.length,
+                              minHeight: 4,
                               color: complete ? tokens.ok : tokens.primary,
                               backgroundColor: tokens.surfaceContainer,
                             ),
@@ -155,31 +157,13 @@ class _SetupDoneScreenState extends ConsumerState<SetupDoneScreen> {
                             _GrantRow(
                               grant: key,
                               label: PhoneSetupSection.grantLabel(l10n, key),
-                              state: isIos
-                                  ? l10n.p06NotYetIphone
-                                  : device.capabilityGrants[key] == 'granted'
-                                      ? l10n.p06ConfirmedOnPhone
-                                      : l10n.p06WaitingForPhone,
-                              confirmed: !isIos &&
+                              state: device.capabilityGrants[key] == 'granted'
+                                  ? l10n.p06ConfirmedOnPhone
+                                  : l10n.p06WaitingForPhone,
+                              confirmed:
                                   device.capabilityGrants[key] == 'granted',
-                              unavailable: isIos,
+                              unavailable: false,
                             ),
-                          if (isIos) ...[
-                            for (final key in [
-                              'family_controls',
-                              'background_refresh'
-                            ])
-                              _GrantRow(
-                                grant: key,
-                                label: PhoneSetupSection.grantLabel(l10n, key),
-                                state: device.capabilityGrants[key] == 'granted'
-                                    ? l10n.p06ConfirmedOnPhone
-                                    : l10n.p06WaitingForPhone,
-                                confirmed:
-                                    device.capabilityGrants[key] == 'granted',
-                                unavailable: false,
-                              ),
-                          ],
                           if (device.capabilityGrants['battery'] == 'missing')
                             _WarningRow(
                                 text: l10n.p06BatteryWarning, tokens: tokens),
