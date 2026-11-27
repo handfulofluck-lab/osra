@@ -345,25 +345,27 @@ void main() {
 
     // P-17 (`#1179`): the row states what the phone reports, never the promise a switch used to imply.
     testWidgets('the row states the phone\'s own word for the check', (tester) async {
-      Map<String, dynamic> familyWith(String state) => {
+      Map<String, dynamic> familyWithStates(List<String> states) => {
             ...familyMeTwoChildren(),
             'devices': [
-              {
-                'id': 'dev-1',
-                'childId': 'child-1',
-                'platform': 'android',
-                'model': 'Galaxy S23',
-                'osVersion': '14',
-                'status': 'online',
-                'batteryPct': 55,
-                'setup': {
-                  'reportedAt': '2026-11-26T05:00:00.000Z',
-                  'features': {'notification_scan': state},
-                  'missing': <String>[],
+              for (var i = 0; i < states.length; i++)
+                {
+                  'id': 'dev-${i + 1}',
+                  'childId': 'child-1',
+                  'platform': 'android',
+                  'model': 'Galaxy S23',
+                  'osVersion': '14',
+                  'status': 'online',
+                  'batteryPct': 55,
+                  'setup': {
+                    'reportedAt': '2026-11-26T05:00:00.000Z',
+                    'features': {'notification_scan': states[i]},
+                    'missing': <String>[],
+                  },
                 },
-              },
             ],
           };
+      Map<String, dynamic> familyWith(String state) => familyWithStates([state]);
 
       await pumpScreen(tester, const SocialScreen(childId: 'child-1'),
           FakeApiClient(socialRoutes(familyMe: familyWith('degraded'))), tall: true);
@@ -378,6 +380,28 @@ void main() {
       expect(
           tester.widget<Text>(find.byKey(const ValueKey('socialAppState-whatsapp'))).data,
           'Not in this version');
+
+      // Ahmed's point 1 (14:16): a phone that reports `ready` said so; "Checking" is for a phone that has
+      // not reported at all. Mutant: drop the `'ready'` case and this row reads "Checking".
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'),
+          FakeApiClient(socialRoutes(familyMe: familyWith('ready'))), tall: true);
+      await flushFakeHttp(tester);
+      expect(
+          tester.widget<Text>(find.byKey(const ValueKey('socialAppState-whatsapp'))).data,
+          'Ready');
+
+      // Ahmed's point 2: two phones, one ready and one degraded. The row shows the weakest, never "Ready"
+      // while another of the child's phones cannot scan. Mutant: take the first report and this reads
+      // "Ready".
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'),
+          FakeApiClient(socialRoutes(
+              familyMe: familyWithStates(['ready', 'degraded']))),
+          tall: true);
+      await flushFakeHttp(tester);
+      expect(
+          tester.widget<Text>(find.byKey(const ValueKey('socialAppState-whatsapp'))).data,
+          'Limited',
+          reason: 'the weakest reported phone decides the row');
     });
 
     // P-17 / Fix 8: an iPhone child's messages are not scanned, and the section says so instead of listing rows.
