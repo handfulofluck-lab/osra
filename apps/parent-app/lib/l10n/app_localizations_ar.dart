@@ -1173,11 +1173,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get enforceSafeSearch => 'فرض البحث الآمن';
 
   @override
-  String get youtubeRestrictedMode => 'الوضع المقيّد في يوتيوب';
+  String get youtubeRestrictedMode => 'الوضع المحظور في يوتيوب';
 
   @override
   String get youtubeRestrictedDesc =>
-      'يزيل المحتوى غير المناسب المحتمل على يوتيوب عبر أجهزة الأطفال.';
+      'يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب نفسها تفوّت بعضها، فللتأكد احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».';
 
   @override
   String get strict => 'صارم';
@@ -4064,4 +4064,51 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get p15IphoneNotYet => 'غير متاح بعد على آيفون';
+
+  @override
+  String get p14SegmentRequests => 'الطلبات';
+
+  @override
+  String get p14LevelUrgent => 'عاجل';
+
+  @override
+  String get p14LevelCheckSoon => 'للمراجعة قريبًا';
+
+  @override
+  String get p14LevelInfo => 'للعلم';
+
+  @override
+  String get p14FilterAll => 'الكل';
+
+  @override
+  String get p14NoRequestsYet => 'لا توجد طلبات بعد';
+
+  @override
+  String p14GroupedCount(int count, String time) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مرة · آخرها $time',
+      many: '$count مرة · آخرها $time',
+      few: '$count مرات · آخرها $time',
+      two: 'مرتان · آخرها $time',
+      one: 'مرة واحدة · آخرها $time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get p12NotBlockingYet => 'لم يبدأ الحظر بعد';
+
+  @override
+  String get p12AllowSite => 'السماح بالموقع';
+
+  @override
+  String get p12RecentlyBlocked => 'المواقع المحظورة مؤخرًا';
+
+  @override
+  String get p12BlockSiteTitle => 'حظر موقع';
+
+  @override
+  String get p12AllowSiteTitle => 'السماح بموقع';
 }
