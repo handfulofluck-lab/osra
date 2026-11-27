@@ -4036,24 +4036,24 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get p15CanBeWrong => 'ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.';
+  String get p15CanBeWrong => 'مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.';
 
   @override
   String get p15ActionsHeader => 'ما يمكنك فعله';
 
   @override
   String p15TalkWithChild(String child) {
-    return 'تحدّث مع $child';
+    return 'التحدث مع $child';
   }
 
   @override
   String p15HelpChildBlockContact(String child, String contact) {
-    return 'ساعد $child على حظر $contact';
+    return 'مساعدة $child على حظر $contact';
   }
 
   @override
   String p15HelpBlockGuideBody(String child, String app, String contact) {
-    return 'اجلس مع $child وافتحا $app معًا لحظر $contact وكتم رسائله.';
+    return 'الجلوس مع $child وفتح $app معًا لحظر $contact وكتم رسائله.';
   }
 
   @override
@@ -4111,6 +4111,130 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get p12AllowSiteTitle => 'السماح بموقع';
+
+  @override
+  String get privacyMenu => 'الخصوصية والبيانات';
+
+  @override
+  String get privacyTitle => 'الخصوصية والبيانات';
+
+  @override
+  String get privacyKeptHeader => 'نحتفظ بها ثم تُحذف تلقائيًا';
+
+  @override
+  String get privacyFullDetails => 'التفاصيل الكاملة (بالإنجليزية)';
+
+  @override
+  String get privacyRowExcerpts => 'مقتطفات الرسائل التي أثارت تنبيهًا';
+
+  @override
+  String get privacyRowAlerts => 'التنبيهات';
+
+  @override
+  String get privacyRowLocation => 'سجل المواقع';
+
+  @override
+  String get privacyRowStoredIn => 'مكان التخزين';
+
+  @override
+  String get privacyStorageFrankfurt => 'الاتحاد الأوروبي (فرانكفورت، ألمانيا)';
+
+  @override
+  String get privacyStorageStockholm => 'الاتحاد الأوروبي (ستوكهولم، السويد)';
+
+  @override
+  String get privacyStorageIreland => 'الاتحاد الأوروبي (أيرلندا)';
+
+  @override
+  String privacyDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count يوم',
+      many: '$count يومًا',
+      few: '$count أيام',
+      two: 'يومان',
+      one: 'يوم واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String privacyMonths(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count شهر',
+      many: '$count شهرًا',
+      few: '$count أشهر',
+      two: 'شهران',
+      one: 'شهر واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get privacyWhoCanSee => 'من يمكنه رؤية البيانات';
+
+  @override
+  String get privacyWhoCanSeeDesc =>
+      'البالغون في العائلة وما يمكن لكل منهم رؤيته';
+
+  @override
+  String get privacyManage => 'إدارة';
+
+  @override
+  String get privacyCopyTitle => 'احصل على نسخة من بيانات عائلتك';
+
+  @override
+  String get privacyCopyDesc =>
+      'راسلنا من البريد الإلكتروني الذي تسجّل الدخول به، ونردّ خلال شهر.';
+
+  @override
+  String get privacyCopyAction => 'مراسلة';
+
+  @override
+  String get privacyConsentTitle => 'الموافقة لكل طفل';
+
+  @override
+  String get privacyConsentDesc => 'راجِعها أو اسحبها لكل طفل على حدة';
+
+  @override
+  String get privacyOpen => 'فتح';
+
+  @override
+  String get privacyChooseChild => 'اختر طفلًا';
+
+  @override
+  String get privacyNoChildren => 'لم تُضِف أي طفل بعد.';
+
+  @override
+  String get privacyDeleteFamilyTitle => 'حذف حساب العائلة';
+
+  @override
+  String get privacyDeleteFamilyDesc =>
+      'يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. ويلزم إدخال كلمة المرور لذلك.';
+
+  @override
+  String get privacyDeleteSelfTitle => 'حذف حسابي';
+
+  @override
+  String get privacyDeleteSelfDesc =>
+      'يحذف حسابك أنت فقط، وتبقى العائلة كما هي.';
+
+  @override
+  String get privacyDeleteAction => 'حذف…';
+
+  @override
+  String get privacyLoadFailed =>
+      'تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get privacyLoadFailedServer =>
+      'تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.';
+
+  @override
+  String get privacyRetry => 'إعادة المحاولة';
 
   @override
   String get p14DayToday => 'اليوم';
