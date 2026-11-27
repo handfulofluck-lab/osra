@@ -199,9 +199,22 @@ class AccessibilityMonitorService : AccessibilityService() {
         android.os.Handler(android.os.Looper.getMainLooper()).post { media.onRulesChanged() }
     }
 
-    /** Issue #444 C4: a blocked app's media audio is paused, however it was started ([MediaBlockPolicy]). */
+    /** Issue #444 C4 + #1183: a blocked app's (or non-always-allowed locked app's) media audio is paused. */
     private val media by lazy {
-        MediaEnforcer(this, isBlocked = { rules.evaluate(it) != RuleRepository.Decision.ALLOW })
+        MediaEnforcer(
+            this,
+            isBlocked = { pkg ->
+                rules.evaluate(pkg) != RuleRepository.Decision.ALLOW ||
+                    com.familyshield.agent.enforcement.LockForceClosePolicy.shouldPauseMediaUnderLock(
+                        enabled = com.familyshield.agent.enforcement.LockForceCloseFlags.enabled,
+                        mode = LockState.mode(this),
+                        pkg = pkg,
+                        ownPackage = packageName,
+                        alwaysAllowedPackages = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty(),
+                        facts = packageFacts,
+                    )
+            },
+        )
     }
 
     /** Issue #132: log a refused start once per reason, not once per 60 s accessibility event. */
@@ -287,11 +300,13 @@ class AccessibilityMonitorService : AccessibilityService() {
         calls.onConnected()
         media.onConnected()
         rules.addRulesChangedListener(rulesChanged)
+        activeInstance = this
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         // Called when the system is about to unbind (the user turned the service off, or it was
         // replaced); onDestroy follows, but the command poll must see the service as gone at once.
+        if (activeInstance === this) activeInstance = null
         isRunning = false
         // osra-security#29, second half (the Flip4 AS02 row): the poll hears about this in up to 60 s, and not at
         // all when the location grant is off — which is exactly the phone where the child turned accessibility
@@ -323,6 +338,7 @@ class AccessibilityMonitorService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        if (activeInstance === this) activeInstance = null
         isRunning = false
         serviceScope.cancel()
         // #802 V2: no re-check outlives the service; a pending one would try to raise a screen from a dead
@@ -1110,6 +1126,19 @@ class AccessibilityMonitorService : AccessibilityService() {
             internal set(value) {
                 _runningState.value = value
             }
+
+        @Volatile
+        private var activeInstance: AccessibilityMonitorService? = null
+
+        /**
+         * Issue #1183 after-test follow-up: pauses active non-always-allowed media sessions when
+         * device Lock activates while [com.familyshield.agent.enforcement.LockForceCloseFlags.enabled] is true.
+         */
+        internal fun onLockActivated() {
+            if (!com.familyshield.agent.enforcement.LockForceCloseFlags.enabled) return
+            val service = activeInstance ?: return
+            service.main.post { service.media.onRulesChanged() }
+        }
 
         /**
          * Issue #132: [ensureLocationServiceRunning]'s decision, pure so the JVM suite holds it in
