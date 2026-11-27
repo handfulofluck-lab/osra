@@ -963,6 +963,17 @@ void main() {
                 tester.getRect(find.byKey(const ValueKey('p07BottomNav'))).height,
                 lessThanOrEqualTo(80.0),
               );
+              // U86 (#650, UI/UX 7214846306): Alerts badge text scale is clamped
+              // to <= 1.3x so the badge does not hide the bell icon at 200% text.
+              // Mutant: removing `MediaQuery.withClampedTextScaling(maxScaleFactor: 1.3)`
+              // around `Badge` leaves the badge's textScaler at 2.0 and fails this check.
+              final badgeFinder = find.byKey(const ValueKey('p07AlertsBadge'));
+              expect(badgeFinder, findsOneWidget);
+              final badgeCtx = tester.element(badgeFinder);
+              expect(
+                MediaQuery.textScalerOf(badgeCtx).scale(1.0),
+                lessThanOrEqualTo(1.3),
+              );
               if (framesDir != null && framesDir.isNotEmpty) {
                 final boundary = tester.renderObject<RenderRepaintBoundary>(
                   find.byKey(frameBoundaryKey),

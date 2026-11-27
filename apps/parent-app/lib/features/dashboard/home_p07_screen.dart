@@ -2074,12 +2074,17 @@ class _P07BottomNavigationBar extends StatelessWidget {
 
     Widget iconWidget = Icon(selected ? selectedIcon : icon, size: 22, color: fg);
     if (badgeCount > 0) {
-      iconWidget = MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
-        ),
+      // U86 (#650, UI/UX 7214846306): clamp the badge's text scale so the count
+      // pill never obscures the bell icon at 200% text while keeping Material's
+      // default top-end offset.
+      iconWidget = MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
         child: Badge(
+          key: const ValueKey('p07AlertsBadge'),
           isLabelVisible: true,
+          largeSize: 16,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
           label: Text(ltrIsolate('$badgeCount')),
           child: iconWidget,
         ),
