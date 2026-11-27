@@ -1910,6 +1910,10 @@ that the old matcher missed (#310).
 
 For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
 
+## P-04 shared add-child widget contract
+
+Run `flutter test --no-pub test/add_child_p04_screen_test.dart`. `OSRA_UX_P04` defaults to false, preserving the legacy `AddChildDialog`; provider overrides enable the new shared form in tests. Cases pin zero POST for an unticked guardian or invalid age, the 1–17 bounds against a pinned clock, exact non-US request bodies, one atomic POST, no jurisdiction picker, privacy bottom-sheet preservation, no draft on reopen, and wizard/dashboard flag behavior. The P-07 Home Add child action must call the same `openAddChildFlow` when that branch integrates; it must not construct `AddChildDialog` directly.
+
 ### Parent Home P-07 + P-07-RTL (#1179)
 
 Run from `apps/parent-app`:
