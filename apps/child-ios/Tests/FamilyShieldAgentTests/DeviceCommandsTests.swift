@@ -85,6 +85,15 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertEqual(StubProtocol.requests[3].request.url?.path, "/v1/devices/dev-1/commands/c3/ack")
     }
 
+    // #1089 recovery: a Lock must never shield OSRA Kids itself. A force-quit stops background delivery, so
+    // the child has to be able to reopen OSRA to let the parent's Unlock through. Phone stays reachable too.
+    func testALockKeepsOSRAAndPhoneOpenable() {
+        let allowed = ShieldSet.alwaysAllowedBundleIdentifiers
+        XCTAssertTrue(allowed.contains("com.osratech.child"))
+        XCTAssertTrue(allowed.contains("com.apple.mobilephone"))
+        XCTAssertEqual(Set(allowed).count, allowed.count, "a bundle id appears once")
+    }
+
     // #1089: a lock reaches a real Screen Time store, and a store that did not take the policy is acked
     // failed with its reason — the parent sees why the phone did not lock.
     func testALockAndAPauseInternetAckTheStoresOutcome() async {

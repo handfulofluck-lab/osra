@@ -1,6 +1,7 @@
 import Foundation
 #if os(iOS)
 import DeviceActivity
+import FamilyControls
 import ManagedSettings
 #endif
 
@@ -10,23 +11,22 @@ import ManagedSettings
 /// a half-shielded phone behind. `pause_internet` gets its own store, so resuming the internet never lifts a
 /// lock, and unlocking never resumes the internet — each command clears only what it set.
 ///
-/// Both shield **everything**: every app category and every web domain. iOS cannot cut the network itself, so
-/// "pause internet" is honestly "apps and websites", which is the copy the parent screen carries. The OSRA
-/// app is shielded too, on purpose: the parent's Unlock and Resume arrive by push and still wake the app
-/// (Apple's own Lock behaves the same way), and a shield with an exception list is a promise the app cannot
-/// keep without application tokens it does not have.
+/// Both shield every app category and every web domain except OSRA Kids, Phone and the parent's always-on
+/// apps. Exempting OSRA is the force-quit recovery: iOS does not wake a force-quit app for a push, so the child
+/// must be able to reopen OSRA and let the parent's Unlock through. The 24-hour interval is the second safety
+/// net for a phone the child never reopens. iOS cannot cut the network itself, so "pause internet" is honestly
+/// "apps and websites", which is the copy the parent screen carries.
 public enum ShieldSet: String, CaseIterable, Equatable, Sendable {
     case lock = "osraLock"
     case internet = "osraPauseInternet"
 
     /// The longest a parent command's shield lasts on an iPhone before it lifts by itself (Ahmed, #1275).
     ///
-    /// A child who force-quits OSRA under a lock cannot relaunch it (the shield covers OSRA too), and iOS does
-    /// not wake a force-quit app for a push, so a parent's Unlock could never arrive. The safety net is a
-    /// one-off `DeviceActivity` interval named after the store: when it ends, the monitor extension clears that
-    /// store (`FamilyShieldDeviceActivityMonitor.intervalDidEnd` already clears the store named after the
-    /// activity, and `ShieldPolicy` applies nothing when it starts). The extension runs whatever state the app
-    /// is in. Each new Lock restarts the interval; Unlock and Resume stop it.
+    /// iOS does not wake a force-quit app for a push, so a parent's Unlock may not arrive even though OSRA stays
+    /// openable. The second safety net is a one-off `DeviceActivity` interval named after the store: when it
+    /// ends, the monitor extension clears that store (`FamilyShieldDeviceActivityMonitor.intervalDidEnd` already
+    /// clears the store named after the activity, and `ShieldPolicy` applies nothing when it starts). The
+    /// extension runs whatever state the app is in. Each new Lock restarts the interval; Unlock and Resume stop it.
     /// 24 hours: Karim's decision, 27 Nov 20:52 UAE (replaces 8 h): ends on its own unless the parent unlocks sooner.
     public static let failsafeSeconds: TimeInterval = 24 * 60 * 60
 }
@@ -47,6 +47,15 @@ extension ShieldSet {
         #if os(iOS)
         for set in ShieldSet.allCases { set.store.clearAllSettings() }
         #endif
+    }
+
+    /// The apps a Lock or Pause must never shield. OSRA Kids stays openable after a force-quit so the app can
+    /// receive Unlock and Resume; without this a child who force-quits while locked has no way back. Phone stays
+    /// reachable for emergency calls, and the parent's always-on list is honoured as it is during bedtime.
+    public static var alwaysAllowedBundleIdentifiers: [String] {
+        var seen = Set<String>()
+        return (["com.osratech.child"] + ShieldPolicy.essentialApps + RuleStore.alwaysAllowedApps())
+            .filter { seen.insert($0).inserted }
     }
 }
 
@@ -70,15 +79,30 @@ public struct LiveDeviceShield: DeviceShielding {
 
     #if os(iOS)
     public func shield(_ set: ShieldSet) async -> ShieldOutcome {
-        // The safety net first: a shield that cannot lift by itself is never applied (Ahmed, #1275).
+        // A write without Screen Time authorization is dropped by iOS. Never report that as a lock.
+        guard AuthorizationCenter.shared.authorizationStatus == .approved else {
+            return .failed("not_authorized")
+        }
+        // Then the safety net: a shield that cannot lift by itself is never applied (Ahmed, #1275).
         guard Self.startFailsafe(for: set) else { return .failed("failsafe_not_scheduled") }
         let store = set.store
-        store.shield.applicationCategories = .all()
+        let exceptions = Set(ShieldSet.alwaysAllowedBundleIdentifiers.compactMap {
+            Application(bundleIdentifier: $0).token
+        })
+        store.shield.applicationCategories = .all(except: exceptions)
         store.shield.webDomainCategories = .all()
+        if set == .internet {
+            // The domain-category shield alone leaves uncategorised sites open in Safari. The web filter closes
+            // that gap; it filters WebKit traffic, which is the honest meaning of "Pause internet" on iOS.
+            store.webContent.blockedByFilter = .all()
+        }
         // `ManagedSettingsStore` writes do not throw, so the only honest ack is a read-back. A store that did
-        // not take the policy reports the failure rather than claiming a lock the child never saw.
-        // Both halves must read back: an apps-only shield would still let the child browse.
-        let applied = store.shield.applicationCategories != nil && store.shield.webDomainCategories != nil
+        // not take the policy reports the failure rather than claiming a lock the child never saw. Both shield
+        // halves must read back, and the internet pause must also prove its web filter took.
+        let webApplied = set != .internet || store.webContent.blockedByFilter != nil
+        let applied = store.shield.applicationCategories != nil
+            && store.shield.webDomainCategories != nil
+            && webApplied
         return applied ? .applied : .failed("shield_not_applied")
     }
 
@@ -86,7 +110,10 @@ public struct LiveDeviceShield: DeviceShielding {
         let store = set.store
         store.clearAllSettings()
         // Clears every field of this store only; the child's own rules and the other store are untouched.
-        let cleared = store.shield.applicationCategories == nil && store.shield.webDomainCategories == nil
+        let webCleared = set != .internet || store.webContent.blockedByFilter == nil
+        let cleared = store.shield.applicationCategories == nil
+            && store.shield.webDomainCategories == nil
+            && webCleared
         // The safety interval stops only once the readback proves the store is clear (Codex, #1275): a failed
         // clear keeps the automatic lift as the way out.
         guard cleared else { return .failed("shield_still_applied") }
