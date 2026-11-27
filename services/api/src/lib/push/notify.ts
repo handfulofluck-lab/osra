@@ -323,9 +323,27 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
         familyId,
         OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
       },
-      select: { id: true },
+      select: { id: true, sessionVersion: true },
     });
-    const tokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
+    const minSessionVersionByParent = new Map(
+      parents.map((p) => [p.id, typeof p.sessionVersion === "number" ? p.sessionVersion : 0]),
+    );
+    const rawTokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
+    const retiredIds: string[] = [];
+    const tokens = rawTokens.filter((row) => {
+      const rowVersion = typeof (row as { sessionVersion?: unknown }).sessionVersion === "number"
+        ? ((row as { sessionVersion: number }).sessionVersion)
+        : 0;
+      const minVersion = minSessionVersionByParent.get(row.parentId) ?? 0;
+      if (rowVersion < minVersion) {
+        retiredIds.push(row.id);
+        return false;
+      }
+      return true;
+    });
+    if (retiredIds.length > 0) {
+      await prisma.parentPushToken.deleteMany({ where: { id: { in: retiredIds } } }).catch(() => undefined);
+    }
     if (tokens.length === 0) {
       logParentAlertOutcome({
         recipients: 0,

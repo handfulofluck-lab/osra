@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
 import type { Redis } from "ioredis";
 import { getRedis } from "../redis.js";
 import { prisma } from "../db.js";
@@ -210,13 +211,63 @@ export async function currentSessionVersion(parentId: string): Promise<number> {
  * still exists is never re-read, so leaving the old value behind would let the cache outvote the
  * column for as long as the node refused writes.
  */
-export async function invalidateSessionsBefore(parentId: string, nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
+const parentSessionLocks = new Map<string, Promise<void>>();
+
+/**
+ * Per-parent FIFO lock within this Node process, paired with `SELECT ... FOR NO KEY UPDATE` on `"Parent"`
+ * inside `prisma.$transaction` for cross-instance serialization in PostgreSQL. Together they serialize
+ * durable `Parent.sessionVersion` increments (+ `ParentPushToken` retirement) with `POST /v1/me/push-token`
+ * registrations without wall-clock predicates or post-write rollbacks.
+ */
+async function withParentSessionLock<T>(parentId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = parentSessionLocks.get(parentId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = prev.then(() => gate);
+  parentSessionLocks.set(parentId, queued);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (parentSessionLocks.get(parentId) === queued) {
+      parentSessionLocks.delete(parentId);
+    }
+  }
+}
+
+export interface InvalidateSessionsOptions {
+  /**
+   * Retire every `ParentPushToken` row of `parentId` in the same atomic database transaction as the
+   * `Parent.sessionVersion` increment.
+   */
+  retirePushTokens?: boolean;
+  /** Invoked immediately after the durable database transaction commits, before Redis cache updates. */
+  onDurableCommit?: () => void;
+}
+
+export async function invalidateSessionsBefore(
+  parentId: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+  opts: InvalidateSessionsOptions = {},
+): Promise<void> {
   const redis = getRedis();
   const cached = await redis.get(sessionVersionKey(parentId));
   // #442: a tombstoned parent is revoked for good and has no row to increment.
   if (cached === DELETED_SESSION_MARKER) return;
   if (cached === null && (await loadSessionState(parentId, redis)) === DELETED_SESSION_VERSION) return;
-  await prisma.parent.update({ where: { id: parentId }, data: { sessionVersion: { increment: 1 } } });
+  await withParentSessionLock(parentId, async () => {
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Parent" WHERE "id" = ${parentId} FOR NO KEY UPDATE`;
+      await tx.parent.update({ where: { id: parentId }, data: { sessionVersion: { increment: 1 } } });
+      if (opts.retirePushTokens) {
+        await tx.parentPushToken.deleteMany({ where: { parentId } });
+      }
+    });
+  });
+  opts.onDurableCommit?.();
   try {
     await redis.incrby(sessionVersionKey(parentId), 1);
   } catch (err) {
@@ -228,6 +279,80 @@ export async function invalidateSessionsBefore(parentId: string, nowSeconds = Ma
     throw err;
   }
   await redis.set(invalidBeforeKey(parentId), String(nowSeconds), "EX", 8 * 24 * 3600).catch(() => {});
+}
+
+export interface RegisterParentPushTokenInput {
+  user: ParentSessionClaims & { sub: string };
+  token: string;
+  platform: "android" | "ios" | "web";
+  appVersion?: string;
+}
+
+async function isSessionLiveForLockedParent(
+  tx: Prisma.TransactionClient,
+  user: ParentSessionClaims & { sub: string },
+  durableVersion: number,
+): Promise<boolean> {
+  if (typeof user.sv === "number" && user.sv < durableVersion) {
+    return false;
+  }
+  if (user.jti) {
+    const revokedRow = await tx.revokedToken.findUnique({
+      where: { jti: user.jti },
+      select: { expiresAt: true },
+    });
+    if (revokedRow?.expiresAt && new Date(revokedRow.expiresAt).getTime() > Date.now()) {
+      return false;
+    }
+  }
+  const redis = getRedis();
+  try {
+    const rawVersion = await redis.get(sessionVersionKey(user.sub));
+    if (rawVersion === DELETED_SESSION_MARKER) return false;
+    if (typeof user.sv === "number") {
+      if (rawVersion !== null && user.sv < parseVersion(rawVersion)) return false;
+    } else {
+      const before = await redis.get(invalidBeforeKey(user.sub));
+      if (before !== null && typeof user.iat === "number" && user.iat <= Number(before)) return false;
+    }
+    if (user.jti && (await redis.get(revokedTokenKey(user.jti)))) return false;
+    return true;
+  } catch (err) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[security] session store unreachable — rejecting parent token", err);
+      return false;
+    }
+    return true;
+  }
+}
+
+/**
+ * Serialize push-token registration against the parent's durable `sessionVersion` boundary (`Parent` row
+ * locked with `FOR NO KEY UPDATE`). Validation happens inside the transaction before `upsert`, so a stale
+ * pre-revocation request never writes a transiently visible row, needs no wall-clock predicate, and a
+ * current-session registration cannot be lost between a version bump and parent-wide cleanup.
+ */
+export async function registerParentPushToken(input: RegisterParentPushTokenInput) {
+  const { user, token, platform, appVersion } = input;
+  return withParentSessionLock(user.sub, async () =>
+    prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Parent" WHERE "id" = ${user.sub} FOR NO KEY UPDATE`;
+      const parent = await tx.parent.findUnique({
+        where: { id: user.sub },
+        select: { sessionVersion: true },
+      });
+      if (!parent) return null;
+      const durableVersion = typeof parent.sessionVersion === "number" ? parent.sessionVersion : 0;
+      if (!(await isSessionLiveForLockedParent(tx, user, durableVersion))) {
+        return null;
+      }
+      return tx.parentPushToken.upsert({
+        where: { token },
+        update: { parentId: user.sub, platform, appVersion, sessionVersion: durableVersion, lastSeenAt: new Date() },
+        create: { parentId: user.sub, token, platform, appVersion, sessionVersion: durableVersion },
+      });
+    }),
+  );
 }
 
 /**

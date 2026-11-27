@@ -154,33 +154,67 @@ export async function authRoutes(app: FastifyInstance) {
   };
 
   /** Revoke every refresh token of a parent (password reset / MFA enable / logout-all / theft). */
-  const revokeAllRefreshTokens = async (parentId: string): Promise<void> => {
+  const revokeAllRefreshTokens = async (
+    parentId: string,
+    opts: { preserveResponseOnCleanupError?: boolean } = {},
+  ): Promise<void> => {
     const redis = getRedis();
-    const hashes = await redis.smembers(indexKey(parentId)).catch(() => [] as string[]);
-    for (const hash of hashes) {
-      await redis.del(liveKey(hash));
-      await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
-    }
-    await redis.del(indexKey(parentId));
-    // ADR-0014 / ADR-0025: the live access tokens die with the sessions, not 7 days later. The
-    // counter bump also covers a token minted in this same second (#117).
-    await invalidateSessionsBefore(parentId);
-    // Retire every push registration of this parent in the same operation (never best-effort):
-    // runs after `invalidateSessionsBefore` so pre-revocation tokens are already invalid, and before
-    // the best-effort socket publish so a failed delete fails the revocation rather than leaving
-    // push registrations behind for signed-out sessions.
-    await prisma.parentPushToken.deleteMany({ where: { parentId } });
+    const retireRefreshIndex = async (): Promise<void> => {
+      const hashes = await redis.smembers(indexKey(parentId)).catch(() => [] as string[]);
+      for (const hash of hashes) {
+        await redis.del(liveKey(hash));
+        await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+      }
+      await redis.del(indexKey(parentId));
+    };
     // osra-security#4 item 3: every path that ends a parent's sessions (logout-all, password reset, MFA
     // enable / recover / reset, refresh-token theft) also closes that parent's open sockets now, instead of
-    // after the gateway's five-second session cache. The gateway closes them on receipt and never forwards
-    // the signal. Best effort: the per-frame check is the backstop, so a failed publish never fails the
-    // revocation that has already happened.
-    try {
-      const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { familyId: true } });
-      if (row?.familyId) await publishFamilyEvent(row.familyId, { type: "session_revoked", payload: { parentId } });
-    } catch (err) {
-      app.log.warn({ err, parentId }, "session_revoked signal not published; the per-frame check closes the sockets");
+    // after the gateway's five-second session cache. Best effort once durable revocation has committed.
+    const publishSessionRevoked = async (): Promise<void> => {
+      try {
+        const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { familyId: true } });
+        if (row?.familyId) await publishFamilyEvent(row.familyId, { type: "session_revoked", payload: { parentId } });
+      } catch (err) {
+        app.log.warn({ err, parentId }, "session_revoked signal not published; the per-frame check closes the sockets");
+      }
+    };
+
+    if (opts.preserveResponseOnCleanupError) {
+      // `/mfa/verify` has already committed the one-time recovery-code hashes; increment `Parent.sessionVersion`
+      // first (which immediately fences out pre-MFA `ParentPushToken` rows via `sessionVersion`), then run
+      // row deletion, refresh-index cleanup, and socket notification without discarding the recovery-code response.
+      await invalidateSessionsBefore(parentId, undefined, { retirePushTokens: false });
+      await prisma.parentPushToken.deleteMany({ where: { parentId } }).catch((err) => {
+        app.log.warn({ err, parentId }, "push-token cleanup deferred after sessionVersion bump; delivery fence active");
+      });
+      await retireRefreshIndex().catch((err) => {
+        app.log.warn({ err, parentId }, "refresh-index cleanup failed after sessionVersion bump");
+      });
+      await publishSessionRevoked();
+      return;
     }
+
+    let durableCommitted = false;
+    try {
+      // ADR-0014 / ADR-0025 / ADR-0032: commit the `Parent.sessionVersion` increment and `ParentPushToken`
+      // retirement atomically in one transaction (serialized on the `Parent` row) before mutating Redis
+      // refresh keys, so a failed DB write rolls back without invalidating the caller's retry session or
+      // leaving push registrations eligible after revocation.
+      await invalidateSessionsBefore(parentId, undefined, {
+        retirePushTokens: true,
+        onDurableCommit: () => {
+          durableCommitted = true;
+        },
+      });
+      await retireRefreshIndex();
+    } catch (err) {
+      if (durableCommitted) {
+        await retireRefreshIndex().catch(() => {});
+        await publishSessionRevoked();
+      }
+      throw err;
+    }
+    await publishSessionRevoked();
   };
 
   app.post("/register", { config: RL }, async (req, reply) => {
@@ -470,8 +504,9 @@ export async function authRoutes(app: FastifyInstance) {
     if (user.purpose === "mfa_recovery" && user.jti) {
       await getRedis().del(recoveryKey(user.jti)).catch(() => undefined);
     }
-    // Handoff item 3: enabling MFA revokes all existing sessions.
-    await revokeAllRefreshTokens(parent.id);
+    // Handoff item 3: enabling MFA revokes all existing sessions without discarding the one-time recovery codes
+    // if push-row cleanup hits a transient failure (`sessionVersion` already fences delivery).
+    await revokeAllRefreshTokens(parent.id, { preserveResponseOnCleanupError: true });
     return {
       ok: true,
       mfaEnabled: true,
