@@ -22,6 +22,14 @@ void main() {
   // U87's Arabic is the Arabic Language Bureau's line: «تصفية المواقع» without
   // the parenthetical. This test is added after their comment lands, so the
   // assertion cannot invent copy.
+  test('U87 Arabic: the grant row and the Rules tab both read the Arabic Language Bureau term', () {
+    // Verbatim from the Arabic Language Bureau (13:24 UAE, #650): they asked for
+    // both values so the grant row and the Rules tab stop disagreeing (#604).
+    final ar = lookupAppLocalizations(const Locale('ar'));
+    expect(ar.grantWebFilter, 'تصفية المواقع');
+    expect(ar.tabWebFilter, 'تصفية المواقع');
+  });
+
   testWidgets(
       'U95: the rules editor tab strip is start-aligned, so the first tab does not shift when it overflows '
       '(mutant: dropping `tabAlignment: TabAlignment.start` leaves the scrollable TabBar on its default)',
