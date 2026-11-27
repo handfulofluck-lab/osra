@@ -5,6 +5,11 @@
 /* %1$@ is the window (Bedtime, or the routine's name), %2$@ its end time (HH:MM). */
 "block_window_line" = "Blocked by %1$@ until %2$@";
 "block_window_bedtime" = "Bedtime";
+/* U105: the daily-limit shield (UI/UX Bureau, 27 Nov). %@ is the reset time, HH:MM with Latin digits, wrapped in FSI/PDI by ShieldText. */
+"daily_title_time_up" = "Daily time is up";
+"daily_resets_at" = "Your time resets at %@";
+"daily_ask_more_time" = "Ask for more time";
+"daily_request_sent" = "Asked your parent. You'll get more time if they say yes.";
 
 /* The app's own screens (5.5, Arabic Language Bureau sheet, approved by Karim 2026-11-12 11:20Z). Plurals are in Localizable.stringsdict. */
 "pair_section_title" = "OSRA Kids";

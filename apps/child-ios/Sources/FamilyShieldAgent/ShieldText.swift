@@ -22,6 +22,16 @@ public struct ShieldText: Equatable {
         case routine(name: String, endsAt: String)
     }
 
+    /// What holds the shield up (#1278): a window, or the child's own daily limit being used up. A limit is not
+    /// a window — nothing ends it but the day changing or the parent granting more time — so it is its own case.
+    public enum Situation: Equatable {
+        case window(Window?)
+        /// U105: the daily limit is spent; `resetsAt` is when the day turns over.
+        case dailyLimit(resetsAt: Date)
+        /// U105: the same shield after the child tapped "Ask for more time".
+        case dailyLimitRequestSent(resetsAt: Date)
+    }
+
     /// First Strong Isolate and Pop Directional Isolate (the #506 ruling): an English routine name or the time
     /// inside the Arabic line keeps its own direction and does not reorder the sentence around it.
     static let fsi = "\u{2068}"
@@ -91,16 +101,91 @@ public struct ShieldText: Equatable {
                           primaryButton: table("block_request_access"), secondaryButton: table("block_exit_home"))
     }
 
+    /// U105: the shield's text for a [`Situation`], including the daily limit. The reset time is formatted as a
+    /// Latin-digit `HH:mm` and isolated with FSI/PDI exactly like `endsAt` in `block_window_line`, so the Arabic
+    /// line never picks up Arabic-Indic digits from the phone's locale.
+    public static func make(situation: Situation, language: String,
+                            timeZone: TimeZone = .current) -> ShieldText {
+        let table = strings(for: language)
+        switch situation {
+        case .window(let window):
+            return make(window: window, language: language)
+        case .dailyLimit(let resetsAt), .dailyLimitRequestSent(let resetsAt):
+            let clock = fsi + clockTime(resetsAt, timeZone: timeZone) + pdi
+            let resetLine = String(format: table("daily_resets_at"), clock)
+            // UI/UX Bureau (#1279 7224449908, 7226261490): the two-sentence confirmation is body text, not a
+            // one-line button label, so it goes in the subtitle above the reset time. The button keeps
+            // "Ask for more time": a repeat tap is collapsed on the server by `child_time_request:shield`.
+            let subtitle: String
+            switch situation {
+            case .dailyLimitRequestSent:
+                subtitle = table("daily_request_sent") + "\n" + resetLine
+            default:
+                subtitle = resetLine
+            }
+            return ShieldText(title: table("daily_title_time_up"),
+                              subtitle: subtitle,
+                              primaryButton: table("daily_ask_more_time"),
+                              secondaryButton: table("block_exit_home"))
+        }
+    }
+
+    /// A Latin-digit `HH:mm` for `date` on `timeZone`'s clock.
+    ///
+    /// Built from calendar components rather than `DateFormatter`, because a formatter follows the phone's locale
+    /// and an Arabic device would render «١٢:٣٠». `String(format:)` with no locale argument never localises digits.
+    public static func clockTime(_ date: Date, timeZone: TimeZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+    }
+
     /// The text for an app shielded right now, from the rules the last sync stored in the app group. The clock is
     /// the phone's own: DeviceActivity starts and ends each interval on the device's local time, so that is the
     /// clock the shield is actually held by.
     public static func current(bundleIdentifier: String?, now: Date = Date(), timeZone: TimeZone = .current,
-                               language: String = resolvedLanguage()) -> ShieldText {
+                               language: String = resolvedLanguage(),
+                               dailyLimitResetsAt: Date? = nil,
+                               requestSentResetsAt: Date? = nil) -> ShieldText {
+        let situation = resolve(bundleIdentifier: bundleIdentifier, now: now, timeZone: timeZone,
+                                dailyLimitResetsAt: dailyLimitResetsAt,
+                                requestSentResetsAt: requestSentResetsAt)
+        return make(situation: situation, language: language, timeZone: timeZone)
+    }
+
+    /// U105, Codex's first finding: **one** resolved cause, used by both the copy and the tap.
+    ///
+    /// The two used to be decided separately — `current()` looked at the window first, while the delegate asked
+    /// only whether the daily limit was spent — so a phone with Bedtime overlapping an exhausted limit could show
+    /// "Blocked by Bedtime" and still send a time request. Resolving once makes that divergence impossible rather
+    /// than making two call sites agree.
+    ///
+    /// Order is the same as `activeWindow`'s: a window wins, because that is what the screen names. The daily limit
+    /// only speaks when nothing else explains the shield.
+    public static func resolve(bundleIdentifier: String?, now: Date = Date(), timeZone: TimeZone = .current,
+                               dailyLimitResetsAt: Date? = nil,
+                               requestSentResetsAt: Date? = nil) -> Situation {
         let window = activeWindow(bundleIdentifier: bundleIdentifier, now: now, timeZone: timeZone,
                                   bedtimeStart: RuleStore.bedtimeStart(), bedtimeEnd: RuleStore.bedtimeEnd(),
                                   routines: RuleStore.routineSchedules(), blocked: RuleStore.blockedApps(),
                                   alwaysAllowed: RuleStore.alwaysAllowedApps(), allowed: RuleStore.allowedApps())
-        return make(window: window, language: language)
+        if let window { return .window(window) }
+        guard let resetsAt = dailyLimitResetsAt else { return .window(nil) }
+        // U105, Codex's second finding: a request recorded for *this* reset means the confirmation is the truth.
+        if let sent = requestSentResetsAt, abs(sent.timeIntervalSince(resetsAt)) < 1 {
+            return .dailyLimitRequestSent(resetsAt: resetsAt)
+        }
+        return .dailyLimit(resetsAt: resetsAt)
+    }
+
+    /// Whether a resolved situation should send an **access** request rather than a time request. The tap follows
+    /// the cause the screen shows: a window means "ask for access", the daily limit means "ask for more time".
+    public static func sendsAccessRequest(_ situation: Situation) -> Bool {
+        switch situation {
+        case .window(let window): return window != nil
+        case .dailyLimit, .dailyLimitRequestSent: return false
+        }
     }
 
     /// The phone's language among the ones the block screen ships.

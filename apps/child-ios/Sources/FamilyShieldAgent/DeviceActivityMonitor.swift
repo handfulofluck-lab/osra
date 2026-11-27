@@ -29,12 +29,27 @@ struct AlertReporter {
         title: String,
         body: String,
         childId: String?,
-        metadata: [String: Any] = [:]
+        metadata: [String: Any] = [:],
+        dedupeKey: String? = nil
     ) {
         guard let request = makeRequest(category: category, severity: severity, title: title, body: body,
-                                        childId: childId, metadata: metadata)
+                                        childId: childId, metadata: metadata, dedupeKey: dedupeKey)
         else { return }
         Self.sendWithRetry(request: request, category: category, attemptsLeft: 3)
+    }
+
+    /// U105: the daily-limit shield's "Ask for more time". Mirrors Android's `AskParentPolicy.buildTimeRequest`
+    /// exactly — same category, severity, title, body and metadata — so the parent's existing time-request card
+    /// renders it, instead of a generic `app_blocked` alert. `minutes` is what the shield asks for; the iOS shield
+    /// has one button and no picker, so the caller passes the value.
+    func reportTimeRequest(minutes: Int, childId: String?, token: String = "shield") {
+        report(category: "app_blocked",
+               severity: "info",
+               title: "Screen time requested",
+               body: "Child asked for \(minutes) more minutes of screen time",
+               childId: childId,
+               metadata: ["requestType": "time", "minutes": "\(minutes)", "reason": "daily_limit"],
+               dedupeKey: "child_time_request:\(token)")
     }
 
     /// Sends one alert and returns the server's status and body, once, without retrying. The same request
@@ -68,6 +83,7 @@ struct AlertReporter {
         body: String,
         childId: String?,
         metadata: [String: Any] = [:],
+        dedupeKey: String? = nil,
         signedAt: Int? = nil
     ) -> URLRequest? {
         guard let apiBaseURL else {
@@ -88,6 +104,11 @@ struct AlertReporter {
         ]
         if let deviceId = AlertReporter.pairedDeviceId() {
             payload["deviceId"] = deviceId
+        }
+        // U105: the dedupe key lets the server collapse a repeated ask from the same shield session, the same
+        // way Android's `child_time_request:<token>` does.
+        if let dedupeKey, !dedupeKey.isEmpty {
+            payload["dedupeKey"] = dedupeKey
         }
         guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         var request = URLRequest(url: apiBaseURL.appendingPathComponent("v1/alerts/internal"))

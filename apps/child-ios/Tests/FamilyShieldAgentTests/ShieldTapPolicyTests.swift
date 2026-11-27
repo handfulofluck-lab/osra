@@ -89,7 +89,10 @@ final class ShieldTapPolicyTests: XCTestCase {
             .deletingLastPathComponent().appendingPathComponent("Sources/FamilyShieldAgent/ShieldConfiguration.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
         let gate = try XCTUnwrap(text.range(of: "ShieldTapPolicy.shouldSendRequest(target: target"))
-        let report = try XCTUnwrap(text.range(of: "reporter.report(\n                category: \"app_blocked\""))
+        // U105: the delegate now reports through two branches (the daily-limit time request, or the access alert),
+        // both inside the gate. Match the call rather than one branch's indentation, so the assertion stays about
+        // the ordering it was written for.
+        let report = try XCTUnwrap(text.range(of: "reporter.report"))
         XCTAssertLessThan(gate.lowerBound, report.lowerBound, "the alert is sent only past the throttle")
         XCTAssertEqual(text.components(separatedBy: "respond(to: action, target: Self.target(").count - 1, 3,
                        "apps, websites and categories each pass their own target")
