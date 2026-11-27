@@ -414,6 +414,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             // #460 review: consent withdrawn inside the fallback window must not still show a block
             // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
             cancelDeferredRaise()
+            social.onMonitoringPaused()
             return
         }
         if (enforceFilterRecovery(snapshot, foreground)) {
@@ -1049,11 +1050,14 @@ class AccessibilityMonitorService : AccessibilityService() {
     private fun enforceLockState(snapshot: WindowSnapshot, fallbackPackage: String?) {
         val mode = LockState.mode(this)
         if (!LockEnforcementPolicy.isLockingMode(mode)) return
-        var shouldRaise = LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts)
+        // Issue #1183: parent-configured always-allowed apps stay usable while locked, while any
+        // non-allowed app (alone or alongside an allowed app in split-screen/PiP) still raises lock.
+        val alwaysAllowed = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty()
+        var shouldRaise = LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed)
         // No window list from the OS (some OEMs): keep the #165 behaviour and decide from the
         // package resolved for the event, which is a hint but better than no re-raise at all.
         if (!shouldRaise && snapshot.windows.isEmpty() && snapshot.activePackage.isNullOrBlank()) {
-            shouldRaise = LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts)
+            shouldRaise = LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts, alwaysAllowed)
         }
         if (!shouldRaise) return
         val now = System.currentTimeMillis()

@@ -27,7 +27,7 @@ import 'command_messages.dart';
 /// `ChildDetailScreen` falls back to the legacy 5-tab layout.
 const bool kEnableUxP08ChildOverview = bool.fromEnvironment(
   'OSRA_UX_P08',
-  defaultValue: false,
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
 );
 
 /// Switch provider controlling whether `ChildDetailScreen` opens the P-08
