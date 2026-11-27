@@ -41,7 +41,9 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
     /// U105: the daily limit's reset time when the limit is what holds the shield, nil when it is not. The limit is
     /// not a window, so it is only offered to `ShieldText` when nothing else explains the shield.
     static func dailyLimitResetsAt(now: Date = Date()) -> Date? {
-        let status = DailyScreenTime.dailyLimitStatus(now: now)
+        // The daily limit is iOS 17.4+ (`DailyScreenTimeMonitor`), so an older phone simply has no limit to name.
+        guard #available(iOS 17.4, *) else { return nil }
+        let status = DailyScreenTimeMonitor.dailyLimitStatus(now: now)
         return status.exhausted ? status.resetsAt : nil
     }
 
