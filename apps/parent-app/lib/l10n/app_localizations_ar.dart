@@ -4097,7 +4097,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String homeBatteryPct(String pct) {
-    return 'البطارية ⁦$pct%⁩';
+    return 'البطارية $pct';
   }
 
   @override

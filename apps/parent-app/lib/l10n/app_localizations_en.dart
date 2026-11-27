@@ -3832,7 +3832,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String homeBatteryPct(String pct) {
-    return 'Battery $pct%';
+    return 'Battery $pct';
   }
 
   @override

@@ -1657,7 +1657,7 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
       }
     }
     if (device.batteryPct > 0) {
-      parts.add(l10n.homeBatteryPct('${device.batteryPct}'));
+      parts.add(l10n.homeBatteryPct(ltrIsolate('${device.batteryPct}%')));
     }
     return parts.isEmpty ? null : parts.join(' · ');
   }

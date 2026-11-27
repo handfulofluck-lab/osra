@@ -1227,7 +1227,7 @@
   "homeStateFreeTime": "وقت حر",
   "homeStateHomework": "الواجبات",
   "homeStatePaused": "موقوف مؤقتًا",
-  "homeBatteryPct": "البطارية \u2066{pct}%\u2069",
+  "homeBatteryPct": "البطارية {pct}",
   "@homeBatteryPct": {"placeholders":{"pct":{"type":"String"}}},
   "homeBonusPlus15": "+15 دقيقة",
   "homeBonusPlus30": "+30 دقيقة",
