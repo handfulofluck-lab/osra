@@ -14,9 +14,12 @@ import '../../theme/app_tokens.dart';
 
 /// Feature switch for UX Final Decisions **P-22 Settings** (#1179).
 ///
-/// Enable with `--dart-define=OSRA_UX_P22=true`, or override [p22SettingsEnabledProvider] in tests. When it is
+/// Enable with `--dart-define=OSRA_UX_P22=true` (or `OSRA_UX_FINAL=true`), or override [p22SettingsEnabledProvider] in tests. When it is
 /// false nothing routes to this screen, so the app keeps the settings entries it shipped with.
-const bool kEnableUxP22Settings = bool.fromEnvironment('OSRA_UX_P22', defaultValue: false);
+const bool kEnableUxP22Settings = bool.fromEnvironment(
+  'OSRA_UX_P22',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 
 final p22SettingsEnabledProvider = Provider<bool>((ref) => kEnableUxP22Settings);
 
