@@ -1,0 +1,2 @@
+### Child agent (Android) — default-off contingency fallback for open-tab web-filter blocks
+- Added default-off contingency switches (`ROW20_WEB_BLOCK_FALLBACK` and `ROW20_WEB_BLOCK_TAB_CLOSE`, both `false` by default) stacked on `#1234` for device row 20 (`#1051`, `#1224`): when explicitly enabled at build time, lengthens the transient `MODE_SINKHOLE_ALL` connection-reset window (`5 s` default) and evicts a foreground browser tab whose displayed hostname resolves to `DnsFilterPolicy.Action.SINK` without logging or persisting any URL or host.

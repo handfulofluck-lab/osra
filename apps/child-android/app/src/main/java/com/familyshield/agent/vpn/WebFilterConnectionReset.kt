@@ -60,6 +60,7 @@ object WebFilterConnectionReset {
         private val isLockActiveOnServiceThread: () -> Boolean,
         private val waitMs: suspend (Long) -> Unit = { delay(it) },
         private val pauseMs: Long = DEFAULT_PAUSE_MS,
+        private val pauseMsProvider: () -> Long = { pauseMs },
         private val restoreRetries: Int = DEFAULT_RESTORE_RETRIES,
         private val retryBackoffMs: Long = DEFAULT_RETRY_BACKOFF_MS,
     ) {
@@ -410,7 +411,7 @@ object WebFilterConnectionReset {
                     var resolved: Pair<TransitionOutcome, PolicySnapshot?>? = null
                     var restoreAttempted = false
                     try {
-                        awaitWindowOrInterrupt(entry.signal, pauseMs)
+                        awaitWindowOrInterrupt(entry.signal, pauseMsProvider().coerceAtLeast(0L))
                         restoreAttempted = true
                         resolved = withContext(NonCancellable) {
                             restoreAfterWindow(requestInstanceId = requestInstanceId, hopEpoch = entry.hopEpoch)
