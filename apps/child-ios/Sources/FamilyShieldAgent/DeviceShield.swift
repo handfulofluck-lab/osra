@@ -27,7 +27,8 @@ public enum ShieldSet: String, CaseIterable, Equatable, Sendable {
     /// store (`FamilyShieldDeviceActivityMonitor.intervalDidEnd` already clears the store named after the
     /// activity, and `ShieldPolicy` applies nothing when it starts). The extension runs whatever state the app
     /// is in. Each new Lock restarts the interval; Unlock and Resume stop it.
-    public static let failsafeSeconds: TimeInterval = 2 * 60 * 60
+    /// 8 hours: Karim's decision, 27 Nov 20:50 UAE ("lets make it 8 hours then not 2").
+    public static let failsafeSeconds: TimeInterval = 8 * 60 * 60
 }
 
 #if os(iOS)
