@@ -2020,5 +2020,13 @@
   "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
   "p15AdjustLimits": "Adjust screen time & bedtime",
   "p15ReviewAppRules": "Review app rules",
-  "p15IphoneNotYet": "Not yet available on iPhone"
+  "p15IphoneNotYet": "Not yet available on iPhone",
+  "p14SegmentRequests": "Requests",
+  "p14LevelUrgent": "Urgent",
+  "p14LevelCheckSoon": "Check soon",
+  "p14LevelInfo": "Info",
+  "p14FilterAll": "All",
+  "p14NoRequestsYet": "No requests yet",
+  "p14GroupedCount": "{count, plural, =1{1 time · last {time}} other{{count} times · last {time}}}",
+  "@p14GroupedCount": { "placeholders": { "count": { "type": "int" }, "time": { "type": "String" } } }
 }
