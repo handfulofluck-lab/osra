@@ -1641,7 +1641,16 @@ class ReportSummary {
     this.socialConcerns = 0,
     this.calls = 0,
     this.sms = 0,
+    this.blockedDomainsVisible = false,
   });
+
+  /// True when the server sent `topBlockedDomains` at all.
+  ///
+  /// The key is absent — not empty — when host names may not be shown: the
+  /// site-names flag is off (`SITE_NAMES_ENABLED`), or the reader has no
+  /// `social` permission (`services/api/src/routes/reports.ts`). P-12 must hide
+  /// the whole recently-blocked list in that case rather than say "no sites".
+  final bool blockedDomainsVisible;
 
   factory ReportSummary.fromJson(Map<String, dynamic> json) => ReportSummary(
         totalAppMinutes: _int(json['totalAppMinutes']),
@@ -1654,6 +1663,7 @@ class ReportSummary {
             BlockedDomain.fromJson(m)
         ],
         socialConcerns: _int(json['socialConcerns']),
+        blockedDomainsVisible: json.containsKey('topBlockedDomains'),
         calls: _int(json['calls']),
         sms: _int(json['sms']),
       );
