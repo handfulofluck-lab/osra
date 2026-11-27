@@ -256,6 +256,17 @@ class AccessibilityMonitorService : AccessibilityService() {
     private val guardCover by lazy { PipCoverOverlay(this) }
     private var guardCoverBounds: WindowBounds? = null
 
+    /**
+     * Issue #1236 (gated behind [com.familyshield.agent.ui.theme.ChildUxFlags.miuiLockBackstopEnabled]):
+     * full-screen `TYPE_ACCESSIBILITY_OVERLAY` backstop covers when MIUI silently aborts
+     * Lock/Block/Guard Activity starts past their retry budgets.
+     */
+    private val lockBackstopCover by lazy { PipCoverOverlay(this) }
+    private val blockBackstopCover by lazy { PipCoverOverlay(this) }
+    private val guardBackstopCover by lazy { PipCoverOverlay(this) }
+    private val guardRetryBudget = OverlayRetryBudget()
+    private var blockBackstopActive = false
+
     /** Issue #460: the fallback that raises the deferred block screen when no launcher event arrives. */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
     private val deferredRaise = Runnable { raiseDeferredIfDue() }
@@ -413,6 +424,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         rules.removeRulesChangedListener(rulesChanged)
         pipCover.remove()
         guardCover.remove()
+        removeAllMiuiBackstopCovers()
         updateFilterRecoveryCovers(emptySet())
         // #460 review: a deferred raise posted inside the fallback window must not fire after the
         // service is gone — the child turning accessibility off is exactly when that window exists.
@@ -453,6 +465,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             event.className?.toString()?.let { lastClassByPkg[eventPkg] = it }
         }
         if (eventPkg == packageName) {
+            // Issue #1236: OSRA's own Activity reached the foreground, so any MIUI backstop cover is unnecessary.
+            removeAllMiuiBackstopCovers()
             // Issue #284: our own block screen is in front and this stream never records our package, so
             // the blocked app's interval would stay open and the next real event would charge it the stay.
             usage.recordOwnWindow(System.currentTimeMillis())
@@ -489,6 +503,8 @@ class AccessibilityMonitorService : AccessibilityService() {
         // records, captures and enforces nothing.
         if (consentState.isPaused()) {
             pipCover.remove()
+            clearBlockBackstop()
+            clearLockBackstop()
             updateFilterRecoveryCovers(emptySet())
             // #460 review: consent withdrawn inside the fallback window must not still show a block
             // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
@@ -627,6 +643,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Issue #1174: no app-block or routine enforcement until all required onboarding grants are done.
         if (requiredGrantsIncompleteForPairedDevice()) {
             pipCover.update(null)
+            clearBlockBackstop()
             cancelDeferredRaise()
             return
         }
@@ -640,6 +657,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         )
         if (found == null) {
             pipCover.update(null)
+            clearBlockBackstop()
             return
         }
         val (pkg, verdict, step) = found
@@ -673,6 +691,18 @@ class AccessibilityMonitorService : AccessibilityService() {
                 layout = layout.name.lowercase(),
             )
         }
+        val blockBackstop = com.familyshield.agent.setup.MiuiLaunchBackstopPolicy.decideBlockBypass(
+            enabled = com.familyshield.agent.ui.theme.ChildUxFlags.miuiLockBackstopEnabled,
+            manufacturer = android.os.Build.MANUFACTURER,
+            reportBypass = step.reportBypass,
+            alreadyCovering = blockBackstopActive,
+        )
+        blockBackstopActive = blockBackstop.showAccessibilityCover
+        applyMiuiBackstop(
+            cover = blockBackstopCover,
+            surface = com.familyshield.agent.setup.MiuiBackstopSurface.BLOCK,
+            decision = blockBackstop,
+        )
     }
 
     /**
@@ -707,18 +737,15 @@ class AccessibilityMonitorService : AccessibilityService() {
         signature: String,
         layout: WindowLayout,
         what: String,
-    ): Boolean = when (budget.attempt(signature)) {
-        RetryDecision.ATTEMPT -> true
-        RetryDecision.EXHAUSTED_ONCE -> {
+    ): RetryDecision = budget.attempt(signature).also { decision ->
+        if (decision == RetryDecision.EXHAUSTED_ONCE) {
             Log.w(
                 TAG,
                 "$what overlay: retry budget exhausted in ${layout.name.lowercase()} " +
                     "[$signature] — the window state (picture-in-picture / split screen) did not " +
                     "change; not starting another overlay",
             )
-            false
         }
-        RetryDecision.EXHAUSTED -> false
     }
 
     /**
@@ -961,9 +988,15 @@ class AccessibilityMonitorService : AccessibilityService() {
                 heldNow = { specialAccessHeld() },
             )
         }
-        if (!settings.isPairedSync()) return
+        if (!settings.isPairedSync()) {
+            clearGuardBackstop()
+            return
+        }
         // Issue #1174 (path 1): never block Settings changes while initial required grants are incomplete.
-        if (requiredGrantsIncompleteForPairedDevice()) return
+        if (requiredGrantsIncompleteForPairedDevice()) {
+            clearGuardBackstop()
+            return
+        }
         val now = System.currentTimeMillis()
         // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
         // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
@@ -999,10 +1032,27 @@ class AccessibilityMonitorService : AccessibilityService() {
             filterProtectionActive = !consentState.isPaused() && VpnState.isEnabled(this),
             ownVpnConsentPending = VpnState.hasPendingOwnConsent(),
         )
-        if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
-        if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
+        if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
+            clearGuardBackstop()
+            return // no filter to bypass yet
+        }
+        if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) {
+            clearGuardBackstop()
+            return
+        }
         lastGuardMs = now
         guardedWindowId = event.windowId
+        val guardSignature = "${pkg.orEmpty()}:${screen.name}:${event.windowId}"
+        val guardBackstop = com.familyshield.agent.setup.MiuiLaunchBackstopPolicy.decide(
+            enabled = com.familyshield.agent.ui.theme.ChildUxFlags.miuiLockBackstopEnabled,
+            manufacturer = android.os.Build.MANUFACTURER,
+            retryDecision = guardRetryBudget.attempt(guardSignature),
+        )
+        applyMiuiBackstop(
+            cover = guardBackstopCover,
+            surface = com.familyshield.agent.setup.MiuiBackstopSurface.GUARD,
+            decision = guardBackstop,
+        )
         stepIn(screen, pkg, now)
     }
 
@@ -1139,24 +1189,95 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private fun enforceLockState(snapshot: WindowSnapshot, fallbackPackage: String?) {
         val mode = LockState.mode(this)
-        if (!LockEnforcementPolicy.isLockingMode(mode)) return
+        if (!LockEnforcementPolicy.isLockingMode(mode)) {
+            clearLockBackstop()
+            return
+        }
         var shouldRaise = LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts)
         // No window list from the OS (some OEMs): keep the #165 behaviour and decide from the
         // package resolved for the event, which is a hint but better than no re-raise at all.
         if (!shouldRaise && snapshot.windows.isEmpty() && snapshot.activePackage.isNullOrBlank()) {
             shouldRaise = LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts)
         }
-        if (!shouldRaise) return
+        if (!shouldRaise) {
+            clearLockBackstop()
+            return
+        }
         val now = System.currentTimeMillis()
         if (now - lastReraiseMs < LockEnforcementPolicy.RERAISE_DEBOUNCE_MS) return
         val signature = snapshot.signature.ifEmpty { "fallback:${fallbackPackage.orEmpty()}" }
-        if (!allowOverlay(lockRetryBudget, signature, snapshot.layout, "lock")) return
+        val retryDecision = allowOverlay(lockRetryBudget, signature, snapshot.layout, "lock")
+        val backstop = com.familyshield.agent.setup.MiuiLaunchBackstopPolicy.decide(
+            enabled = com.familyshield.agent.ui.theme.ChildUxFlags.miuiLockBackstopEnabled,
+            manufacturer = android.os.Build.MANUFACTURER,
+            retryDecision = retryDecision,
+        )
+        if (retryDecision != RetryDecision.ATTEMPT) {
+            applyMiuiBackstop(
+                cover = lockBackstopCover,
+                surface = com.familyshield.agent.setup.MiuiBackstopSurface.LOCK,
+                decision = backstop,
+            )
+            return
+        }
+        lockBackstopCover.remove()
         lastReraiseMs = now
         startActivity(
             Intent(this, com.familyshield.agent.commands.LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 .putExtra(com.familyshield.agent.commands.LockActivity.EXTRA_MODE, mode),
         )
+    }
+
+    private fun clearLockBackstop() {
+        lockBackstopCover.remove()
+        lockRetryBudget.reset()
+    }
+
+    private fun clearBlockBackstop() {
+        blockBackstopCover.remove()
+        blockBackstopActive = false
+    }
+
+    private fun clearGuardBackstop() {
+        guardBackstopCover.remove()
+        guardRetryBudget.reset()
+    }
+
+    private fun removeAllMiuiBackstopCovers() {
+        clearLockBackstop()
+        clearBlockBackstop()
+        clearGuardBackstop()
+    }
+
+    private fun fullScreenBackstopBounds(): WindowBounds? {
+        val dm = resources.displayMetrics
+        return com.familyshield.agent.setup.MiuiLaunchBackstopPolicy.fullScreenBounds(dm.widthPixels, dm.heightPixels)
+    }
+
+    private fun applyMiuiBackstop(
+        cover: PipCoverOverlay,
+        surface: com.familyshield.agent.setup.MiuiBackstopSurface,
+        decision: com.familyshield.agent.setup.MiuiBackstopDecision,
+    ) {
+        if (!decision.showAccessibilityCover) {
+            cover.remove()
+            return
+        }
+        val bounds = fullScreenBackstopBounds()
+        if (bounds != null) {
+            cover.update(bounds)
+        }
+        if (decision.alertParent) {
+            Log.w(TAG, "MIUI backstop: ${surface.wire} launch aborted; raised accessibility cover (#1236)")
+            TamperAlertWorker.enqueue(
+                this,
+                TamperAlertWorker.TYPE_MIUI_LAUNCH_BLOCKED,
+                detail = com.familyshield.agent.setup.MiuiLaunchBackstopPolicy.alertBody(surface),
+                eventAtMs = System.currentTimeMillis(),
+                app = surface.wire,
+            )
+        }
     }
 
     private fun collectTexts(node: AccessibilityNodeInfo, out: MutableList<CharSequence?>, depth: Int) {

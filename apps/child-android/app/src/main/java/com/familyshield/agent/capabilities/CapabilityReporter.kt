@@ -88,6 +88,11 @@ class CapabilityReporter @Inject constructor(
                 packStored = blocklist.packStored(),
                 blockedCategories = rules.cachedRules()?.webFilter?.blockedCategories ?: emptyList(),
             ),
+            miuiPopupState = if (com.familyshield.agent.ui.theme.ChildUxFlags.miuiLockBackstopEnabled) {
+                com.familyshield.agent.setup.MiuiBackgroundPopupPolicy.wireGrantState(context)
+            } else {
+                null
+            },
         )
     }
 

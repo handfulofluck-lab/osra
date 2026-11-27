@@ -164,3 +164,32 @@ describe("decision 3 + A1 — when a command is refused instead of queued", () =
     expect(commandRefusal({ capabilities: null, capabilitiesReportedAt: null }, "lock", NOW)).toBeNull();
   });
 });
+
+describe("issue #1236 — separate miui_popup confirmed_unverified grant state", () => {
+  it("accepts miui_popup with confirmed_unverified and surfaces it separately from missing", () => {
+    const r = report({
+      grants: {
+        accessibility: "granted",
+        overlay: "granted",
+        usage_access: "granted",
+        miui_popup: "confirmed_unverified",
+      },
+    });
+    expect(CapabilitiesSchema.safeParse(r).success).toBe(true);
+    const setup = setupFor({ capabilities: r, capabilitiesReportedAt: new Date(NOW - 30_000) }, NOW);
+    expect(setup.missing).toEqual([]);
+    expect(setup.confirmedUnverified).toEqual(["miui_popup"]);
+  });
+
+  it("omits confirmedUnverified when no grant is confirmed_unverified and lists missing miui_popup under missing", () => {
+    const clean = setupFor({ capabilities: report(), capabilitiesReportedAt: new Date(NOW - 30_000) }, NOW);
+    expect("confirmedUnverified" in clean).toBe(false);
+
+    const missingMiui = report({
+      grants: { accessibility: "granted", overlay: "missing", miui_popup: "missing" },
+    });
+    const setupMissing = setupFor({ capabilities: missingMiui, capabilitiesReportedAt: new Date(NOW - 30_000) }, NOW);
+    expect(setupMissing.missing).toEqual(["overlay", "miui_popup"]);
+    expect("confirmedUnverified" in setupMissing).toBe(false);
+  });
+});

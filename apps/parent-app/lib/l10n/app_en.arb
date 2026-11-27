@@ -1771,6 +1771,7 @@
   "grantUsbDebugging": "USB debugging off",
   "grantNotificationListener": "Notification access",
   "grantFullScreenIntent": "Full-screen alerts",
+  "grantMiuiPopup": "Background pop-up windows",
   "grantFamilyControls": "Screen Time (Family Controls)",
   "grantBackgroundRefresh": "Background app refresh",
   "appGroupsTitle": "App groups on this iPhone",

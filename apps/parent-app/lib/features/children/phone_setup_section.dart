@@ -36,6 +36,7 @@ class PhoneSetupSection extends StatelessWidget {
     'usb_debugging',
     'notification_listener',
     'full_screen_intent',
+    'miui_popup',
     'family_controls',
     'background_refresh',
   ];
@@ -245,6 +246,7 @@ class PhoneSetupSection extends StatelessWidget {
         'usb_debugging' => l10n.grantUsbDebugging,
         'notification_listener' => l10n.grantNotificationListener,
         'full_screen_intent' => l10n.grantFullScreenIntent,
+        'miui_popup' => l10n.grantMiuiPopup,
         'family_controls' => l10n.grantFamilyControls,
         'background_refresh' => l10n.grantBackgroundRefresh,
         _ => key,

@@ -3185,6 +3185,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get grantFullScreenIntent => 'Full-screen alerts';
 
   @override
+  String get grantMiuiPopup => 'Background pop-up windows';
+
+  @override
   String get grantFamilyControls => 'Screen Time (Family Controls)';
 
   @override

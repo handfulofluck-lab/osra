@@ -40,13 +40,14 @@ export const GRANT_KEYS = [
   "usb_debugging",
   "notification_listener",
   "full_screen_intent",
+  "miui_popup",
   "family_controls",
   "background_refresh",
 ] as const;
 export type GrantKey = (typeof GRANT_KEYS)[number];
 
 /** One grant's state. `not_applicable` is for a key the platform has but this build never asks for. */
-export const GRANT_STATES = ["granted", "missing", "not_applicable"] as const;
+export const GRANT_STATES = ["granted", "missing", "confirmed_unverified", "not_applicable"] as const;
 export type GrantState = (typeof GRANT_STATES)[number];
 
 /**
@@ -174,6 +175,8 @@ export interface DeviceSetup {
   features: Partial<Record<FeatureKey, FeatureState>>;
   /** Generic missing permissions; desktop account-administrator state uses ADR-0041 D5's warning instead. */
   missing: GrantKey[];
+  /** Issue #1236: grants confirmed by the parent when the OS refused to report state (e.g. Xiaomi `miui_popup`). */
+  confirmedUnverified?: GrantKey[];
   /** osra-security#6 item 2: the last reported other spaces, or null when no report has carried them. */
   profiles: DeviceProfiles | null;
   /** ADR-0037: the iPhone's app groups as last reported, or null when no report has carried them. */
