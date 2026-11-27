@@ -332,4 +332,27 @@
     <string name="c02_rules_routines">Routines: %1$s</string>
     <string name="c02_rules_none">Your family\'s rules are active on this phone.</string>
     <string name="c02_rules_close">Close</string>
+
+    <!-- C-03 Ask a parent (#1179). -->
+    <string name="c03_title">Ask %1$s</string>
+    <string name="c03_close">Close</string>
+    <string name="c03_adults_fallback_speaking">my parents</string>
+    <string name="c03_adults_fallback_addressing">your parents</string>
+    <string name="c03_question_label">How much more time?</string>
+    <string name="c03_selected_badge">Selected</string>
+    <string name="c03_option_15_eyebrow">A little more</string>
+    <string name="c03_option_15_amount">+15 min</string>
+    <string name="c03_option_30_eyebrow">More time</string>
+    <string name="c03_option_30_amount">+30 min</string>
+    <string name="c03_preview_eyebrow">What %1$s will see</string>
+    <string name="c03_preview_sentence">Request for %1$s more minutes of screen time, today only.</string>
+    <string name="c03_goes_to">Goes to %1$s</string>
+    <string name="c03_send_request">Send request</string>
+    <string name="c03_sending">Sending…</string>
+    <string name="c03_send_failed">Couldn\'t send right now. Try again.</string>
+    <string name="c03_pending_title">Request sent: +%1$s min of screen time</string>
+    <string name="c03_waiting_reply">Waiting for a reply</string>
+    <string name="c03_sent_to_line">Sent to %1$s · %2$s</string>
+    <string name="c03_no_daily_limit">No daily screen-time limit is active right now.</string>
+    <string name="c03_footer_honest">You\'ll see the answer in Requests. One request at a time.</string>
 </resources>

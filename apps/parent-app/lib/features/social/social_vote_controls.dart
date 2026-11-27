@@ -8,12 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/social_vote_provider.dart';
 import '../../theme/app_tokens.dart';
 
-double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
-  if (verdict == null) return 48 * 2 + AppSpace.sm;
-  final l10n = context.l10n;
-  final label = verdict == 'concerning'
-      ? l10n.flagVoteConcerning
-      : l10n.flagVoteNotConcerning;
+double _measureVoteButtonWidth(BuildContext context, String label) {
   final painter = TextPainter(
     text: TextSpan(
       text: label,
@@ -24,6 +19,19 @@ double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
     maxLines: 1,
   )..layout();
   return painter.width + 18 + 8 + 24;
+}
+
+double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
+  final l10n = context.l10n;
+  if (verdict == null) {
+    return _measureVoteButtonWidth(context, l10n.flagVoteConcerning) +
+        AppSpace.sm +
+        _measureVoteButtonWidth(context, l10n.flagVoteNotConcerning);
+  }
+  final label = verdict == 'concerning'
+      ? l10n.flagVoteConcerning
+      : l10n.flagVoteNotConcerning;
+  return _measureVoteButtonWidth(context, label);
 }
 
 class SocialVoteControls extends ConsumerStatefulWidget {
@@ -271,35 +279,53 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     final concerning = verdict == 'concerning';
     final selected = selectedVerdict == verdict;
     final tokens = context.tokens;
-    return SizedBox(
-      width: 48,
-      height: 48,
-      child: Semantics(
-        label: concerning
-            ? l10n.flagVoteA11yConcerning
-            : l10n.flagVoteA11yNotConcerning,
-        button: true,
-        enabled: !selected,
-        child: IconButton(
-          onPressed: selected ? null : () => _cast(verdict),
-          tooltip: concerning
-              ? l10n.flagVoteA11yConcerning
-              : l10n.flagVoteA11yNotConcerning,
-          icon: Icon(concerning ? Icons.flag : Icons.check_circle, size: 20),
-          color: selected
-              ? concerning
-                  ? tokens.severityWarningText
-                  : tokens.onSurfaceVariant
-              : null,
-          style: IconButton.styleFrom(
-            backgroundColor: selected
-                ? concerning
-                    ? tokens.severityWarning.withValues(alpha: 0.24)
-                    : tokens.surfaceVariant
-                : null,
-            side: BorderSide(color: tokens.border),
-          ),
+    final a11yLabel = concerning
+        ? l10n.flagVoteA11yConcerning
+        : l10n.flagVoteA11yNotConcerning;
+    final label = _label(l10n, verdict);
+    final icon = Icon(concerning ? Icons.flag : Icons.check_circle, size: 18);
+    final Widget button;
+    if (selected) {
+      final bg = concerning
+          ? tokens.severityWarning.withValues(alpha: 0.24)
+          : tokens.surfaceVariant;
+      final fg =
+          concerning ? tokens.severityWarningText : tokens.onSurfaceVariant;
+      button = FilledButton.tonalIcon(
+        onPressed: null,
+        icon: icon,
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          backgroundColor: bg,
+          foregroundColor: fg,
+          disabledBackgroundColor: bg,
+          disabledForegroundColor: fg,
+          side: BorderSide(color: tokens.border),
         ),
+      );
+    } else {
+      button = OutlinedButton.icon(
+        onPressed: () => _cast(verdict),
+        icon: icon,
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          side: BorderSide(color: tokens.border),
+        ),
+      );
+    }
+    return Tooltip(
+      message: a11yLabel,
+      excludeFromSemantics: true,
+      child: Semantics(
+        label: a11yLabel,
+        button: true,
+        selected: selected,
+        enabled: !selected,
+        child: button,
       ),
     );
   }
