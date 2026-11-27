@@ -271,8 +271,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logoutEverywhere() async {
     var pushRemoved = false;
     try {
-      await _push?.unregister();
-      pushRemoved = true;
+      // Claude / Codex on osra-security#92 (7216597155): `unregister()` returns whether it actually removed
+      // a row. Read it instead of assuming: a session that never registered a token has nothing to put back,
+      // and re-registering one after a failed revoke would create a row the parent never had.
+      pushRemoved = await _push?.unregister() ?? false;
     } catch (_) {}
     // A failed revocation must NOT clear the phone: the parent still holds a live session and has to be
     // able to retry, so the exception is left to propagate and nothing is deleted here (Claude, 11:36).

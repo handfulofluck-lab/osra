@@ -97,9 +97,45 @@ void main() {
     expect(await storage.read(key: 'jwt'), 'jwt-1',
         reason: 'a failed revocation leaves the session live; the phone is not cleared');
     expect(await storage.read(key: 'refresh'), 'refresh-1');
-    // osra-security#92: the token retired before the revocation is registered again, or the phone that could
-    // not sign out has also stopped receiving the family's alerts.
+    // osra-security#92 (Claude 15:09, Codex 7216597155): `unregister()` returns whether it removed anything.
+    // Nothing was registered in this session, so nothing is put back. Mutant: set `pushRemoved = true`
+    // unconditionally — as the code did before this fix — and a row the parent never had is created; this
+    // assertion fails.
+    expect(api.calls('POST', '/v1/me/push-token'), isEmpty,
+        reason: 'no row was retired, so none is restored');
+  });
+
+  testWidgets('a token retired before a failed revoke is restored, in order', (tester) async {
+    final api = FakeApiClient(routes((_) => const FakeHttpError(500)));
+    await pump(tester, api);
+    // Sign-in registers the push row, exactly as the app does once a session exists. The first call may land
+    // before `bootstrap()` has marked the session authenticated, so pump until it takes.
+    final container = ProviderScope.containerOf(tester.element(find.byType(SettingsScreen)));
+    for (var i = 0;
+        i < 20 && api.calls('POST', '/v1/me/push-token').isEmpty;
+        i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await container.read(authProvider.notifier).syncPushRegistration();
+    }
     expect(api.calls('POST', '/v1/me/push-token'), hasLength(1),
-        reason: 'the push row is put back after a failed revoke');
+        reason: 'the fixture registered its token before the tap');
+    await confirmSignOutEverywhere(tester);
+
+    // The whole ordering rule in one assertion: retire the row, revoke, and — because the revoke failed —
+    // put the row back. Mutant: skip the `register()` call in the failure branch and the fourth line is
+    // missing; drop the DELETE-before-revoke order and the sequence changes.
+    final sequence = api.requests
+        .where((r) =>
+            r.path == '/v1/me/push-token' || r.path == '/v1/auth/logout-all')
+        .map((r) => '${r.method} ${r.path}')
+        .toList();
+    expect(sequence, [
+      'POST /v1/me/push-token',
+      'DELETE /v1/me/push-token',
+      'POST /v1/auth/logout-all',
+      'POST /v1/me/push-token',
+    ]);
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(await storage.read(key: 'jwt'), 'jwt-1');
   });
 }
