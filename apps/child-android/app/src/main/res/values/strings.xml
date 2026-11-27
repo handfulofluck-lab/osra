@@ -286,4 +286,50 @@
     <string name="lock_paused_internet_body">Educational apps still work. · أسرة</string>
     <string name="notification_paused_internet_body">Offline apps still work while internet is paused.</string>
     <string name="lock_always_allowed_heading">Always allowed</string>
+
+    <!-- C-02 Time's up / blocked (#1179). -->
+    <string name="c02_paused_title">%1$s is paused</string>
+    <string name="c02_reason_daily_limit">Daily limit reached</string>
+    <string name="c02_reason_app_limit">App limit reached</string>
+    <string name="c02_reason_bedtime">Bedtime</string>
+    <string name="c02_reason_school">School hours</string>
+    <string name="c02_reason_paused_internet">Internet paused</string>
+    <string name="c02_reason_blocked">Blocked</string>
+    <string name="c02_subtitle_used_of">Used %1$s of %2$s</string>
+    <string name="c02_subtitle_daily_limit">You reached today\'s screen-time limit.</string>
+    <string name="c02_subtitle_app_limit">You reached today\'s limit for %1$s.</string>
+    <string name="c02_subtitle_bedtime">Bedtime is active now.</string>
+    <string name="c02_subtitle_school">School hours are active now.</string>
+    <string name="c02_subtitle_routine">%1$s is active now.</string>
+    <string name="c02_subtitle_paused_internet">Internet is paused right now.</string>
+    <string name="c02_subtitle_blocked">This app is blocked by your family\'s rules.</string>
+    <string name="c02_back_again_label">Back again</string>
+    <string name="c02_back_at_today">Back at %1$s</string>
+    <string name="c02_back_at_tomorrow">Tomorrow at %1$s</string>
+    <string name="c02_still_open_label">Still open for you</string>
+    <string name="c02_messages_and_calls">Messages and calls</string>
+    <string name="c02_always_open_pill">Always open</string>
+    <string name="c02_ask_more_time_15">Ask for 15 more minutes of screen time</string>
+    <string name="c02_ask_to_open">Ask to open %1$s</string>
+    <string name="c02_waiting_reply">Waiting for a reply</string>
+    <string name="c02_call_parent">Call a parent</string>
+    <string name="c02_see_my_rules">See my rules</string>
+    <string name="c02_send_sos_row">Send SOS to my parents</string>
+    <string name="c02_emergency_note">Emergency calls always work</string>
+    <plurals name="c02_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <plurals name="c02_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <string name="c02_hours_and_minutes">%1$s %2$s</string>
+    <string name="c02_rules_sheet_title">Your rules</string>
+    <string name="c02_rules_daily_limit">Daily screen time: %1$s used of %2$s</string>
+    <string name="c02_rules_bedtime">Bedtime: %1$s</string>
+    <string name="c02_rules_school">School hours: %1$s</string>
+    <string name="c02_rules_routines">Routines: %1$s</string>
+    <string name="c02_rules_none">Your family\'s rules are active on this phone.</string>
+    <string name="c02_rules_close">Close</string>
 </resources>

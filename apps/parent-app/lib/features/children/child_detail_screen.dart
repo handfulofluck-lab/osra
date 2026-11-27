@@ -24,6 +24,7 @@ import '../pairing/pair_qr_screen.dart';
 import '../alerts/access_request_actions.dart';
 import '../alerts/alert_detail_screen.dart';
 import '../alerts/app_alert_presentation.dart';
+import '../alerts/time_request_actions.dart';
 import '../rules/active_window.dart';
 import '../social/social_screen.dart' show SocialSectionsView, socialAppLabel;
 import '../map/child_location_view.dart';
@@ -1006,6 +1007,21 @@ class _AppsTab extends ConsumerWidget {
                       const SizedBox(height: AppSpace.xs),
                       Text(l10n.appPickerIosEmptyBody(ltrIsolate(childName)),
                           style: Theme.of(context).textTheme.bodySmall),
+                      // P-09 (Fix 8): the iPhone app list is not read from the phone yet, and a parent must
+                      // be told that here rather than discover an empty list and guess why.
+                      const SizedBox(height: AppSpace.sm),
+                      Row(
+                        key: const ValueKey('appsTabIphoneNotYet'),
+                        children: [
+                          Icon(Icons.schedule, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(width: AppSpace.xs),
+                          Flexible(
+                            child: Text(l10n.appsNotYetOnIphone,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -1328,10 +1344,29 @@ class _AlertsTab extends ConsumerWidget {
             ref.invalidate(alertsProvider(AlertFilter(childId: childId))),
       ),
       data: (page) {
-        if (page.items.isEmpty) return Center(child: Text(l10n.noRecentAlerts));
+        Future<void> refreshAlerts() async {
+          final filter = AlertFilter(childId: childId);
+          ref.invalidate(alertsProvider(filter));
+          await ref.read(alertsProvider(filter).future);
+        }
+
+        if (page.items.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: refreshAlerts,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 120),
+                  child: Center(child: Text(l10n.noRecentAlerts)),
+                ),
+              ],
+            ),
+          );
+        }
         final items = [...page.items]..sort((a, b) {
-            final aPinned = isAccessRequestAlert(a) && !a.acknowledged;
-            final bPinned = isAccessRequestAlert(b) && !b.acknowledged;
+            final aPinned = isParentDecisionAlert(a) && !a.acknowledged;
+            final bPinned = isParentDecisionAlert(b) && !b.acknowledged;
             if (aPinned != bPinned) return aPinned ? -1 : 1;
             final aTime = a.effectiveTimestamp;
             final bTime = b.effectiveTimestamp;
@@ -1340,33 +1375,37 @@ class _AlertsTab extends ConsumerWidget {
             if (bTime == null) return -1;
             return bTime.compareTo(aTime);
           });
-        return ListView(
-          children: [
-            for (final a in items.take(10))
-              AlertTile(
-                alert: a,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        AlertDetailScreen(alertId: a.id, initialAlert: a),
+        return RefreshIndicator(
+          onRefresh: refreshAlerts,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              for (final a in items.take(10))
+                AlertTile(
+                  alert: a,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          AlertDetailScreen(alertId: a.id, initialAlert: a),
+                    ),
                   ),
+                  onAck: () async {
+                    try {
+                      await ref
+                          .read(apiClientProvider)
+                          .raw
+                          .post('/v1/alerts/${a.id}/ack');
+                      ref
+                          .read(alertsSeenProvider.notifier)
+                          .markAcknowledged(a.id);
+                      ref.invalidate(unacknowledgedAlertsProvider);
+                      ref.invalidate(unacknowledgedCountProvider);
+                    } catch (_) {}
+                    ref.invalidate(alertsProvider);
+                  },
                 ),
-                onAck: () async {
-                  try {
-                    await ref
-                        .read(apiClientProvider)
-                        .raw
-                        .post('/v1/alerts/${a.id}/ack');
-                    ref
-                        .read(alertsSeenProvider.notifier)
-                        .markAcknowledged(a.id);
-                    ref.invalidate(unacknowledgedAlertsProvider);
-                    ref.invalidate(unacknowledgedCountProvider);
-                  } catch (_) {}
-                  ref.invalidate(alertsProvider);
-                },
-              ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -1464,6 +1503,7 @@ class AlertTile extends ConsumerWidget {
   final VoidCallback? onTap;
   final VoidCallback? onAck;
   final AccessRequestResolved? onRequestResolved;
+  final ValueChanged<Alert>? onTimeRequestResolved;
 
   /// #1029: count of additional flagged messages that arrived after the parent last opened this alert.
   final int newSinceCount;
@@ -1473,6 +1513,7 @@ class AlertTile extends ConsumerWidget {
     this.onTap,
     this.onAck,
     this.onRequestResolved,
+    this.onTimeRequestResolved,
     this.newSinceCount = 0,
   });
 
@@ -1485,17 +1526,19 @@ class AlertTile extends ConsumerWidget {
     final tokens = context.tokens;
     final theme = Theme.of(context);
     final isAppBlocked = alert.category == 'app_blocked';
+    final isTimeRequest = alert.requestedScreenTimeMinutes != null;
     final overview =
         isAppBlocked ? ref.watch(familyProvider).valueOrNull : null;
     final child =
         overview?.children.where((c) => c.id == alert.childId).firstOrNull;
-    final installed = isAppBlocked
+    final installed = isAppBlocked && !isTimeRequest
         ? alertInstalledAppsReport(
             ref.watch(installedAppsByDeviceProvider(alert.childId)).valueOrNull,
             alert.deviceId,
           )
         : null;
-    final identity = resolveAppAlertIdentity(alert, installed, fallbackName: l10n.unknownApp);
+    final identity = resolveAppAlertIdentity(alert, installed,
+        fallbackName: l10n.unknownApp);
 
     final String titleText;
     final contactName = alert.socialContactName;
@@ -1521,9 +1564,17 @@ class AlertTile extends ConsumerWidget {
     } else {
       final when = alert.createdAt == null
           ? ''
-          : DateFormat.MMMd(context.localeName)
-              .add_Hm()
-              .format(alert.createdAt!.toLocal());
+          : isTimeRequest
+              ? formatTimeRequestTimestamp(
+                  context, alert.createdAt!, now: ref.watch(clockProvider)(),
+                )
+              : firstStrongIsolate(
+                  normalizeDigits(
+                    DateFormat.MMMd(context.localeName)
+                        .add_Hm()
+                        .format(alert.createdAt!.toLocal()),
+                  ),
+                );
       titleText = isAppBlocked
           ? appAlertTitle(
               alert: alert,
@@ -1538,7 +1589,11 @@ class AlertTile extends ConsumerWidget {
               tamperType: alert.metadata['type']?.toString(),
             );
       socialLatestLine = null;
-      genericSubtitleText = '${l10n.alertCategory(alert.category)} · $when';
+      final category = isTimeRequest
+          ? l10n.alertCategoryScreenTime
+          : l10n.alertCategory(alert.category);
+      genericSubtitleText =
+          isTimeRequest && when.isEmpty ? category : '$category · $when';
     }
 
     final Widget? newBadge = newSinceCount > 0
@@ -1606,13 +1661,16 @@ class AlertTile extends ConsumerWidget {
                   ? AppAlertLeading(alert: alert, identity: identity)
                   : Icon(Icons.circle,
                       color: severityColor(alert.severity, context), size: 14),
-              title: Text(
-                titleText,
-                maxLines: alert.hasSocialCountSummary ? 3 : 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              title: isTimeRequest
+                  ? Text(titleText,
+                      softWrap: true, overflow: TextOverflow.visible)
+                  : Text(
+                      titleText,
+                      maxLines: alert.hasSocialCountSummary ? 3 : 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
               subtitle: subtitleContent,
-              trailing: onAck == null || isAccessRequestAlert(alert)
+              trailing: onAck == null || isParentDecisionAlert(alert)
                   ? null
                   : IconButton(
                       icon: const Icon(Icons.check),
@@ -1633,6 +1691,20 @@ class AlertTile extends ConsumerWidget {
                   alert: alert,
                   identity: identity,
                   onResolved: onRequestResolved,
+                ),
+              ),
+            if (timeRequestActionsEnabled && isTimeRequest)
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  AppSpace.lg,
+                  0,
+                  AppSpace.lg,
+                  AppSpace.lg,
+                ),
+                child: TimeRequestActions(
+                  key: ValueKey(alert.id),
+                  alert: alert,
+                  onResolved: onTimeRequestResolved,
                 ),
               ),
           ],

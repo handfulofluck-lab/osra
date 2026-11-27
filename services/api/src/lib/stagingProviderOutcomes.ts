@@ -110,3 +110,45 @@ export function readProviderModelSnapshot(data: unknown, receipt: ProviderReceip
 export function flaggedProviders(receipts: ProviderReceipts): ProviderReceipts {
   return Object.fromEntries(Object.entries(receipts).filter(([, receipt]) => receipt.status === "scored" && receipt.flagged));
 }
+
+/** What the own model said about one scan, flagged or not, with no text (Ahmed's 26 Nov WhatsApp test). */
+export type OwnScanScoreReceipt = {
+  modelVersion: string | null;
+  lang: string | null;
+  topCategory: string | null;
+  topScore: number | null;
+};
+
+/**
+ * The flagged-only receipt keeps scores for flagged categories alone, so a scan that stayed quiet left no
+ * way to tell a cut-off miss from text that never reached the model. This reads the validated own receipt:
+ * the highest of the seven harm scores and the language. Never the text. The cut-off is not in the provider's
+ * response contract (ai-engine ScoredOutcome); it stays in the serving config and alarm-levels notes, and
+ * exposing it from the engine is after Saturday (Claude, #1227 7204404478).
+ */
+export function readOwnScanScoreReceipt(data: unknown, receipt: ProviderReceipts["own"]): OwnScanScoreReceipt | undefined {
+  // Codex (#1227): only a receipt the provider parser validated and scored (trace, mode, region, model and all
+  // seven scores in range) may be logged. The receipt keeps flagged scores only, so the quiet top score comes
+  // from the same raw outcome the parser just validated, plus its language.
+  if (receipt?.status !== "scored") return undefined;
+  if (!record(data) || !record(data.outcomes) || !record(data.outcomes.own)) return undefined;
+  const raw = data.outcomes.own;
+  let topCategory: string | null = null;
+  let topScore: number | null = null;
+  if (record(raw.categories)) {
+    for (const label of harmful) {
+      const score = raw.categories[label];
+      if (typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 1 &&
+          (topScore === null || score > topScore)) {
+        topCategory = label;
+        topScore = score;
+      }
+    }
+  }
+  return {
+    modelVersion: typeof receipt.model === "string" && ownModels.has(receipt.model) ? receipt.model : null,
+    lang: typeof raw.language === "string" && languages.has(raw.language) ? raw.language : null,
+    topCategory,
+    topScore: topScore === null ? null : Math.round(topScore * 10_000) / 10_000,
+  };
+}
