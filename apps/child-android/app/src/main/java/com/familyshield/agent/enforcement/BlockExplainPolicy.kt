@@ -138,7 +138,7 @@ object BlockExplainPolicy {
 
         val screenTime = ruleSet.screenTime
         val effectiveDailyLimit = effectiveDailyLimit(ruleSet, local, bonusMinutes)
-        val totalUsed = minutesUsedToday.values.sum()
+        val totalUsed = EssentialPackages.sumDailyBudgetMinutes(minutesUsedToday)
 
         val explicitAllow = appRule?.action == "allow"
         // RuleEngine.evaluateWithReason: an explicit parent "allow" short-circuits the global daily limit,
