@@ -41,7 +41,7 @@ vi.mock("../src/lib/push/notify.js", () => ({
 }));
 
 const { prisma } = await import("../src/db.js");
-const { incompleteDedupeKey } = await import("../src/lib/deviceSetup.js");
+const { incompleteDedupeKey, legacyIncompleteDedupeKey } = await import("../src/lib/deviceSetup.js");
 const { storeAlertOnce } = await import("../src/lib/alerts.js");
 const { AWAIT_REPORT, completeDeviceSetupIfReady, raisePhoneSetupNotice, withSetupOpen } = await import("../src/lib/deviceSetupTransitions.js");
 // A completed pairing's late notice is either dropped or kept queued on the phone (osra-security#82); never an alert.
@@ -196,6 +196,30 @@ describeDatabase("setup completion and the setup notice on real Postgres (osra-s
     expect(again?.deduplicated).toBe(true);
     expect(sent.events).toEqual(["publish", "push"]);
     expect(await noticeRows(device.id)).toHaveLength(1);
+    expect((await deviceNow(device.id)).setupCompletedAt?.getTime()).toBe(completedAt.getTime());
+  });
+
+  it("upgrade over a pre-#1208 legacy-key row: the same row is raised again, one push, retry quiet (Codex 7205450617 point 2)", async () => {
+    const completedAt = new Date(Date.now() - 30 * 60_000);
+    const { device, notice, pairedAt } = await pairing(completedAt, "missing");
+    const legacy = await prisma.alert.create({
+      data: {
+        childId: notice.childId, deviceId: device.id, severity: "warning", category: "tamper",
+        title: "Phone setup needs attention", body: "Setup is not complete.", acknowledged: true,
+        dedupeKey: legacyIncompleteDedupeKey(device.id, pairedAt), createdAt: new Date(pairedAt.getTime() + 1_000),
+        metadata: { type: "setup_incomplete", missing: ["location"] },
+      },
+    });
+    const first = await raisePhoneSetupNotice(device.id, pairedAt, notice);
+    expect(first && first !== AWAIT_REPORT ? first.alert.id : null).toBe(legacy.id);
+    expect(first && first !== AWAIT_REPORT ? first.deduplicated : null).toBe(false);
+    expect(sent.events).toEqual(["publish", "push"]);
+    const again = await raisePhoneSetupNotice(device.id, pairedAt, notice);
+    expect(again && again !== AWAIT_REPORT ? again.alert.id : null).toBe(legacy.id);
+    expect(sent.events).toEqual(["publish", "push"]);
+    const rows = await prisma.alert.findMany({ where: { deviceId: device.id, category: "tamper" } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: legacy.id, dedupeKey: legacyIncompleteDedupeKey(device.id, pairedAt), acknowledged: false });
     expect((await deviceNow(device.id)).setupCompletedAt?.getTime()).toBe(completedAt.getTime());
   });
 

@@ -278,7 +278,10 @@ export async function raisePhoneSetupNotice(
       }
       clearWait = true;
       const sharedKey = incompleteDedupeKey(deviceId);
-      const existing = await tx.alert.findFirst({ where: { deviceId, category: "tamper", dedupeKey: sharedKey } });
+      // Codex (osra-security#82, 7205450617 point 2): the pairing's one notice may still live under the pre-#1208
+      // per-episode key. Look it up by both keys, so a legacy row is re-raised in place (same id, same key) instead
+      // of a second row being stored under the shared key.
+      const existing = await findSetupNotice(tx, deviceId, pairedAt);
       if (existing && new Date(existing.createdAt).getTime() >= new Date(state.setupCompletedAt).getTime()) {
         return { alert: existing, deduplicated: true, dispatch: NO_DISPATCH, upgrade: true };
       }
@@ -308,9 +311,7 @@ export async function raisePhoneSetupNotice(
   } catch (err) {
     if (!isUniqueViolation(err)) throw err;
     // Another request stored this pairing's notice between our read and write; it is the one notice.
-    const existing = await prisma.alert.findFirst({
-      where: { deviceId, category: "tamper", dedupeKey: incompleteDedupeKey(deviceId) },
-    });
+    const existing = await findSetupNotice(prisma, deviceId, pairedAt);
     if (!existing) throw err;
     return { alert: existing, deduplicated: true, dispatch: NO_DISPATCH, upgrade: false };
   }

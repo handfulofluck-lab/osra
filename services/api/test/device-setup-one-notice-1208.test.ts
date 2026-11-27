@@ -244,6 +244,41 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     await app.close();
   });
 
+  it("upgrade after a pre-#1208 reminder under the legacy key: that row is raised again in place, no second row (Codex 7205450617 point 2)", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    alerts.push({
+      id: "legacy-first", childId: CHILD.id, deviceId: "dev-1", severity: "warning", category: "tamper",
+      title: "Phone setup needs attention", heldDuringSetup: false, attemptCount: 1, acknowledged: true,
+      dedupeKey: legacyIncompleteDedupeKey("dev-1", START), createdAt: new Date(START.getTime() + 1_000),
+      metadata: { type: "setup_incomplete", missing: ["location"], pairedAt: START.toISOString() },
+    });
+    const completedAt = new Date(START.getTime() + 5_000);
+    deviceRow.setupCompletedAt = completedAt;
+    deviceRow.capabilities = caps({ ...SEVEN, notification_listener: "missing" });
+
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(posted.statusCode).toBe(201);
+    expect(setupNotices()).toHaveLength(1);
+    expect(setupNotices()[0]).toEqual(expect.objectContaining({
+      id: "legacy-first",
+      dedupeKey: legacyIncompleteDedupeKey("dev-1", START),
+      acknowledged: false,
+      title: "Setup is not finished yet",
+    }));
+    expect((setupNotices()[0].metadata as Record<string, unknown>).pushDeliverySeq).toBe(1);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // A retry of the same upgrade notice is quiet: same row, no second push, completion kept.
+    const again = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(again.statusCode).toBe(200);
+    expect(setupNotices()).toHaveLength(1);
+    expect(setupNotices()[0].id).toBe("legacy-first");
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(deviceRow.setupCompletedAt).toBe(completedAt);
+    await app.close();
+  });
+
   it("notice ahead of its telemetry: retryable until the report lands, then one upgrade notice (Codex 7204850059 point 1)", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     const completedAt = new Date(START.getTime() + 5_000);
