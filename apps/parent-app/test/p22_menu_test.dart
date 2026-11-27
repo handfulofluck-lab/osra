@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_api_client.dart';
-import 'test_app.dart';
 
 /// P-22 reachability (Claude, 10:12 UAE): with `OSRA_UX_P22` on, the dashboard menu carries one **Settings**
 /// entry; with it off, the four links this menu shipped with stay exactly as they were. Without this the
