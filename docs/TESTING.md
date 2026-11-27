@@ -1167,6 +1167,12 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
 
+For the SafeSearch row (#1226), use the approved paired test family and keep the supported
+browser open while the parent changes SafeSearch. Use a neutral query and check that the browser's
+SafeSearch settings report the requested state. With SafeSearch on, the `FilterVpn` diagnostic
+should record the search host and the `REWRITE` decision. Check that the diagnostic omits the
+query text and full URL. Record the exact Child build and restore the test family's prior setting.
+
 For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
 each request. The existing `paused` field reports the requested setting. Its optional
 `internetRequest` contains the request ID, generation, action, localizable timestamp and exact

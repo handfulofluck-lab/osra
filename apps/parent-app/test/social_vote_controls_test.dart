@@ -326,6 +326,40 @@ void main() {
   });
 
   testWidgets(
+      'U100: compact cast vote can be changed by tapping the chosen chip then the other button',
+      (tester) async {
+    // Mutant: disabling _selectedPill.onPressed or failing to reset _editing on
+    // _cast breaks reopening both choices or switching to Not concerning.
+    final api = await pumpControls(tester, compact: true);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Concerning'));
+    await tester.pumpAndSettle();
+    expect(api.calls('POST', '/v1/social/events/event-1/feedback'),
+        hasLength(1));
+    expect(api.calls('POST', '/v1/social/events/event-1/feedback').last.body,
+        {'verdict': 'concerning'});
+    final chosenChip = find.widgetWithText(FilledButton, 'Concerning');
+    expect(chosenChip, findsOneWidget);
+
+    await tester.tap(chosenChip);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Concerning'), findsOneWidget);
+    final notConcerningBtn =
+        find.widgetWithText(OutlinedButton, 'Not concerning');
+    expect(notConcerningBtn, findsOneWidget);
+
+    await tester.tap(notConcerningBtn);
+    await tester.pumpAndSettle();
+    final posts = api.calls('POST', '/v1/social/events/event-1/feedback');
+    expect(posts, hasLength(2));
+    expect(posts.last.body, {'verdict': 'not_concerning'});
+    expect(find.widgetWithText(FilledButton, 'Not concerning'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Concerning'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets(
       'not-concerning compact pill uses the neutral surface and localized voter line',
       (tester) async {
     await pumpControls(tester, compact: true, initialVerdict: 'not_concerning');

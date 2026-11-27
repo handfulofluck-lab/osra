@@ -693,6 +693,63 @@ void main() {
     });
 
     testWidgets(
+        'U100: tapping the cast vote chip on a 390px concern card reopens both choices without overflow and switches vote',
+        (tester) async {
+      // Mutant: keeping _editing only inside SocialVoteControls without lifting
+      // it into _ConcernCard either overflows the 390px Row or drops _editing
+      // when moving from title to subtitle, preventing the Not concerning tap.
+      tester.view.physicalSize = const Size(390, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final api = FakeApiClient({
+        ...socialRoutes(concerns: [concernJson()]),
+        'POST /v1/social/events/se-1/feedback': (request) => {
+              'feedback': {
+                'verdict': request.body['verdict'],
+                'parentDisplayName': 'QA Parent',
+                'firstVotedAt': '2026-11-24T10:01:00.000Z',
+                'lastChangedAt': '2026-11-24T10:02:00.000Z',
+              },
+            },
+      });
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api,
+          tall: true);
+      await flushFakeHttp(tester);
+
+      await reveal(tester, find.widgetWithText(OutlinedButton, 'Concerning'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Concerning'));
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+      expect(api.calls('POST', '/v1/social/events/se-1/feedback').single.body,
+          {'verdict': 'concerning'});
+      final chip = find.widgetWithText(FilledButton, 'Concerning');
+      expect(chip, findsOneWidget);
+
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final notConcerning =
+          find.widgetWithText(OutlinedButton, 'Not concerning');
+      expect(notConcerning, findsOneWidget);
+
+      await tester.tap(notConcerning);
+      await flushFakeHttp(tester);
+      await tester.pumpAndSettle();
+      final posts = api.calls('POST', '/v1/social/events/se-1/feedback');
+      expect(posts, hasLength(2));
+      expect(posts.last.body, {'verdict': 'not_concerning'});
+      expect(
+          find.widgetWithText(FilledButton, 'Not concerning'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Concerning'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets(
         'the latest co-parent vote and isolated voter name render while own choices are unset',
         (tester) async {
       final api = FakeApiClient(socialRoutes(concerns: [
