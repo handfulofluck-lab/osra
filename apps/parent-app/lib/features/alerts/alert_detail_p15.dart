@@ -26,7 +26,10 @@ import 'alert_detail_screen.dart'
 
 /// Build-time switch for UX Final Decisions P-15 Alert detail (#1179).
 /// Defaults to `false` so legacy `_SocialAlertDetailBody` remains the fallback.
-const bool kP15AlertDetailDefault = bool.fromEnvironment('OSRA_UX_P15', defaultValue: false);
+const bool kP15AlertDetailDefault = bool.fromEnvironment(
+  'OSRA_UX_P15',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 
 /// Feature switch for P-15 Alert detail (#1179).
 final p15AlertDetailEnabledProvider = Provider<bool>((ref) => kP15AlertDetailDefault);

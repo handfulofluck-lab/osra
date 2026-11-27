@@ -93,6 +93,21 @@
   "familyMembersMenu": "Family members",
   "appearanceMenu": "Appearance",
   "digestPreferencesMenu": "Digest preferences",
+  "settingsTitle": "Settings",
+  "settingsGroupLanguage": "Language and appearance",
+  "settingsGroupSecurity": "Security",
+  "settingsGroupAccount": "Account",
+  "settingsSignOut": "Sign out",
+  "settingsSignOutAll": "Sign out of all devices",
+  "settingsValueOn": "On",
+  "settingsValueOff": "Off",
+  "settingsSignOutAllTitle": "Sign out of all devices?",
+  "settingsSignOutAllBody": "You will have to sign in again on every device that uses your account, including this one.",
+  "settingsSignOutAllConfirm": "Sign out everywhere",
+  "settingsSecurityCardTitle": "Finish securing your account",
+  "settingsSecurityCardLine": "Two-step verification is off",
+  "settingsSecurityCardButton": "Turn on",
+  "settingsTimeZone": "Time zone",
   "signOutTooltip": "Sign out",
   "familyLoadFailed": "Couldn't load your family. Check your connection and try again.",
   "noChildrenYet": "No children yet — tap \"Add child\"",
@@ -2641,5 +2656,12 @@
       }
     }
   },
-  "homeExampleBadge": "Example"
+  "homeExampleBadge": "Example",
+  "p01WelcomeSubtitle": "A clearer view of your family's digital day.",
+  "p01ExampleBadge": "Example",
+  "p01NoAdsLine": "No ads. Your family's data is never sold.",
+  "p01PreviewScreenTimeValue": "1 h 20 min left",
+  "p01PreviewBedtimeValue": "21:30 → 07:00",
+  "p01PreviewAppsValue": "2 blocked",
+  "p01PreviewLocationValue": "At school"
 }

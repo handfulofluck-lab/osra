@@ -252,6 +252,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPreferencesMenu => 'Digest preferences';
 
   @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsGroupLanguage => 'Language and appearance';
+
+  @override
+  String get settingsGroupSecurity => 'Security';
+
+  @override
+  String get settingsGroupAccount => 'Account';
+
+  @override
+  String get settingsSignOut => 'Sign out';
+
+  @override
+  String get settingsSignOutAll => 'Sign out of all devices';
+
+  @override
+  String get settingsValueOn => 'On';
+
+  @override
+  String get settingsValueOff => 'Off';
+
+  @override
+  String get settingsSignOutAllTitle => 'Sign out of all devices?';
+
+  @override
+  String get settingsSignOutAllBody =>
+      'You will have to sign in again on every device that uses your account, including this one.';
+
+  @override
+  String get settingsSignOutAllConfirm => 'Sign out everywhere';
+
+  @override
+  String get settingsSecurityCardTitle => 'Finish securing your account';
+
+  @override
+  String get settingsSecurityCardLine => 'Two-step verification is off';
+
+  @override
+  String get settingsSecurityCardButton => 'Turn on';
+
+  @override
+  String get settingsTimeZone => 'Time zone';
+
+  @override
   String get signOutTooltip => 'Sign out';
 
   @override
@@ -4101,4 +4147,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get homeExampleBadge => 'Example';
+
+  @override
+  String get p01WelcomeSubtitle =>
+      'A clearer view of your family\'s digital day.';
+
+  @override
+  String get p01ExampleBadge => 'Example';
+
+  @override
+  String get p01NoAdsLine => 'No ads. Your family\'s data is never sold.';
+
+  @override
+  String get p01PreviewScreenTimeValue => '1 h 20 min left';
+
+  @override
+  String get p01PreviewBedtimeValue => '21:30 → 07:00';
+
+  @override
+  String get p01PreviewAppsValue => '2 blocked';
+
+  @override
+  String get p01PreviewLocationValue => 'At school';
 }
