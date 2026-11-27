@@ -1898,3 +1898,16 @@ that the old matcher missed (#310).
 ### Staging analyzer task size (#962)
 
 For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
+
+### Parent Home P-07 + P-07-RTL (#1179)
+
+Run from `apps/parent-app`:
+
+```bash
+flutter test --dart-define=OSRA_UX_P07=true test/p07_home_screen_test.dart
+flutter test test/p07_home_screen_test.dart
+```
+
+- **Shared G4 / P-20 time-request actions:** Home `Needs you` renders `TimeRequestActions` on Android daily-limit requests (`POST /v1/alerts/:id/time-decision`, including `409` winning caregiver receipts), while child-card quick `+15 min` / `+30 min` buttons keep the 5-second local Undo hold over `POST /v1/controls/children/:id/bonus`.
+- **G5 daily time-left window:** `deviceCommandHistoryProvider` reads `limit=100` (matching the server `listDeviceCommands` cap). If more than 100 commands are sent to one device in a single day so an earlier same-day `acked` grant ages out of that slice, `computeHomeTimeSummary` conservatively drops the aged-out grant and clamps `remainingMinutes` at `0` rather than reading stale `ruleSet.bonusMinutesToday`.
+- **A10 live-arrival pairing claims:** while Home watches an unexpired pairing code in `status: waiting`, `activePairingClaimProvider` re-polls every 2 seconds until a claim arrives, `404` is returned, the code expires, or Home unmounts.
