@@ -530,6 +530,96 @@ abstract class AppLocalizations {
   /// **'Digest preferences'**
   String get digestPreferencesMenu;
 
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @settingsGroupLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Language and appearance'**
+  String get settingsGroupLanguage;
+
+  /// No description provided for @settingsGroupSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get settingsGroupSecurity;
+
+  /// No description provided for @settingsGroupAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get settingsGroupAccount;
+
+  /// No description provided for @settingsSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get settingsSignOut;
+
+  /// No description provided for @settingsSignOutAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices'**
+  String get settingsSignOutAll;
+
+  /// No description provided for @settingsValueOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get settingsValueOn;
+
+  /// No description provided for @settingsValueOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get settingsValueOff;
+
+  /// No description provided for @settingsSignOutAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices?'**
+  String get settingsSignOutAllTitle;
+
+  /// No description provided for @settingsSignOutAllBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will have to sign in again on every device that uses your account, including this one.'**
+  String get settingsSignOutAllBody;
+
+  /// No description provided for @settingsSignOutAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get settingsSignOutAllConfirm;
+
+  /// No description provided for @settingsSecurityCardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish securing your account'**
+  String get settingsSecurityCardTitle;
+
+  /// No description provided for @settingsSecurityCardLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is off'**
+  String get settingsSecurityCardLine;
+
+  /// No description provided for @settingsSecurityCardButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get settingsSecurityCardButton;
+
+  /// No description provided for @settingsTimeZone.
+  ///
+  /// In en, this message translates to:
+  /// **'Time zone'**
+  String get settingsTimeZone;
+
   /// No description provided for @signOutTooltip.
   ///
   /// In en, this message translates to:
@@ -6040,95 +6130,113 @@ abstract class AppLocalizations {
   /// **'Turn on alerts'**
   String get alertsOffTurnOnAction;
 
-  /// No description provided for @locationP13AllChildren.
+  /// No description provided for @pairP05Title.
   ///
   /// In en, this message translates to:
-  /// **'All'**
-  String get locationP13AllChildren;
+  /// **'Connect {child}\'s phone'**
+  String pairP05Title(String child);
 
-  /// No description provided for @locationP13Refresh.
+  /// No description provided for @pairP05TitleGeneric.
   ///
   /// In en, this message translates to:
-  /// **'Refresh'**
-  String get locationP13Refresh;
+  /// **'Connect your child\'s phone'**
+  String get pairP05TitleGeneric;
 
-  /// No description provided for @locationP13Refreshing.
+  /// No description provided for @pairP05Subtitle.
   ///
   /// In en, this message translates to:
-  /// **'Checking…'**
-  String get locationP13Refreshing;
+  /// **'On {child}\'s phone, install OSRA Kids, then scan this.'**
+  String pairP05Subtitle(String child);
 
-  /// No description provided for @locationP13Directions.
+  /// No description provided for @pairP05SubtitleGeneric.
   ///
   /// In en, this message translates to:
-  /// **'Directions'**
-  String get locationP13Directions;
+  /// **'Install OSRA Kids on the child\'s phone, then scan this.'**
+  String get pairP05SubtitleGeneric;
 
-  /// No description provided for @locationP13EarlierToday.
+  /// No description provided for @pairP05OrTypeCode.
   ///
   /// In en, this message translates to:
-  /// **'Earlier today'**
-  String get locationP13EarlierToday;
+  /// **'Or type this code'**
+  String get pairP05OrTypeCode;
 
-  /// No description provided for @locationP13EarlierTodayEmpty.
+  /// No description provided for @pairP05ValidFor.
   ///
   /// In en, this message translates to:
-  /// **'No earlier places recorded today.'**
-  String get locationP13EarlierTodayEmpty;
+  /// **'Valid for {time}'**
+  String pairP05ValidFor(String time);
 
-  /// No description provided for @locationP13SavedPlacesTitle.
+  /// No description provided for @pairP05CodeExpired.
   ///
   /// In en, this message translates to:
-  /// **'Saved places'**
-  String get locationP13SavedPlacesTitle;
+  /// **'Code expired'**
+  String get pairP05CodeExpired;
 
-  /// No description provided for @locationP13AddPlace.
+  /// No description provided for @pairP05NewCode.
   ///
   /// In en, this message translates to:
-  /// **'Add place'**
-  String get locationP13AddPlace;
+  /// **'New code'**
+  String get pairP05NewCode;
 
-  /// No description provided for @locationP13AlertsEnterLeave.
+  /// No description provided for @pairP05WaitingFor.
   ///
   /// In en, this message translates to:
-  /// **'Arrive & leave alerts'**
-  String get locationP13AlertsEnterLeave;
+  /// **'Waiting for {child}\'s phone…'**
+  String pairP05WaitingFor(String child);
 
-  /// No description provided for @locationP13AlertsEnterOnly.
+  /// No description provided for @pairP05WaitingGeneric.
   ///
   /// In en, this message translates to:
-  /// **'Arrive alert'**
-  String get locationP13AlertsEnterOnly;
+  /// **'Waiting for the child\'s phone…'**
+  String get pairP05WaitingGeneric;
 
-  /// No description provided for @locationP13AlertsLeaveOnly.
+  /// No description provided for @pairP05ConfirmDeviceTitle.
   ///
   /// In en, this message translates to:
-  /// **'Leave alert'**
-  String get locationP13AlertsLeaveOnly;
+  /// **'Confirm this device?'**
+  String get pairP05ConfirmDeviceTitle;
 
-  /// No description provided for @locationP13AlertsOff.
+  /// No description provided for @pairP05ConfirmDeviceBody.
   ///
   /// In en, this message translates to:
-  /// **'Alerts off'**
-  String get locationP13AlertsOff;
+  /// **'{model} wants to connect. Confirm to link it.'**
+  String pairP05ConfirmDeviceBody(String model);
 
-  /// No description provided for @locationP13NoLocationYet.
+  /// No description provided for @pairP05ConfirmLink.
   ///
   /// In en, this message translates to:
-  /// **'No location reported yet.'**
-  String get locationP13NoLocationYet;
+  /// **'Confirm and link'**
+  String get pairP05ConfirmLink;
 
-  /// No description provided for @locationP13RingNotYetOnIphone.
+  /// No description provided for @pairP05Decline.
   ///
   /// In en, this message translates to:
-  /// **'Not yet available on iPhone'**
-  String get locationP13RingNotYetOnIphone;
+  /// **'Decline'**
+  String get pairP05Decline;
 
-  /// No description provided for @locationP13RadiusMeters.
+  /// No description provided for @pairP05Connected.
   ///
   /// In en, this message translates to:
-  /// **'{meters} m radius'**
-  String locationP13RadiusMeters(String meters);
+  /// **'Phone connected.'**
+  String get pairP05Connected;
+
+  /// No description provided for @pairP05SendInstallLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Send install link'**
+  String get pairP05SendInstallLink;
+
+  /// No description provided for @pairP05InstallLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Install link copied to share.'**
+  String get pairP05InstallLinkCopied;
+
+  /// No description provided for @pairP05SkipForNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip for now'**
+  String get pairP05SkipForNow;
 
   /// No description provided for @timeRequestTitle.
   ///
@@ -6735,6 +6843,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'At school'**
   String get p01PreviewLocationValue;
+
+  /// No description provided for @locationP13AllChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get locationP13AllChildren;
+
+  /// No description provided for @locationP13Refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get locationP13Refresh;
+
+  /// No description provided for @locationP13Refreshing.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get locationP13Refreshing;
+
+  /// No description provided for @locationP13Directions.
+  ///
+  /// In en, this message translates to:
+  /// **'Directions'**
+  String get locationP13Directions;
+
+  /// No description provided for @locationP13EarlierToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier today'**
+  String get locationP13EarlierToday;
+
+  /// No description provided for @locationP13EarlierTodayEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No earlier places recorded today.'**
+  String get locationP13EarlierTodayEmpty;
+
+  /// No description provided for @locationP13SavedPlacesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved places'**
+  String get locationP13SavedPlacesTitle;
+
+  /// No description provided for @locationP13AddPlace.
+  ///
+  /// In en, this message translates to:
+  /// **'Add place'**
+  String get locationP13AddPlace;
+
+  /// No description provided for @locationP13AlertsEnterLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrive & leave alerts'**
+  String get locationP13AlertsEnterLeave;
+
+  /// No description provided for @locationP13AlertsEnterOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrive alert'**
+  String get locationP13AlertsEnterOnly;
+
+  /// No description provided for @locationP13AlertsLeaveOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave alert'**
+  String get locationP13AlertsLeaveOnly;
+
+  /// No description provided for @locationP13AlertsOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts off'**
+  String get locationP13AlertsOff;
+
+  /// No description provided for @locationP13NoLocationYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No location reported yet.'**
+  String get locationP13NoLocationYet;
+
+  /// No description provided for @locationP13RingNotYetOnIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get locationP13RingNotYetOnIphone;
+
+  /// No description provided for @locationP13RadiusMeters.
+  ///
+  /// In en, this message translates to:
+  /// **'{meters} m radius'**
+  String locationP13RadiusMeters(String meters);
 }
 
 class _AppLocalizationsDelegate

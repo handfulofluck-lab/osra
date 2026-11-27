@@ -108,6 +108,90 @@
     <string name="setup_welcome_body">A few steps so your parent can help keep this phone safe.</string>
     <string name="setup_welcome_start">Start</string>
 
+    <!-- C-05 (#1179) & #1174: transparent first-run welcome, permissions-before-pairing, agreement last. -->
+    <string name="c05_step_badge_1">Step 1 of 3</string>
+    <string name="c05_step_badge_2">Step 2 of 3</string>
+    <string name="c05_step_badge_3">Step 3 of 3</string>
+    <string name="c05_pair_title">Connect to your parent</string>
+    <string name="c05_pair_code_label">Your parent\'s code</string>
+    <string name="c05_pair_code_hint">6-digit code</string>
+    <string name="c05_pair_connect">Connect</string>
+    <string name="c05_pair_scan_qr">Scan QR code</string>
+    <string name="c05_checks_title">What OSRA checks</string>
+    <string name="c05_checks_badge">Never hidden</string>
+    <string name="c05_checks_screen_time_title">Your screen time and routines</string>
+    <string name="c05_checks_screen_time_subtitle">Like your daily limit and bedtime</string>
+    <string name="c05_checks_location_title">Where your phone is</string>
+    <string name="c05_checks_location_subtitle">So a parent can find you</string>
+    <string name="c05_checks_messages_title">Risky messages only</string>
+    <string name="c05_checks_messages_subtitle">Parents only see messages that look risky</string>
+    <string name="c05_roadmap_heading">Next</string>
+    <string name="c05_roadmap_step_1">1 · Allow a few things, one at a time. Each one says why.</string>
+    <string name="c05_roadmap_step_2">2 · Connect your phone with your parent\'s code.</string>
+    <string name="c05_roadmap_step_3">3 · Read your family rules together.</string>
+    <string name="c05_welcome_footer_hint">A parent can help you tap Allow.</string>
+    <string name="c05_continue_to_pairing">Continue</string>
+    <string name="c05_agreement_title">Your family rules</string>
+    <string name="c05_agreement_body">Read these together before opening your phone.</string>
+    <string name="c05_agreement_finish">Done, let\'s start</string>
+    <string name="c05_rule_daily_limit_title">Daily limit</string>
+    <string name="c05_rule_time_window">%1$s – %2$s</string>
+    <string name="c05_rule_blocked_categories_title">Blocked categories</string>
+    <plurals name="c05_rule_hours">
+        <item quantity="one">%1$s hour</item>
+        <item quantity="other">%1$s hours</item>
+    </plurals>
+    <plurals name="c05_rule_minutes">
+        <item quantity="one">%1$s minute</item>
+        <item quantity="other">%1$s minutes</item>
+    </plurals>
+    <string name="c05_rule_hours_and_minutes">%1$s %2$s</string>
+    <string name="c05_cat_pornography">Adult content</string>
+    <string name="c05_cat_gambling">Gambling</string>
+    <string name="c05_cat_drugs">Drugs</string>
+    <string name="c05_cat_violence">Violence</string>
+    <string name="c05_cat_weapons">Weapons</string>
+    <string name="c05_cat_hate">Hate speech</string>
+    <string name="c05_cat_self_harm">Self-harm</string>
+    <string name="c05_cat_dating">Dating</string>
+    <string name="c05_cat_social_media_nsfw">Adult social media</string>
+    <string name="c05_cat_chat_random">Random chat</string>
+    <string name="c05_cat_proxies_vpn">Proxies &amp; VPN</string>
+    <string name="c05_cat_warez">Piracy</string>
+    <string name="c05_cat_ai_chatbots">AI chatbots</string>
+    <string name="c05_cat_social_media">Social media</string>
+    <string name="c05_cat_chat">Chat</string>
+    <!-- C-05 (#1208 B7): child-facing per-step permission titles, explanations, and buttons. -->
+    <string name="c05_grant_accessibility_title">Accessibility</string>
+    <string name="c05_grant_accessibility_why">Lets OSRA block apps and keep limits. OSRA can\'t work without it.</string>
+    <string name="c05_grant_accessibility_button">Allow accessibility</string>
+    <string name="c05_grant_usage_title">Usage access</string>
+    <string name="c05_grant_usage_why">Counts screen time for each app so limits are right.</string>
+    <string name="c05_grant_usage_button">Allow usage access</string>
+    <string name="c05_grant_overlay_title">Display over other apps</string>
+    <string name="c05_grant_overlay_why">Shows the lock and pause screens on top of other apps.</string>
+    <string name="c05_grant_overlay_button">Allow display over apps</string>
+    <string name="c05_grant_device_admin_title">Device admin</string>
+    <string name="c05_grant_device_admin_why">Stops OSRA being removed without your parent.</string>
+    <string name="c05_grant_device_admin_button">Allow device admin</string>
+    <string name="c05_grant_web_filter_title">Web filter</string>
+    <string name="c05_grant_web_filter_why">Blocks unsafe sites and keeps searches safe.</string>
+    <string name="c05_grant_web_filter_button">Allow web filter</string>
+    <string name="c05_grant_location_title">Location</string>
+    <string name="c05_grant_location_why">Lets your parent see where this phone is, even when OSRA is closed.</string>
+    <string name="c05_grant_location_button">Allow location all the time</string>
+    <string name="c05_grant_private_dns_title">Private DNS</string>
+    <string name="c05_grant_private_dns_why">A Private DNS provider gets around the web filter. Set it to Automatic or Off.</string>
+    <string name="c05_grant_private_dns_button">Open Private DNS settings</string>
+    <string name="c05_grant_battery_title">Battery</string>
+    <string name="c05_grant_battery_why">Lets OSRA keep running in the background so your parent\'s changes arrive on time.</string>
+    <string name="c05_grant_battery_button">Allow background use</string>
+    <string name="c05_grant_usb_title">USB debugging</string>
+    <string name="c05_grant_usb_button">Open Developer options</string>
+    <string name="c05_grant_notification_title">Notification access</string>
+    <string name="c05_grant_notification_why">Lets OSRA check messages from chat apps for safety.</string>
+    <string name="c05_grant_notification_button">Allow notification access</string>
+
     <!-- PairingActivity: "protect this device", setup complete, the checklist and the status screen. -->
     <string name="setup_protect_title">Protect this device · أسرة</string>
     <string name="setup_protect_body">On the next screen, tap \"Activate\" to give OSRA device-admin rights. With it, this app cannot be uninstalled without the parent PIN and your parent can lock the device remotely. Without it, protection is alert-only.</string>
@@ -117,8 +201,8 @@
     <string name="setup_continue_without">Continue without protection</string>
     <string name="setup_complete_title">Setup complete</string>
     <string name="setup_complete_body">The agent is now monitoring this device.</string>
-    <string name="setup_call_sms_invite">Optional: grant Call Log and SMS permissions so calls and messages are logged for safety review (log-only; the agent never becomes the default dialer).</string>
-    <string name="setup_grant_call_sms">Grant call &amp; SMS permissions</string>
+    <string name="setup_call_sms_invite">Optional: let OSRA check calls and texts for safety</string>
+    <string name="setup_grant_call_sms">Allow calls and texts</string>
     <string name="setup_open_status">Open status</string>
     <string name="setup_checklist_first_title">Finish protecting this device · أسرة</string>
     <string name="setup_checklist_title">Protection checklist · أسرة</string>
@@ -127,7 +211,7 @@
     <string name="setup_back">Back</string>
     <string name="setup_done">Done</string>
     <string name="setup_recommended">(recommended)</string>
-    <string name="setup_grant_button">Grant: %1$s</string>
+    <string name="setup_grant_button">Allow %1$s</string>
     <string name="setup_web_filter_missing">⚠️ Web filter not set up — allow the OSRA VPN (it only filters web addresses on this phone; nothing leaves the device).</string>
     <string name="setup_web_filter_setup">Set up web filter</string>
     <string name="setup_web_filter_connected">✓ Web filter: connected (SafeSearch, blocked sites, pause-internet)</string>
@@ -194,8 +278,8 @@
     <string name="onboarding_grant_notification_why">Reads notifications from monitored apps for the safety scan.</string>
 
     <!-- The progress line, as two whole lines: the sweep forbids building it from pieces. -->
-    <string name="onboarding_progress">%1$d of %2$d required grants done</string>
-    <string name="onboarding_progress_complete">%1$d of %2$d required grants done — protection is complete</string>
+    <string name="onboarding_progress">%1$s of %2$s steps done</string>
+    <string name="onboarding_progress_complete">All done. Your phone is protected.</string>
     <!-- ADR-0021 B3: what this build cannot capture. Three whole lines, one per case. -->
     <string name="onboarding_capture_notifications">This build captures messages from the screen only. The sideloaded Full build adds notification capture.</string>
     <string name="onboarding_capture_call_sms">This build captures messages from the screen only. The sideloaded Full build adds call and SMS capture.</string>
@@ -402,10 +486,7 @@
     <string name="c03_adults_fallback_speaking">my parents</string>
     <string name="c03_adults_fallback_addressing">your parents</string>
     <string name="c03_question_label">How much more time?</string>
-    <string name="c03_selected_badge">Selected</string>
-    <string name="c03_option_15_eyebrow">A little more</string>
     <string name="c03_option_15_amount">+15 min</string>
-    <string name="c03_option_30_eyebrow">More time</string>
     <string name="c03_option_30_amount">+30 min</string>
     <string name="c03_preview_eyebrow">What %1$s will see</string>
     <string name="c03_preview_sentence">Request for %1$s more minutes of screen time, today only.</string>

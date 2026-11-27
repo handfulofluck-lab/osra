@@ -260,6 +260,52 @@ class AppLocalizationsAr extends AppLocalizations {
   String get digestPreferencesMenu => 'تفضيلات الملخص';
 
   @override
+  String get settingsTitle => 'الإعدادات';
+
+  @override
+  String get settingsGroupLanguage => 'اللغة والمظهر';
+
+  @override
+  String get settingsGroupSecurity => 'الأمان';
+
+  @override
+  String get settingsGroupAccount => 'الحساب';
+
+  @override
+  String get settingsSignOut => 'تسجيل الخروج';
+
+  @override
+  String get settingsSignOutAll => 'تسجيل الخروج من كل الأجهزة';
+
+  @override
+  String get settingsValueOn => 'مفعّل';
+
+  @override
+  String get settingsValueOff => 'غير مفعّل';
+
+  @override
+  String get settingsSignOutAllTitle => 'تسجيل الخروج من كل الأجهزة؟';
+
+  @override
+  String get settingsSignOutAllBody =>
+      'سيلزم تسجيل الدخول من جديد على كل جهاز يستخدم حسابك، بما فيه هذا الجهاز.';
+
+  @override
+  String get settingsSignOutAllConfirm => 'تسجيل الخروج من كل الأجهزة';
+
+  @override
+  String get settingsSecurityCardTitle => 'إكمال تأمين حسابك';
+
+  @override
+  String get settingsSecurityCardLine => 'التحقق بخطوتين غير مفعّل';
+
+  @override
+  String get settingsSecurityCardButton => 'تفعيل';
+
+  @override
+  String get settingsTimeZone => 'المنطقة الزمنية';
+
+  @override
   String get signOutTooltip => 'تسجيل الخروج';
 
   @override
@@ -3973,52 +4019,69 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alertsOffTurnOnAction => 'تفعيل التنبيهات';
 
   @override
-  String get locationP13AllChildren => 'الكل';
-
-  @override
-  String get locationP13Refresh => 'تحديث';
-
-  @override
-  String get locationP13Refreshing => 'جارٍ التحقق…';
-
-  @override
-  String get locationP13Directions => 'الاتجاهات';
-
-  @override
-  String get locationP13EarlierToday => 'في وقت سابق اليوم';
-
-  @override
-  String get locationP13EarlierTodayEmpty =>
-      'لا توجد أماكن سابقة مسجّلة اليوم.';
-
-  @override
-  String get locationP13SavedPlacesTitle => 'الأماكن المحفوظة';
-
-  @override
-  String get locationP13AddPlace => 'إضافة مكان';
-
-  @override
-  String get locationP13AlertsEnterLeave => 'تنبيه عند الوصول والمغادرة';
-
-  @override
-  String get locationP13AlertsEnterOnly => 'تنبيه عند الوصول';
-
-  @override
-  String get locationP13AlertsLeaveOnly => 'تنبيه عند المغادرة';
-
-  @override
-  String get locationP13AlertsOff => 'التنبيهات متوقفة';
-
-  @override
-  String get locationP13NoLocationYet => 'لم يصل موقع بعد.';
-
-  @override
-  String get locationP13RingNotYetOnIphone => 'غير متاح بعد على آيفون';
-
-  @override
-  String locationP13RadiusMeters(String meters) {
-    return 'نطاق $meters م';
+  String pairP05Title(String child) {
+    return 'ربط هاتف $child';
   }
+
+  @override
+  String get pairP05TitleGeneric => 'ربط هاتف الطفل';
+
+  @override
+  String pairP05Subtitle(String child) {
+    return 'ثبّت تطبيق أسرة للأطفال على هاتف $child ثم امسح هذا الرمز.';
+  }
+
+  @override
+  String get pairP05SubtitleGeneric =>
+      'ثبّت تطبيق أسرة للأطفال على هاتف الطفل ثم امسح هذا الرمز.';
+
+  @override
+  String get pairP05OrTypeCode => 'أو أدخل هذا الرمز';
+
+  @override
+  String pairP05ValidFor(String time) {
+    return 'صالح لمدة $time';
+  }
+
+  @override
+  String get pairP05CodeExpired => 'انتهت صلاحية الرمز';
+
+  @override
+  String get pairP05NewCode => 'رمز جديد';
+
+  @override
+  String pairP05WaitingFor(String child) {
+    return 'بانتظار هاتف $child…';
+  }
+
+  @override
+  String get pairP05WaitingGeneric => 'بانتظار هاتف الطفل…';
+
+  @override
+  String get pairP05ConfirmDeviceTitle => 'تأكيد هذا الجهاز؟';
+
+  @override
+  String pairP05ConfirmDeviceBody(String model) {
+    return 'يطلب $model الاتصال. أكّد الربط للمتابعة.';
+  }
+
+  @override
+  String get pairP05ConfirmLink => 'التأكيد والربط';
+
+  @override
+  String get pairP05Decline => 'رفض';
+
+  @override
+  String get pairP05Connected => 'تم ربط الهاتف.';
+
+  @override
+  String get pairP05SendInstallLink => 'إرسال رابط التثبيت';
+
+  @override
+  String get pairP05InstallLinkCopied => 'تم نسخ رابط التثبيت للمشاركة.';
+
+  @override
+  String get pairP05SkipForNow => 'التخطي حاليًا';
 
   @override
   String timeRequestTitle(String child, int minutes) {
@@ -4445,4 +4508,52 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get p01PreviewLocationValue => 'في المدرسة';
+
+  @override
+  String get locationP13AllChildren => 'الكل';
+
+  @override
+  String get locationP13Refresh => 'تحديث';
+
+  @override
+  String get locationP13Refreshing => 'جارٍ التحقق…';
+
+  @override
+  String get locationP13Directions => 'الاتجاهات';
+
+  @override
+  String get locationP13EarlierToday => 'في وقت سابق اليوم';
+
+  @override
+  String get locationP13EarlierTodayEmpty =>
+      'لا توجد أماكن سابقة مسجّلة اليوم.';
+
+  @override
+  String get locationP13SavedPlacesTitle => 'الأماكن المحفوظة';
+
+  @override
+  String get locationP13AddPlace => 'إضافة مكان';
+
+  @override
+  String get locationP13AlertsEnterLeave => 'تنبيه عند الوصول والمغادرة';
+
+  @override
+  String get locationP13AlertsEnterOnly => 'تنبيه عند الوصول';
+
+  @override
+  String get locationP13AlertsLeaveOnly => 'تنبيه عند المغادرة';
+
+  @override
+  String get locationP13AlertsOff => 'التنبيهات متوقفة';
+
+  @override
+  String get locationP13NoLocationYet => 'لم يصل موقع بعد.';
+
+  @override
+  String get locationP13RingNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
+  String locationP13RadiusMeters(String meters) {
+    return 'نطاق $meters م';
+  }
 }

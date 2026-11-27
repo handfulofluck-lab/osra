@@ -25,6 +25,7 @@ import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
 import 'features/rules/web_filter_p12_screen.dart' show WebFilterP12Route;
 import 'features/settings/appearance_screen.dart';
+import 'features/settings/settings_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/settings/privacy_screen.dart';
 import 'features/settings/delete_account_screen.dart';
@@ -122,6 +123,9 @@ final List<RouteBase> appRoutes = [
     ),
   ),
   GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
+  // P-22 (#1179): the grouped Settings list, behind `OSRA_UX_P22`.
+  GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
+
   // #1229 P-12: one entry point for the web filter. The switch decides between the
   // P-12 screen and the legacy web-filter tab, so a link never dead-ends.
   GoRoute(
