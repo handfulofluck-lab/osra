@@ -1209,6 +1209,7 @@
   "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
   "timeRequestDecidedAt": "وقت القرار: {time}",
   "p15CanBeWrong": "ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.",
+  "p15PreviewLoadFailed": "تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.",
   "p15ActionsHeader": "ما يمكنك فعله",
   "p15TalkWithChild": "تحدّث مع {child}",
   "@p15TalkWithChild": { "placeholders": { "child": { "type": "String" } } },

@@ -4039,6 +4039,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get p15CanBeWrong => 'ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.';
 
   @override
+  String get p15PreviewLoadFailed =>
+      'تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.';
+
+  @override
   String get p15ActionsHeader => 'ما يمكنك فعله';
 
   @override
