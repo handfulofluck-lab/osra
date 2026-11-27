@@ -8,6 +8,7 @@ import 'package:familyshield_parent/features/rules/web_filter_p12_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
+import 'package:familyshield_parent/theme/app_tokens.dart';
 
 import 'fake_api_client.dart';
 
@@ -585,5 +586,36 @@ void main() {
       expect(find.byKey(const ValueKey('p12-browsers-not-ready')), ready ? findsNothing : findsOneWidget,
           reason: '${entry.key}: the fallback must be shown when the phone has not reported ready');
     }
+  });
+
+  testWidgets(
+      'U96: the not-ready browser card names the screen, carries the warn pill on its own line and a warn globe '
+      '(mutant: rendering the bare p12NotBlockingYet sentence, or leaving the globe on the accent colour, fails these)',
+      (tester) async {
+    await _pumpScreen(
+      tester,
+      api: _makeApi(overview: _overview(features: const {'web_filter': 'degraded'})),
+    );
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+
+    final card = find.byKey(const ValueKey('p12-browsers-card'));
+    final en = lookupAppLocalizations(const Locale('en'));
+
+    // Title is the screen's own name, in the normal body colour.
+    final title = find.byKey(const ValueKey('p12-browsers-not-ready'));
+    expect(title, findsOneWidget);
+    expect(tester.widget<Text>(title).data, en.tabWebFilter);
+
+    // The state is the existing warn pill, on its own line below the title.
+    final pill = find.byKey(const ValueKey('p12-browsers-not-ready-pill'));
+    expect(pill, findsOneWidget);
+    expect(tester.getRect(pill).top, greaterThanOrEqualTo(tester.getRect(title).bottom),
+        reason: 'the pill must sit on its own line under the title');
+
+    // The globe carries the warning colour, not the ordinary accent.
+    final globe = tester.widget<Icon>(find.descendant(of: card, matching: find.byIcon(Icons.public)));
+    final tokens = AppTokens.light;
+    expect(globe.color, tokens.warn);
+    expect(globe.color, isNot(tokens.primary));
   });
 }
