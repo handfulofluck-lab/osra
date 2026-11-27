@@ -173,7 +173,7 @@ class MiuiLaunchBackstopPolicyTest {
 
     @Test
     fun `TamperAlertWorker computes daily per-surface dedupe key, metadata, and unique work name`() {
-        val ts = 1795780800000L // 2026-11-28T12:00:00Z
+        val ts = java.time.Instant.parse("2026-11-28T12:00:00Z").toEpochMilli()
         val key = TamperAlertWorker.dedupeKeyFor(
             type = TamperAlertWorker.TYPE_MIUI_LAUNCH_BLOCKED,
             deviceId = "dev-redmi",
