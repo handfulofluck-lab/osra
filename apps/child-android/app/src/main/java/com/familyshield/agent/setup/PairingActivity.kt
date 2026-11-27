@@ -1520,14 +1520,16 @@ class PairingActivity : ComponentActivity() {
         val safe = totalMinutes.coerceAtLeast(0)
         val hours = safe / 60
         val mins = safe % 60
+        val hoursWestern = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(hours)
+        val minsWestern = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(mins)
         return when {
             hours > 0 && mins > 0 -> getString(
                 R.string.c01_hours_and_minutes,
-                resources.getQuantityString(R.plurals.c01_hours, hours, hours),
-                resources.getQuantityString(R.plurals.c01_minutes, mins, mins),
+                resources.getQuantityString(R.plurals.c01_hours, hours, hoursWestern),
+                resources.getQuantityString(R.plurals.c01_minutes, mins, minsWestern),
             )
-            hours > 0 -> resources.getQuantityString(R.plurals.c01_hours, hours, hours)
-            else -> resources.getQuantityString(R.plurals.c01_minutes, mins, mins)
+            hours > 0 -> resources.getQuantityString(R.plurals.c01_hours, hours, hoursWestern)
+            else -> resources.getQuantityString(R.plurals.c01_minutes, mins, minsWestern)
         }
     }
 
@@ -1568,7 +1570,10 @@ class PairingActivity : ComponentActivity() {
         val pendingState = com.familyshield.agent.ui.home.ChildHomePolicy.pendingStatus(pending, nowMs)
         val pendingTitle = when {
             pending == null || pendingState == com.familyshield.agent.ui.home.PendingRequestStatus.NONE -> null
-            pending.requestType == "time" -> getString(R.string.c01_pending_time_title, pending.minutes ?: 15)
+            pending.requestType == "time" -> getString(
+                R.string.c01_pending_time_title,
+                com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(pending.minutes ?: 15),
+            )
             else -> getString(
                 R.string.c01_pending_access_title,
                 com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(pending.appLabel ?: getString(R.string.app_name)),
@@ -1594,15 +1599,15 @@ class PairingActivity : ComponentActivity() {
             )
             val title = when (item.kind) {
                 "bonus_time" -> {
-                    val mins = item.minutes ?: 15
+                    val minsWestern = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(item.minutes ?: 15)
                     if (!item.byName.isNullOrBlank()) {
                         getString(
                             R.string.c01_decision_bonus_named,
-                            mins,
+                            minsWestern,
                             com.familyshield.agent.ui.home.AdultsNameFormatter.firstStrongIsolate(item.byName),
                         )
                     } else {
-                        getString(R.string.c01_decision_bonus_unnamed, mins)
+                        getString(R.string.c01_decision_bonus_unnamed, minsWestern)
                     }
                 }
                 "pause_internet" -> getString(R.string.c01_decision_pause_internet)
@@ -1636,7 +1641,7 @@ class PairingActivity : ComponentActivity() {
             }
 
         val hasLimit = budget.effectiveLimitMinutes != null && budget.remainingMinutes != null
-        val ringNumber = (budget.remainingMinutes ?: 0).toString()
+        val ringNumber = com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt(budget.remainingMinutes ?: 0)
         val timeLeftHeadline = if (hasLimit) {
             getString(R.string.c01_time_left_today, formatChildHomeDuration(budget.remainingMinutes!!))
         } else {

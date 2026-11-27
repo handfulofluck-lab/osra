@@ -908,6 +908,7 @@ private fun TimeLeftRing(
     warning: Boolean,
 ) {
     val palette = OsraTheme.LocalOsraPalette.current
+    val fontScale = LocalDensity.current.fontScale
     val trackColor = palette.track
     val activeColor = if (warning) palette.warn else palette.primary
     Box(
@@ -937,11 +938,14 @@ private fun TimeLeftRing(
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = palette.ink,
             )
-            Text(
-                text = unit,
-                style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
-                color = palette.muted,
-            )
+            if (ChildHomePolicy.shouldShowRingCaption(fontScale) && unit.isNotBlank()) {
+                Text(
+                    text = unit,
+                    style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
+                    color = palette.muted,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

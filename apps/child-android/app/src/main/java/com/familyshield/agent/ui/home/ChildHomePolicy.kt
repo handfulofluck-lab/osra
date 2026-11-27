@@ -70,7 +70,16 @@ object ChildHomePolicy {
     /** G10: a pending request with no incoming grant/rule update ages out after 2 hours. */
     const val PENDING_AGE_OUT_MS: Long = 2L * 60L * 60L * 1000L
 
+    /** U83 / Arabic Bureau 7207285631: hide the inside-ring unit caption above 1.3x text scale. */
+    const val RING_CAPTION_MAX_FONT_SCALE: Float = 1.3f
+
     private val HH_MM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+
+    /** Formats an integer with Western ASCII digits (`0-9`) regardless of the active device locale (#1191). */
+    fun formatWesternInt(value: Int): String = String.format(Locale.US, "%d", value)
+
+    /** True when the ring's unit caption fits inside the 96 dp ring without colliding with the number or stroke. */
+    fun shouldShowRingCaption(fontScale: Float): Boolean = fontScale <= RING_CAPTION_MAX_FONT_SCALE
 
     fun timeBudget(
         ruleSet: RuleSetDto?,

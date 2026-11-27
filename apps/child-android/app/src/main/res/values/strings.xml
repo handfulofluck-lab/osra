@@ -304,7 +304,7 @@
     <string name="c01_next_routine_line">Next: %1$s %2$s · starts in %3$s</string>
     <string name="c01_next_routine_none">No upcoming routine today</string>
     <string name="c01_bedtime_label">Bedtime</string>
-    <string name="c01_pending_time_title">Your request: +%1$d min of screen time</string>
+    <string name="c01_pending_time_title">Your request: +%1$s min of screen time</string>
     <string name="c01_pending_access_title">Your request: %1$s</string>
     <string name="c01_sent_to_line">Sent to %1$s · %2$s</string>
     <string name="c01_waiting_reply">Waiting for a reply</string>
@@ -324,8 +324,8 @@
     <string name="c01_requests_no_limit">No daily screen-time limit is active right now.</string>
     <string name="c01_messages_title">Messages</string>
     <string name="c01_messages_empty">No updates from %1$s yet.</string>
-    <string name="c01_decision_bonus_named">%1$d extra minutes from %2$s</string>
-    <string name="c01_decision_bonus_unnamed">%1$d extra minutes of screen time</string>
+    <string name="c01_decision_bonus_named">%1$s extra minutes from %2$s</string>
+    <string name="c01_decision_bonus_unnamed">%1$s extra minutes of screen time</string>
     <string name="c01_decision_rules_updated">Rules updated</string>
     <string name="c01_decision_pause_internet">Internet paused</string>
     <string name="c01_decision_resume_internet">Internet resumed</string>
@@ -339,12 +339,12 @@
     <string name="c01_close">Close</string>
     <string name="c01_request_failed">Could not send your request right now. Check your connection and try again.</string>
     <plurals name="c01_hours">
-        <item quantity="one">%1$d hour</item>
-        <item quantity="other">%1$d hours</item>
+        <item quantity="one">%1$s hour</item>
+        <item quantity="other">%1$s hours</item>
     </plurals>
     <plurals name="c01_minutes">
-        <item quantity="one">%1$d minute</item>
-        <item quantity="other">%1$d minutes</item>
+        <item quantity="one">%1$s minute</item>
+        <item quantity="other">%1$s minutes</item>
     </plurals>
     <string name="c01_hours_and_minutes">%1$s %2$s</string>
 </resources>

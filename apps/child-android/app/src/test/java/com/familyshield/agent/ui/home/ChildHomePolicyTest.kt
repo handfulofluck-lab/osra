@@ -234,10 +234,138 @@ class ChildHomePolicyTest {
         assertTrue(arStrings.contains("المستخدم اليوم: %1\$s"))
         assertTrue(arStrings.contains("الوقت المتبقي قبل قفل الشاشة: %1\$s"))
         assertTrue(arStrings.contains("التالي: %1\$s %2\$s · الوقت المتبقي: %3\$s"))
-        assertTrue(arStrings.contains("الدقائق المتبقية"))
+        assertTrue(arStrings.contains("بالدقائق"))
+        assertFalse(arStrings.contains("الدقائق المتبقية"))
         assertTrue(arStrings.contains("إرسال استغاثة إلى %1\$s"))
         assertTrue(arStrings.contains("الاتصال بأهلي"))
         assertTrue(arStrings.contains("ما الذي يُعرض على %1\$s؟"))
+        assertTrue(screen.contains("ChildHomePolicy.shouldShowRingCaption(fontScale)"))
+    }
+
+    @Test
+    fun `Arabic C-01 minutes, hours, pending, and bonus strings format with Western digits only and ring caption hides above 1_3x`() {
+        // Mutant A: keep `%1$d` in `c01_minutes` / `c01_hours` / `c01_pending_time_title` / `c01_decision_bonus_*`
+        // or format integers under the active Arabic locale -> Arabic-Indic digits (`٤٢`, `٧٨`, `١٢٠`, `١٥`) appear.
+        // Mutant B: render `c01_ring_unit_min` unconditionally at 2.0x text scale -> caption collides inside the 96 dp ring.
+        val root = findAppSrcRoot()
+        val enDoc = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(File(root, "res/values/strings.xml"))
+        val arDoc = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(File(root, "res/values-ar/strings.xml"))
+        val activityCode = File(root, "java/com/familyshield/agent/setup/PairingActivity.kt")
+            .readText()
+            .lineSequence()
+            .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+            .joinToString("\n")
+
+        fun collectC01Strings(doc: org.w3c.dom.Document): Map<String, String> {
+            val out = LinkedHashMap<String, String>()
+            val nodes = doc.getElementsByTagName("string")
+            for (i in 0 until nodes.length) {
+                val el = nodes.item(i) as org.w3c.dom.Element
+                val name = el.getAttribute("name")
+                if (name.startsWith("c01_")) out[name] = el.textContent
+            }
+            return out
+        }
+
+        fun collectC01Plurals(doc: org.w3c.dom.Document): Map<String, Map<String, String>> {
+            val out = LinkedHashMap<String, Map<String, String>>()
+            val nodes = doc.getElementsByTagName("plurals")
+            for (i in 0 until nodes.length) {
+                val el = nodes.item(i) as org.w3c.dom.Element
+                val name = el.getAttribute("name")
+                if (!name.startsWith("c01_")) continue
+                val items = LinkedHashMap<String, String>()
+                val itemNodes = el.getElementsByTagName("item")
+                for (j in 0 until itemNodes.length) {
+                    val item = itemNodes.item(j) as org.w3c.dom.Element
+                    items[item.getAttribute("quantity")] = item.textContent
+                }
+                out[name] = items
+            }
+            return out
+        }
+
+        val enStrings = collectC01Strings(enDoc)
+        val arStrings = collectC01Strings(arDoc)
+        val enPlurals = collectC01Plurals(enDoc)
+        val arPlurals = collectC01Plurals(arDoc)
+
+        val intPlaceholder = Regex("%(\\d+\\$)?d")
+        for ((k, v) in enStrings + arStrings) {
+            assertFalse("c01 string $k must use %s with formatWesternInt, never %d: $v", intPlaceholder.containsMatchIn(v))
+        }
+        for ((k, map) in enPlurals + arPlurals) {
+            for ((qty, v) in map) {
+                assertFalse("c01 plural $k[$qty] must use %s with formatWesternInt, never %d: $v", intPlaceholder.containsMatchIn(v))
+            }
+        }
+
+        assertEquals("بالدقائق", arStrings["c01_ring_unit_min"])
+
+        // Format under an Arabic locale that uses Arabic-Indic digits for `%d`, proving Western digits win.
+        val arIndicLocale = java.util.Locale.forLanguageTag("ar-AE-u-nu-arab")
+        val nonWesternDigits = Regex("[\\u0660-\\u0669\\u06F0-\\u06F9]")
+        val defaultBefore = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(arIndicLocale)
+            assertEquals("42", ChildHomePolicy.formatWesternInt(42))
+
+            val arMinutes = arPlurals.getValue("c01_minutes")
+            for ((qty, sample) in listOf("zero" to 0, "one" to 1, "two" to 2, "few" to 5, "many" to 42, "other" to 120)) {
+                val formatted = String.format(arIndicLocale, arMinutes.getValue(qty), ChildHomePolicy.formatWesternInt(sample))
+                assertFalse("Arabic minutes [$qty=$sample] must contain no Arabic-Indic digits: $formatted", nonWesternDigits.containsMatchIn(formatted))
+            }
+            assertEquals("42 دقيقة", String.format(arIndicLocale, arMinutes.getValue("many"), ChildHomePolicy.formatWesternInt(42)))
+            assertEquals("120 دقيقة", String.format(arIndicLocale, arMinutes.getValue("other"), ChildHomePolicy.formatWesternInt(120)))
+
+            val arHours = arPlurals.getValue("c01_hours")
+            for ((qty, sample) in listOf("zero" to 0, "one" to 1, "two" to 2, "few" to 4, "many" to 12, "other" to 100)) {
+                val formatted = String.format(arIndicLocale, arHours.getValue(qty), ChildHomePolicy.formatWesternInt(sample))
+                assertFalse("Arabic hours [$qty=$sample] must contain no Arabic-Indic digits: $formatted", nonWesternDigits.containsMatchIn(formatted))
+            }
+
+            val pendingFormatted = String.format(
+                arIndicLocale,
+                arStrings.getValue("c01_pending_time_title"),
+                ChildHomePolicy.formatWesternInt(15),
+            )
+            assertEquals("طلبك: 15 دقيقة إضافية من وقت الشاشة", pendingFormatted)
+            assertFalse(nonWesternDigits.containsMatchIn(pendingFormatted))
+
+            val bonusNamed = String.format(
+                arIndicLocale,
+                arStrings.getValue("c01_decision_bonus_named"),
+                ChildHomePolicy.formatWesternInt(30),
+                "سارة",
+            )
+            assertEquals("30 دقيقة إضافية من سارة", bonusNamed)
+            assertFalse(nonWesternDigits.containsMatchIn(bonusNamed))
+
+            val bonusUnnamed = String.format(
+                arIndicLocale,
+                arStrings.getValue("c01_decision_bonus_unnamed"),
+                ChildHomePolicy.formatWesternInt(15),
+            )
+            assertEquals("15 دقيقة إضافية من وقت الشاشة", bonusUnnamed)
+            assertFalse(nonWesternDigits.containsMatchIn(bonusUnnamed))
+        } finally {
+            java.util.Locale.setDefault(defaultBefore)
+        }
+
+        // PairingActivity wiring checks for Western-digit formatting at all 5 call sites:
+        assertTrue(activityCode.contains("resources.getQuantityString(R.plurals.c01_hours, hours, hoursWestern)"))
+        assertTrue(activityCode.contains("resources.getQuantityString(R.plurals.c01_minutes, mins, minsWestern)"))
+        assertTrue(activityCode.contains("R.string.c01_pending_time_title,\n                com.familyshield.agent.ui.home.ChildHomePolicy.formatWesternInt("))
+        assertTrue(activityCode.contains("R.string.c01_decision_bonus_named,\n                            minsWestern,"))
+        assertTrue(activityCode.contains("getString(R.string.c01_decision_bonus_unnamed, minsWestern)"))
+
+        // Ring caption visibility threshold (~1.3x text scale):
+        assertTrue(ChildHomePolicy.shouldShowRingCaption(1.0f))
+        assertTrue(ChildHomePolicy.shouldShowRingCaption(1.3f))
+        assertFalse(ChildHomePolicy.shouldShowRingCaption(1.31f))
+        assertFalse(ChildHomePolicy.shouldShowRingCaption(2.0f))
     }
 
     private fun findAppSrcRoot(): File {
