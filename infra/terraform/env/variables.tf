@@ -141,6 +141,29 @@ variable "apns_device_bundle_id" {
   default     = "com.osratech.child"
 }
 
+variable "apns_env" {
+  description = "APNs endpoint outside production: \"production\" (TestFlight/store builds) or \"sandbox\" (Xcode/debug builds). Production always uses \"production\" whatever this says."
+  type        = string
+  default     = "production"
+
+  validation {
+    condition     = contains(["production", "sandbox"], var.apns_env)
+    error_message = "apns_env must be \"production\" or \"sandbox\"."
+  }
+}
+
+variable "apns_secret_json" {
+  description = "The APNs secret holds one JSON value {\"p8\",\"keyId\",\"teamId\"}: map all three from it instead of apns_key_id/apns_team_id."
+  type        = bool
+  default     = false
+}
+
+variable "social_alert_push_every_message" {
+  description = "Staging QA only (#1062): SOCIAL_ALERT_PUSH_EVERY_MESSAGE=true, a parent push for every flagged message. Refused in production."
+  type        = bool
+  default     = false
+}
+
 # --- Account wiring (issue #714). Staging leaves all of these at their defaults. ---
 
 variable "assume_role_arn" {

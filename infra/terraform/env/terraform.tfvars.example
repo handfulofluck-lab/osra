@@ -29,3 +29,14 @@ allowed_cidrs = ["0.0.0.0/0"]
 
 # Optional CORS allowlist for browser callers; empty keeps the API's permissive staging default.
 cors_origin = ""
+
+# iPhone push (APNs), as staging runs since 24 Nov 2026 (osra-security#38): the secret <prefix>/apns-key-p8
+# holds one JSON value {"p8","keyId","teamId"}; the child test iPhone is an Xcode build, so sandbox.
+# Set apns_enabled only after the secret has a value (ECS cannot resolve an empty secret).
+# apns_enabled          = true
+# apns_secret_json      = true
+# apns_env              = "sandbox"
+# apns_device_bundle_id = "com.osratech.child"
+
+# Staging QA only (#1062): parent push on every flagged message. Refused in production.
+# social_alert_push_every_message = true
