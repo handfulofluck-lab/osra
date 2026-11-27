@@ -39,7 +39,11 @@ object VpnState {
     fun mode(context: Context): String = prefs(context).getString(KEY_MODE, FilterVpnService.MODE_DNS) ?: FilterVpnService.MODE_DNS
     fun setMode(context: Context, mode: String) = prefs(context).edit().putString(KEY_MODE, mode).apply()
 
-    fun isEstablished(context: Context): Boolean = prefs(context).getBoolean(KEY_ESTABLISHED, false)
+    fun isEstablished(context: Context): Boolean =
+        FilterRecoveryPolicy.isTunnelEstablished(
+            persistedEstablished = prefs(context).getBoolean(KEY_ESTABLISHED, false),
+            liveTunnelMode = FilterVpnService.tunnelMode,
+        )
     fun setEstablished(context: Context, v: Boolean) = prefs(context).edit().putBoolean(KEY_ESTABLISHED, v).apply()
 
     @Synchronized

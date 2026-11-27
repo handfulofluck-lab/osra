@@ -94,6 +94,7 @@ import org.json.JSONObject
 class PairingActivity : ComponentActivity() {
 
     @Inject lateinit var settings: AgentSettings
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
     @Inject lateinit var rules: RuleRepository
     @Inject lateinit var pinStore: ParentPinStore
     @Inject lateinit var deviceAdmin: DeviceAdminManager
@@ -108,6 +109,9 @@ class PairingActivity : ComponentActivity() {
 
     /** When the admin sheet was launched, so a self-closing refusal can be told from a parent's Cancel. */
     private var adminSheetLaunchedAtMs = 0L
+
+    /** #934: guard one-shot auto-reconnect when opening the status screen with a stopped tunnel. */
+    private var vpnAutoReconnectAttempted = false
 
     /**
      * ADR-0010: the OS "activate device admin" screen. The stale-Knox state (#186) is named only when
@@ -1364,11 +1368,29 @@ class PairingActivity : ComponentActivity() {
             com.familyshield.agent.vpn.VpnState.setEnabled(this, true)
         }
         if (com.familyshield.agent.vpn.VpnState.isEstablished(this)) {
+            vpnAutoReconnectAttempted = false
             container.addView(label(getString(R.string.setup_web_filter_connected)))
         } else {
             container.addView(
                 label(getString(R.string.setup_web_filter_disconnected)).apply { setTextColor(0xFFB00020.toInt()) },
             )
+            // #934: Android 12+ can defer or reject background foreground-service starts from
+            // PackageReplacedReceiver, so this foreground status-screen path is the intentional fallback
+            // when OS consent is intact and the filter was not explicitly revoked (filterLost == false).
+            if (
+                !vpnAutoReconnectAttempted &&
+                com.familyshield.agent.vpn.FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen(
+                    vpnEnabled = com.familyshield.agent.vpn.VpnState.isEnabled(this),
+                    vpnPrepared = true,
+                    consentPaused = consent.isPaused(),
+                    filterLost = com.familyshield.agent.vpn.VpnState.isFilterLost(this, settings, consent),
+                    liveTunnelMode = com.familyshield.agent.vpn.FilterVpnService.tunnelMode,
+                )
+            ) {
+                vpnAutoReconnectAttempted = true
+                runCatching { com.familyshield.agent.vpn.FilterVpnService.start(this@PairingActivity) }
+                lifecycleScope.launch { kotlinx.coroutines.delay(800); if (settings.isPaired()) showStatus() }
+            }
             container.addView(
                 Button(this).apply {
                     text = getString(R.string.setup_web_filter_reconnect)
@@ -1433,6 +1455,24 @@ class PairingActivity : ComponentActivity() {
             }
 
             if (!forceLegacy && com.familyshield.agent.ui.theme.ChildUxFlags.c01ChildHomeEnabled) {
+                // #934 + C-01 (#1179 / #1268): with OSRA_UX_FINAL=true, paired launches render Child Home
+                // instead of the legacy addWebFilterRow view, so run the same guarded one-shot foreground
+                // reconnect check here too when Android 12+ deferred PackageReplacedReceiver's start.
+                if (com.familyshield.agent.vpn.VpnState.isEstablished(this@PairingActivity)) {
+                    vpnAutoReconnectAttempted = false
+                } else if (
+                    !vpnAutoReconnectAttempted &&
+                    com.familyshield.agent.vpn.FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen(
+                        vpnEnabled = com.familyshield.agent.vpn.VpnState.isEnabled(this@PairingActivity),
+                        vpnPrepared = android.net.VpnService.prepare(this@PairingActivity) == null,
+                        consentPaused = consent.isPaused(),
+                        filterLost = com.familyshield.agent.vpn.VpnState.isFilterLost(this@PairingActivity, settings, consent),
+                        liveTunnelMode = com.familyshield.agent.vpn.FilterVpnService.tunnelMode,
+                    )
+                ) {
+                    vpnAutoReconnectAttempted = true
+                    runCatching { com.familyshield.agent.vpn.FilterVpnService.start(this@PairingActivity) }
+                }
                 val initialCopy = buildChildHomeCopy()
                 childHomeCopyState.value = initialCopy
                 replaceWithCompose {
