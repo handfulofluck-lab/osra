@@ -1146,6 +1146,8 @@
   "appsFilterBlocked": "المحظورة ({count})",
   "appsFilterLimited": "الحدود الزمنية ({count})",
   "appsNoMatch": "لا توجد تطبيقات مطابقة",
+  "appsSentToPhone": "أُرسلت إلى الهاتف",
+  "appsNotYetOnIphone": "غير متاح بعد على آيفون",
   "appAboutThisApp": "عن هذا التطبيق",
   "appBlockedNamedSnack": "تم حظر {app}",
   "socialCheckMessagesIn": "فحص الرسائل في هذه التطبيقات",
@@ -1205,5 +1207,16 @@
   "timeRequestGrantedByYou": "سبق منح وقت إضافي اليوم بقرارك: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
   "timeRequestDeclinedBy": "سبق رفض هذا الطلب بقرار من {actor}",
   "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
-  "timeRequestDecidedAt": "وقت القرار: {time}"
+  "timeRequestDecidedAt": "وقت القرار: {time}",
+  "p15CanBeWrong": "ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.",
+  "p15ActionsHeader": "ما يمكنك فعله",
+  "p15TalkWithChild": "تحدّث مع {child}",
+  "@p15TalkWithChild": { "placeholders": { "child": { "type": "String" } } },
+  "p15HelpChildBlockContact": "ساعد {child} على حظر {contact}",
+  "@p15HelpChildBlockContact": { "placeholders": { "child": { "type": "String" }, "contact": { "type": "String" } } },
+  "p15HelpBlockGuideBody": "اجلس مع {child} وافتحا {app} معًا لحظر {contact} وكتم رسائله.",
+  "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
+  "p15AdjustLimits": "تعديل وقت الشاشة ووقت النوم",
+  "p15ReviewAppRules": "مراجعة قواعد التطبيقات",
+  "p15IphoneNotYet": "غير متاح بعد على آيفون"
 }

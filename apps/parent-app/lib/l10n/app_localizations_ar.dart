@@ -3723,6 +3723,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appsNoMatch => 'لا توجد تطبيقات مطابقة';
 
   @override
+  String get appsSentToPhone => 'أُرسلت إلى الهاتف';
+
+  @override
+  String get appsNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
   String get appAboutThisApp => 'عن هذا التطبيق';
 
   @override
@@ -4028,4 +4034,34 @@ class AppLocalizationsAr extends AppLocalizations {
   String timeRequestDecidedAt(String time) {
     return 'وقت القرار: $time';
   }
+
+  @override
+  String get p15CanBeWrong => 'ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.';
+
+  @override
+  String get p15ActionsHeader => 'ما يمكنك فعله';
+
+  @override
+  String p15TalkWithChild(String child) {
+    return 'تحدّث مع $child';
+  }
+
+  @override
+  String p15HelpChildBlockContact(String child, String contact) {
+    return 'ساعد $child على حظر $contact';
+  }
+
+  @override
+  String p15HelpBlockGuideBody(String child, String app, String contact) {
+    return 'اجلس مع $child وافتحا $app معًا لحظر $contact وكتم رسائله.';
+  }
+
+  @override
+  String get p15AdjustLimits => 'تعديل وقت الشاشة ووقت النوم';
+
+  @override
+  String get p15ReviewAppRules => 'مراجعة قواعد التطبيقات';
+
+  @override
+  String get p15IphoneNotYet => 'غير متاح بعد على آيفون';
 }
