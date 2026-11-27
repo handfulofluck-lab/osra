@@ -343,11 +343,26 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
         update: vi.fn((...args: unknown[]) => (prismaMock.alert.update as (...a: unknown[]) => unknown)(...args)),
       },
     };
-    prismaMock.$transaction.mockImplementation(async (fn: (client: unknown) => Promise<unknown>) => {
-      const result = await fn(tx);
-      order.push("commit");
-      return result;
-    });
+    const notifyTx = {
+      parent: {
+        findMany: vi.fn((...args: unknown[]) => (prismaMock.parent.findMany as (...a: unknown[]) => unknown)(...args)),
+      },
+      parentPushToken: {
+        findMany: vi.fn((...args: unknown[]) => (prismaMock.parentPushToken.findMany as (...a: unknown[]) => unknown)(...args)),
+      },
+    };
+    prismaMock.$transaction.mockImplementation(
+      async (fn: (client: unknown) => Promise<unknown>, opts?: { isolationLevel?: string }) => {
+        if (opts?.isolationLevel === "RepeatableRead") {
+          // Post-commit push recipient snapshot (`notifyParentsOfAlert`): must only run after the setup notice committed.
+          expect(order).toContain("commit");
+          return fn(notifyTx);
+        }
+        const result = await fn(tx);
+        order.push("commit");
+        return result;
+      },
+    );
     send.mockImplementation(async () => { order.push("push"); return { ok: true }; });
     const { raw, headers } = phoneNotice();
     const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
