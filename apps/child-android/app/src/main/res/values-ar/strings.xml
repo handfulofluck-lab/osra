@@ -214,7 +214,7 @@
     <string name="setup_protect_title">احمِ هذا الجهاز</string>
     <string name="setup_protect_body">في الشاشة التالية، اضغط «تفعيل» ليصبح تطبيق أسرة للأطفال مسؤول الجهاز. بذلك لا يمكن إلغاء تثبيته دون رمز PIN للوالدين، ويمكن قفل الجهاز عن بُعد من تطبيق الوالدين. وبدونه تقتصر الحماية على التنبيه.</string>
     <string name="setup_activate_admin">فعّل مسؤول الجهاز</string>
-    <string name="setup_skip">تخطَّ الآن (حماية بالتنبيه فقط)</string>
+    <string name="setup_skip">التخطي الآن</string>
     <string name="setup_try_activate_again">حاول التفعيل مرة أخرى</string>
     <string name="setup_continue_without">تابع دون حماية</string>
     <string name="setup_complete_title">اكتمل الإعداد</string>
@@ -228,7 +228,7 @@
     <string name="setup_checklist_intro">كل بند أدناه يفتح الشاشة التي يُمنح منها. ارجع إلى هنا بعد كل بند، وستتحدّث القائمة تلقائيًا.</string>
     <string name="setup_back">رجوع</string>
     <string name="setup_done">تم</string>
-    <string name="setup_recommended">(موصى به)</string>
+    <string name="setup_recommended">موصى به</string>
     <string name="setup_grant_button">منح إذن: %1$s</string>
     <string name="setup_web_filter_missing">⚠️ تصفية المواقع غير مُعدّة. اسمح بشبكة VPN الخاصة بتطبيق أسرة للأطفال. هي تصفّي عناوين المواقع على هذا الهاتف فقط، ولا يغادر الهاتفَ شيء.</string>
     <string name="setup_web_filter_setup">أعدّ تصفية المواقع</string>
@@ -333,7 +333,7 @@
     <string name="sos_button">استغاثة</string>
     <string name="sos_tile_label">الاستغاثة</string>
     <string name="lock_locked_title">قفل والدك أو والدتك هذا الجهاز</string>
-    <string name="lock_locked_body">سيُفتح القفل عندما يسمح والدك أو والدتك بذلك.</string>
+    <string name="lock_locked_body">سيُفتح القفل عندما يسمح أهلك بذلك.</string>
     <string name="lock_paused_title">أوقف والدك أو والدتك هذا الجهاز مؤقتًا</string>
     <string name="lock_paused_body">سيعود إلى العمل عند انتهاء الإيقاف المؤقت.</string>
     <string name="lock_paused_internet_title">أوقف والدك أو والدتك الإنترنت مؤقتًا</string>

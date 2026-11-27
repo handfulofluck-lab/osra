@@ -196,7 +196,7 @@
     <string name="setup_protect_title">Protect this device · أسرة</string>
     <string name="setup_protect_body">On the next screen, tap \"Activate\" to give OSRA device-admin rights. With it, this app cannot be uninstalled without the parent PIN and your parent can lock the device remotely. Without it, protection is alert-only.</string>
     <string name="setup_activate_admin">Activate device admin</string>
-    <string name="setup_skip">Skip for now (alert-only protection)</string>
+    <string name="setup_skip">Skip for now</string>
     <string name="setup_try_activate_again">Try Activate again</string>
     <string name="setup_continue_without">Continue without protection</string>
     <string name="setup_complete_title">Setup complete</string>
@@ -210,7 +210,7 @@
     <string name="setup_checklist_intro">Each item below opens the one screen that grants it. Come back here after each one; the list re-checks itself.</string>
     <string name="setup_back">Back</string>
     <string name="setup_done">Done</string>
-    <string name="setup_recommended">(recommended)</string>
+    <string name="setup_recommended">Recommended</string>
     <string name="setup_grant_button">Allow %1$s</string>
     <string name="setup_web_filter_missing">⚠️ Web filter not set up — allow the OSRA VPN (it only filters web addresses on this phone; nothing leaves the device).</string>
     <string name="setup_web_filter_setup">Set up web filter</string>
@@ -363,7 +363,7 @@
     <!-- LockActivity: the lock and pause overlays. #725's Bureau section 9 supplied the Arabic; the English
          bodies keep the `· أسرة` tail, which the Arabic drops, exactly as the titles do. -->
     <string name="lock_locked_title">This device is locked by your parent</string>
-    <string name="lock_locked_body">It will unlock when your parent allows it. · أسرة</string>
+    <string name="lock_locked_body">It will unlock when your parent allows it.</string>
     <string name="lock_paused_title">Device paused by your parent</string>
     <string name="lock_paused_body">Your parent will resume it shortly. · أسرة</string>
     <string name="lock_paused_internet_title">Internet paused by your parent</string>

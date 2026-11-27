@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -337,6 +338,16 @@ fun OnboardingWelcomeScreen(
 }
 
 /**
+ * U90 (#650): at large text (>= 1.5x, e.g. 200% on 320 dp), pin only the primary grant button
+ * and scroll secondary actions (confirm hint/button, skip, checklist) with the step content
+ * so the step title and explanation stay visible above the fold.
+ */
+internal const val LARGE_TEXT_FONT_SCALE_THRESHOLD = 1.5f
+
+internal fun shouldScrollSecondaryActions(fontScale: Float): Boolean =
+    fontScale >= LARGE_TEXT_FONT_SCALE_THRESHOLD
+
+/**
  * U44 (#952): Single-permission setup step screen on [OsraTheme] tokens, presenting the OSRA mark,
  * permission title, one-sentence explanation, optional OEM guidance, and primary 52 dp action.
  */
@@ -353,6 +364,10 @@ fun OnboardingPermissionStepScreen(
     val palette = OsraTheme.LocalOsraPalette.current
     val radii = OsraTheme.LocalOsraRadii.current
     val scroll = rememberScrollState()
+    val scrollSecondaryActions = shouldScrollSecondaryActions(LocalDensity.current.fontScale)
+    val hasSecondaryActions = (onConfirm != null && copy.confirmButton != null) ||
+        (onSkip != null && copy.skipLabel != null) ||
+        (onOpenChecklist != null && copy.checklistLabel != null)
 
     Column(
         modifier = modifier
@@ -503,9 +518,19 @@ fun OnboardingPermissionStepScreen(
                     }
                 }
             }
+
+            if (scrollSecondaryActions && hasSecondaryActions) {
+                Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
+                PermissionStepSecondaryActions(
+                    copy = copy,
+                    onConfirm = onConfirm,
+                    onSkip = onSkip,
+                    onOpenChecklist = onOpenChecklist,
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
+        Spacer(modifier = Modifier.height(if (scrollSecondaryActions) OsraTokens.spaces.sm else OsraTokens.spaces.md))
 
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -531,69 +556,93 @@ fun OnboardingPermissionStepScreen(
                 )
             }
 
-            if (onConfirm != null && copy.confirmButton != null) {
-                copy.confirmHint?.let { hint ->
-                    Text(
-                        text = hint,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            textDirection = TextDirection.Content,
-                        ),
-                        color = palette.muted,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                OutlinedButton(
-                    onClick = onConfirm,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
-                    shape = RoundedCornerShape(radii.control),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary),
-                ) {
-                    Text(
-                        text = copy.confirmButton,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            textDirection = TextDirection.Content,
-                        ),
-                        textAlign = TextAlign.Center,
-                    )
-                }
+            if (!scrollSecondaryActions && hasSecondaryActions) {
+                PermissionStepSecondaryActions(
+                    copy = copy,
+                    onConfirm = onConfirm,
+                    onSkip = onSkip,
+                    onOpenChecklist = onOpenChecklist,
+                )
             }
+        }
+    }
+}
 
-            if (onSkip != null && copy.skipLabel != null) {
-                OutlinedButton(
-                    onClick = onSkip,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
-                    shape = RoundedCornerShape(radii.control),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.ink),
-                ) {
-                    Text(
-                        text = copy.skipLabel,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            textDirection = TextDirection.Content,
-                        ),
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-
-            if (onOpenChecklist != null && copy.checklistLabel != null) {
-                TextButton(
-                    onClick = onOpenChecklist,
+@Composable
+private fun PermissionStepSecondaryActions(
+    copy: PermissionStepCopy,
+    onConfirm: (() -> Unit)?,
+    onSkip: (() -> Unit)?,
+    onOpenChecklist: (() -> Unit)?,
+) {
+    val palette = OsraTheme.LocalOsraPalette.current
+    val radii = OsraTheme.LocalOsraRadii.current
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
+    ) {
+        if (onConfirm != null && copy.confirmButton != null) {
+            copy.confirmHint?.let { hint ->
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.muted,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = copy.checklistLabel,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            textDirection = TextDirection.Content,
-                        ),
-                        color = palette.primary,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+                )
+            }
+            OutlinedButton(
+                onClick = onConfirm,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                shape = RoundedCornerShape(radii.control),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary),
+            ) {
+                Text(
+                    text = copy.confirmButton,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        if (onSkip != null && copy.skipLabel != null) {
+            OutlinedButton(
+                onClick = onSkip,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                shape = RoundedCornerShape(radii.control),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.ink),
+            ) {
+                Text(
+                    text = copy.skipLabel,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        if (onOpenChecklist != null && copy.checklistLabel != null) {
+            TextButton(
+                onClick = onOpenChecklist,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = copy.checklistLabel,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.primary,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }

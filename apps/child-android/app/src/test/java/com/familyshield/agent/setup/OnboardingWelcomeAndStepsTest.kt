@@ -1,6 +1,8 @@
 package com.familyshield.agent.setup
 
 import androidx.compose.ui.unit.dp
+import com.familyshield.agent.ui.pairing.LARGE_TEXT_FONT_SCALE_THRESHOLD
+import com.familyshield.agent.ui.pairing.shouldScrollSecondaryActions
 import com.familyshield.agent.ui.theme.OsraTokens
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
@@ -73,6 +75,44 @@ class OnboardingWelcomeAndStepsTest {
         val checklistFn = activitySrc.substringAfter("private fun showChecklist(").substringBefore("private fun nextUngrantedPermissionStep(")
         assertFalse("showChecklist must render via Compose instead of bare XML", checklistFn.contains("addGrantRow("))
         assertFalse("showChecklist must not hardcode legacy hex colors", checklistFn.contains("0xFF"))
+    }
+
+    @Test
+    fun `U85 lock_locked_body drops brand tail in EN and uses Arabic Bureau house term in AR`() {
+        val en = loadStrings("src/main/res/values/strings.xml")
+        val ar = loadStrings("src/main/res/values-ar/strings.xml")
+
+        assertEquals("It will unlock when your parent allows it.", en["lock_locked_body"])
+        assertFalse(en.getValue("lock_locked_body").contains("أسرة"))
+        assertEquals("سيُفتح القفل عندما يسمح أهلك بذلك.", ar["lock_locked_body"])
+        assertFalse(ar.getValue("lock_locked_body").contains("أسرة"))
+        assertFalse(ar.getValue("lock_locked_body").contains("والدك"))
+    }
+
+    @Test
+    fun `U88 recommended chip drops brackets and skip button uses plain copy in EN and AR`() {
+        val en = loadStrings("src/main/res/values/strings.xml")
+        val ar = loadStrings("src/main/res/values-ar/strings.xml")
+
+        assertEquals("Recommended", en["setup_recommended"])
+        assertEquals("موصى به", ar["setup_recommended"])
+        assertEquals("Skip for now", en["setup_skip"])
+        assertEquals("التخطي الآن", ar["setup_skip"])
+    }
+
+    @Test
+    fun `U90 permission step scrolls secondary actions at large text while keeping primary button pinned`() {
+        assertEquals(1.5f, LARGE_TEXT_FONT_SCALE_THRESHOLD, 0f)
+        assertFalse(shouldScrollSecondaryActions(1.0f))
+        assertFalse(shouldScrollSecondaryActions(1.3f))
+        assertTrue(shouldScrollSecondaryActions(1.5f))
+        assertTrue(shouldScrollSecondaryActions(2.0f))
+
+        val screenSrc = locate("src/main/java/com/familyshield/agent/ui/pairing/OnboardingWelcomeAndStepsScreen.kt").readText()
+        assertTrue(screenSrc.contains("shouldScrollSecondaryActions(LocalDensity.current.fontScale)"))
+        assertTrue(screenSrc.contains("if (scrollSecondaryActions && hasSecondaryActions)"))
+        assertTrue(screenSrc.contains("if (!scrollSecondaryActions && hasSecondaryActions)"))
+        assertTrue(screenSrc.contains("PermissionStepSecondaryActions("))
     }
 
     private fun loadStrings(relativeToModule: String): Map<String, String> {
