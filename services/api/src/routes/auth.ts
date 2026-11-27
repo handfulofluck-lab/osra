@@ -36,7 +36,18 @@ import {
   normaliseRecoveryCode,
 } from "../lib/mfaRecovery.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
-import { currentSessionVersion, invalidateSessionsBefore, isBearerSession, isParentSessionLive, newJti, revokeTokenOnce, signParentToken } from "../lib/sessions.js";
+import {
+  currentSessionVersion,
+  invalidateSessionsBefore,
+  isBearerSession,
+  isParentSessionLive,
+  newJti,
+  reconcileSessionVersionCacheAfterCommit,
+  revokeTokenOnce,
+  signParentToken,
+  warmSessionVersionCacheBestEffort,
+  withParentSessionLock,
+} from "../lib/sessions.js";
 import { encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
 import { verifyTotpFresh } from "../lib/mfaVerify.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
@@ -153,70 +164,40 @@ export async function authRoutes(app: FastifyInstance) {
     if (parentId) await redis.srem(indexKey(parentId), hash);
   };
 
-  /** Revoke every refresh token of a parent (password reset / MFA enable / logout-all / theft). */
-  const revokeAllRefreshTokens = async (
-    parentId: string,
-    opts: { preserveResponseOnCleanupError?: boolean } = {},
-  ): Promise<void> => {
+  const retireParentRefreshIndexBeforeCutoff = async (parentId: string, cutoffVersion: number | null): Promise<void> => {
+    if (cutoffVersion === null) return;
     const redis = getRedis();
-    const retireRefreshIndex = async (cutoffVersion: number | null): Promise<void> => {
-      const hashes = await redis.smembers(indexKey(parentId)).catch(() => [] as string[]);
-      for (const hash of hashes) {
-        const raw = await redis.get(liveKey(hash));
-        if (raw !== null && cutoffVersion !== null) {
-          try {
-            const rec = JSON.parse(raw) as { sv?: unknown };
-            if (typeof rec?.sv === "number" && rec.sv >= cutoffVersion) {
-              // Refresh credential issued at or after the revocation cutoff: preserve it.
-              continue;
-            }
-          } catch {
-            // Retire unreadable entries below.
+    const hashes = await redis.smembers(indexKey(parentId)).catch(() => [] as string[]);
+    for (const hash of hashes) {
+      const raw = await redis.get(liveKey(hash));
+      if (raw !== null) {
+        try {
+          const rec = JSON.parse(raw) as { sv?: unknown };
+          if (typeof rec?.sv === "number" && rec.sv >= cutoffVersion) {
+            // Refresh credential issued at or after the revocation cutoff: preserve it.
+            continue;
           }
+        } catch {
+          // Retire unreadable entries below.
         }
-        await redis.del(liveKey(hash));
-        await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
-        await redis.srem(indexKey(parentId), hash);
       }
-    };
-    // osra-security#4 item 3: every path that ends a parent's sessions (logout-all, password reset, MFA
-    // enable / recover / reset, refresh-token theft) also closes that parent's open sockets now, instead of
-    // after the gateway's five-second session cache. Best effort once durable revocation has committed.
-    const publishSessionRevoked = async (): Promise<void> => {
-      try {
-        const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { familyId: true } });
-        if (row?.familyId) await publishFamilyEvent(row.familyId, { type: "session_revoked", payload: { parentId } });
-      } catch (err) {
-        app.log.warn({ err, parentId }, "session_revoked signal not published; the per-frame check closes the sockets");
-      }
-    };
-
-    if (opts.preserveResponseOnCleanupError) {
-      // `/mfa/verify` has already committed the one-time recovery-code hashes; increment `Parent.sessionVersion`
-      // first (reconciling Redis cache without throwing after the durable bump), then conditionally prune
-      // only pre-cutoff push rows (`sessionVersion < cutoffVersion`) and pre-cutoff refresh credentials so
-      // neither a cleanup error nor a cache hiccup discards the recovery-code response or wipes new sessions.
-      const cutoffVersion = await invalidateSessionsBefore(parentId, undefined, {
-        retirePushTokens: false,
-        preserveAfterDurableCommit: true,
-      }).catch((err) => {
-        app.log.warn({ err, parentId }, "session revocation deferred after MFA verification");
-        return null;
-      });
-      if (cutoffVersion !== null) {
-        await prisma.parentPushToken.deleteMany({
-          where: { parentId, sessionVersion: { lt: cutoffVersion } },
-        }).catch((err) => {
-          app.log.warn({ err, parentId }, "push-token cleanup deferred after sessionVersion bump; delivery fence active");
-        });
-      }
-      await retireRefreshIndex(cutoffVersion).catch((err) => {
-        app.log.warn({ err, parentId }, "refresh-index cleanup failed after sessionVersion bump");
-      });
-      await publishSessionRevoked();
-      return;
+      await redis.del(liveKey(hash));
+      await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+      await redis.srem(indexKey(parentId), hash);
     }
+  };
 
+  const publishParentSessionRevoked = async (parentId: string): Promise<void> => {
+    try {
+      const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { familyId: true } });
+      if (row?.familyId) await publishFamilyEvent(row.familyId, { type: "session_revoked", payload: { parentId } });
+    } catch (err) {
+      app.log.warn({ err, parentId }, "session_revoked signal not published; the per-frame check closes the sockets");
+    }
+  };
+
+  /** Revoke every refresh token of a parent (password reset / MFA recover / MFA reset / logout-all / theft). */
+  const revokeAllRefreshTokens = async (parentId: string): Promise<void> => {
     let durableCommitted = false;
     let committedCutoff: number | null = null;
     try {
@@ -230,15 +211,15 @@ export async function authRoutes(app: FastifyInstance) {
           committedCutoff = ver;
         },
       });
-      await retireRefreshIndex(committedCutoff);
+      await retireParentRefreshIndexBeforeCutoff(parentId, committedCutoff);
     } catch (err) {
       if (durableCommitted) {
-        await retireRefreshIndex(committedCutoff).catch(() => {});
-        await publishSessionRevoked();
+        await retireParentRefreshIndexBeforeCutoff(parentId, committedCutoff).catch(() => {});
+        await publishParentSessionRevoked(parentId);
       }
       throw err;
     }
-    await publishSessionRevoked();
+    await publishParentSessionRevoked(parentId);
   };
 
   app.post("/register", { config: RL }, async (req, reply) => {
@@ -517,20 +498,43 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const issuedAt = new Date();
     const { codes, rows } = newRecoveryCodeRows(parent.id, issuedAt);
-    await prisma.$transaction(async (tx) => {
-      await tx.parent.update({ where: { id: parent.id }, data: { mfaEnabled: true } });
-      // The previous batch belonged to the previous secret: it goes, even on a re-enrolment.
-      await tx.parentMfaRecoveryCode.deleteMany({ where: { parentId: parent.id } });
-      await tx.parentMfaRecoveryCode.createMany({ data: rows });
-    });
+    const cacheWarmed = await warmSessionVersionCacheBestEffort(parent.id);
+    const priorVersion = typeof (parent as { sessionVersion?: unknown }).sessionVersion === "number"
+      ? (parent as { sessionVersion: number }).sessionVersion
+      : 0;
+    // Commit MFA enablement, the replacement recovery-code hashes, and the `Parent.sessionVersion` bump
+    // together in one transaction: a pre-commit failure throws 5xx without touching recovery tokens, refresh
+    // credentials, or push rows, whereas once committed, downstream cleanup failures never discard `codes`.
+    const committedCutoff = await withParentSessionLock(parent.id, async () =>
+      prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT 1 FROM "Parent" WHERE "id" = ${parent.id} FOR NO KEY UPDATE`;
+        const updated = await tx.parent.update({
+          where: { id: parent.id },
+          data: { mfaEnabled: true, sessionVersion: { increment: 1 } },
+        });
+        // The previous batch belonged to the previous secret: it goes, even on a re-enrolment.
+        await tx.parentMfaRecoveryCode.deleteMany({ where: { parentId: parent.id } });
+        await tx.parentMfaRecoveryCode.createMany({ data: rows });
+        return typeof (updated as { sessionVersion?: unknown } | null)?.sessionVersion === "number"
+          ? (updated as { sessionVersion: number }).sessionVersion
+          : priorVersion + 1;
+      }),
+    );
     // The recovery token has done its job. The batch check above already refuses it once a new batch
     // exists, so the token is dead twice over and a failed delete only shortens the window.
     if (user.purpose === "mfa_recovery" && user.jti) {
       await getRedis().del(recoveryKey(user.jti)).catch(() => undefined);
     }
-    // Handoff item 3: enabling MFA revokes all existing sessions without discarding the one-time recovery codes
-    // if push-row cleanup hits a transient failure (`sessionVersion` already fences delivery).
-    await revokeAllRefreshTokens(parent.id, { preserveResponseOnCleanupError: true });
+    await reconcileSessionVersionCacheAfterCommit(parent.id, cacheWarmed);
+    await prisma.parentPushToken.deleteMany({
+      where: { parentId: parent.id, sessionVersion: { lt: committedCutoff } },
+    }).catch((err) => {
+      app.log.warn({ err, parentId: parent.id }, "push-token cleanup deferred after MFA sessionVersion commit; delivery fence active");
+    });
+    await retireParentRefreshIndexBeforeCutoff(parent.id, committedCutoff).catch((err) => {
+      app.log.warn({ err, parentId: parent.id }, "refresh-index cleanup failed after MFA sessionVersion commit");
+    });
+    await publishParentSessionRevoked(parent.id);
     return {
       ok: true,
       mfaEnabled: true,

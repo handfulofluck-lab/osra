@@ -1810,18 +1810,48 @@ describe("auth routes", () => {
       });
       expect(enrollRes.statusCode).toBe(200);
       const totpSecret = enrollRes.json().secret as string;
-      const totpCode = totpAtCounter(totpSecret, Math.floor(Date.now() / 1000 / 30));
+      const counterNow = Math.floor(Date.now() / 1000 / 30);
 
-      // Force both `parentPushToken.deleteMany` AND Redis `incrby` to fail during `/mfa/verify` after the
-      // recovery-code hashes commit: `/mfa/verify` still returns 200 + all 10 codes, reconciles the cache marker,
-      // and fences pre-MFA push rows.
+      // Pre-commit failure path: if the MFA + recovery-hash + `sessionVersion` transaction fails before commit,
+      // `/mfa/verify` returns 5xx, `sessionVersion` and `mfaEnabled` stay rolled back, and neither push cleanup
+      // nor refresh-index sweep runs.
       const redis = getRedis() as unknown as MockRedis;
+      const refresh0 = loginRes.json().refreshToken as string;
+      prismaMock.parent.update.mockClear();
+      prismaMock.parentPushToken.deleteMany.mockClear();
+      redis.publish.mockClear();
+      prismaMock.parentMfaRecoveryCode.createMany.mockRejectedValueOnce(new Error("db recovery insert failed"));
+      const preCommitFail = await app.inject({
+        method: "POST",
+        url: "/v1/auth/mfa/verify",
+        headers: { authorization: `Bearer ${token0}` },
+        payload: { code: totpAtCounter(totpSecret, counterNow - 1) },
+      });
+      expect(preCommitFail.statusCode).toBe(500);
+      // Roll back the staged `parent.update` from the mocked failure so durable state reflects transaction rollback:
+      p1MfaEnabled = false;
+      p1SessionVersion = 0;
+      expect(prismaMock.parentPushToken.deleteMany).not.toHaveBeenCalled();
+      expect(redis.publish).not.toHaveBeenCalled();
+      // Pre-MFA refresh token was NOT swept because no durable cutoff committed:
+      const preCommitRefreshCheck = await app.inject({
+        method: "POST",
+        url: "/v1/auth/token/refresh",
+        payload: { refreshToken: refresh0 },
+      });
+      expect(preCommitRefreshCheck.statusCode).toBe(200);
+      const token0Rotated = preCommitRefreshCheck.json().token as string;
+
+      // Post-commit failure path: once the MFA + recovery-hash + `sessionVersion` transaction commits, even if
+      // both `parentPushToken.deleteMany` AND Redis `incrby` fail, `/mfa/verify` returns 200 + all 10 codes,
+      // reconciles the cache marker, and fences pre-MFA push rows.
+      const totpCode = totpAtCounter(totpSecret, counterNow);
       prismaMock.parentPushToken.deleteMany.mockRejectedValueOnce(new Error("transient push cleanup failure"));
       redis.incrby.mockRejectedValueOnce(new Error("OOM command not allowed"));
       const verifyRes = await app.inject({
         method: "POST",
         url: "/v1/auth/mfa/verify",
-        headers: { authorization: `Bearer ${token0}` },
+        headers: { authorization: `Bearer ${token0Rotated}` },
         payload: { code: totpCode },
       });
       expect(verifyRes.statusCode).toBe(200);
@@ -1910,17 +1940,17 @@ describe("auth routes", () => {
         return { id: "pt-1", platform: "android", createdAt: new Date("2026-11-27T06:00:00Z") };
       });
 
-      // 1. Legacy `sv`-less claim is refused on `POST /v1/me/push-token` without touching `upsert`, even at version 0.
+      // 1. Legacy `sv`-less claim is accepted ONLY while `Parent.sessionVersion === 0` (stamping `sessionVersion: 0`),
+      // and is durably refused once `Parent.sessionVersion > 0` even if Redis `invalid-before` is absent!
       const legacyNoSv = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", jti: "legacy-jti" }, { expiresIn: "7d" });
-      const legacyReg = await app.inject({
+      const legacyAtZero = await app.inject({
         method: "POST",
         url: "/v1/me/push-token",
         headers: { authorization: `Bearer ${legacyNoSv}` },
-        payload: { token: "l".repeat(32), platform: "android" },
+        payload: { token: "z".repeat(32), platform: "android" },
       });
-      expect(legacyReg.statusCode).toBe(401);
-      expect(legacyReg.json()).toEqual({ error: "session_revoked" });
-      expect(upserts).toHaveLength(0);
+      expect(legacyAtZero.statusCode).toBe(201);
+      expect(upserts).toHaveLength(1);
 
       // 2. Old session signs in (`sv=0`), then `logout-all` bumps `sessionVersion` to 1. Before `retireRefreshIndex`
       // reads `smembers("refresh:index:parent-1")`, a fresh current-generation `POST /v1/auth/login` (`sv=1`) completes!
@@ -1953,6 +1983,20 @@ describe("auth routes", () => {
       });
       expect(logoutRes.statusCode).toBe(200);
       expect(freshRefreshDuringSweep).toBeTruthy();
+
+      // Clear Redis `invalid-before` to simulate eviction: with `p1SessionVersion === 1`, the `sv`-less claim is
+      // durably refused at registration without touching `upsert` (never stamped with `durableVersion = 1`)!
+      await redis.del("auth:invalid-before:parent-1");
+      upserts.length = 0;
+      const legacyAfterBump = await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${legacyNoSv}` },
+        payload: { token: "l".repeat(32), platform: "android" },
+      });
+      expect(legacyAfterBump.statusCode).toBe(401);
+      expect(legacyAfterBump.json()).toEqual({ error: "session_revoked" });
+      expect(upserts).toHaveLength(0);
 
       // Old `sv=0` refresh token was retired by the sweep (`refresh_token_reused`), while the fresh `sv=1`
       // refresh token survived the sweep and rotates cleanly (`200`)!
