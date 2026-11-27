@@ -17,6 +17,8 @@ import '../../providers/mfa_reset_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../push/notification_permission_service.dart';
+import '../../widgets/alerts_off_banner.dart';
 import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
@@ -105,8 +107,12 @@ class DashboardScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (overview) {
+          final showAlertsOff = ref.watch(
+            notificationPermissionControllerProvider.select((s) => s.showAlertsOffBanner),
+          );
           final setupBanner = _finishSetupBanner(context, ref, overview);
           final banners = <Widget>[
+            if (showAlertsOff) const AlertsOffBanner(),
             if (pendingResets.isNotEmpty) _pendingApprovalBanner(context, pendingResets),
             if (setupBanner != null) setupBanner,
           ];

@@ -16,6 +16,8 @@ on:
       - "packages/shared-types/**"
       - "services/api/src/routes/alerts.ts"
       - "scripts/check-parent-ios-push.mjs"
+      - "scripts/build-parent-staging-apk.sh"
+      - "scripts/check-parent-staging-build.mjs"
       - ".github/workflows/parent-app.yml"
   pull_request:
     paths:
@@ -23,6 +25,8 @@ on:
       - "packages/shared-types/**"
       - "services/api/src/routes/alerts.ts"
       - "scripts/check-parent-ios-push.mjs"
+      - "scripts/build-parent-staging-apk.sh"
+      - "scripts/check-parent-staging-build.mjs"
       - ".github/workflows/parent-app.yml"
   schedule:
     - cron: "11 2 * * 1"
@@ -191,6 +195,38 @@ jobs:
           name: parent-app-release-aab
           path: apps/parent-app/build/app/outputs/bundle/release/app-release.aab
           retention-days: 14
+      # Prove the installable staging APK without publishing it. This step deliberately replaces the
+      # release config with a synthetic non-secret one: the real config and lab signer stay on the
+      # private build channel, and no APK artifact is uploaded from this public workflow.
+      - name: Prepare synthetic staging Firebase config
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          config = {
+              "project_info": {"project_number": "100000000000", "project_id": "osra-synthetic-parent"},
+              "client": [{
+                  "client_info": {
+                      "mobilesdk_app_id": "1:100000000000:android:0000000000000000000000",
+                      "android_client_info": {"package_name": "com.osratech.parent"},
+                  },
+                  "oauth_client": [{"client_id": "synthetic", "client_type": 3}],
+                  "api_key": [{"current_key": "synthetic-api-key-not-a-secret"}],
+              }],
+          }
+          Path("android/app/google-services.json").write_text(json.dumps(config), encoding="utf-8")
+          print("Synthetic Firebase config written; no real configuration is used or uploaded")
+          PY
+      - name: Prove staging Parent APK without publishing it
+        env:
+          CI_SYNTHETIC: "1"
+          API_BASE: https://api.staging.osratech.com
+          BUILD_NUMBER: ${{ github.run_number }}
+          OSRA_UPLOAD_KEYSTORE: ""
+          OSRA_UPLOAD_KEYSTORE_PASSWORD: ""
+          OSRA_UPLOAD_KEY_ALIAS: ""
+          OSRA_UPLOAD_KEY_PASSWORD: ""
+        run: bash ../../scripts/build-parent-staging-apk.sh
 
   # Whether this run builds iOS. A macOS minute bills as ten Linux minutes once the repository is private,
   # and most parent-app changes are Dart only, which the Android release build above already compiles. So a

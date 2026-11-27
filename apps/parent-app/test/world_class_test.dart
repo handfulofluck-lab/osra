@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:familyshield_parent/api/models.dart' show LiveActivity, wellbeingColor;
 import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
+import 'package:familyshield_parent/features/children/child_apps_list.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
 import 'package:familyshield_parent/features/settings/digest_prefs_screen.dart';
@@ -26,7 +27,12 @@ void main() {
 
   Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api)],
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        // P-09 (#1179) ships behind `OSRA_UX_P09`; the Apps rows below test the new shape, where the row
+        // itself opens the insight sheet.
+        p09AppsEnabledProvider.overrideWithValue(true),
+      ],
       child: localizedTestApp(home),
     ));
     await tester.pumpAndSettle();

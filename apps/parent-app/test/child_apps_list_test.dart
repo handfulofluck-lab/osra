@@ -91,7 +91,8 @@ void main() {
     });
   }
 
-  Future<void> openAppsTab(WidgetTester tester, FakeApiClient client, {Locale locale = const Locale('en')}) async {
+  Future<void> openAppsTab(WidgetTester tester, FakeApiClient client,
+      {Locale locale = const Locale('en'), bool uxP09 = true}) async {
     tester.view.physicalSize = const Size(393, 1400);
     tester.view.devicePixelRatio = 1.0;
     final router = GoRouter(initialLocation: '/child/child-1', routes: appRoutes);
@@ -101,7 +102,11 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(client)],
+      overrides: [
+        apiClientProvider.overrideWithValue(client),
+        // P-09 (#1179) ships behind `OSRA_UX_P09`; these rows test the new shape.
+        p09AppsEnabledProvider.overrideWithValue(uxP09),
+      ],
       child: MaterialApp.router(
         locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -339,7 +344,10 @@ void main() {
     });
 
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(client)],
+      overrides: [
+        apiClientProvider.overrideWithValue(client),
+        p09AppsEnabledProvider.overrideWithValue(true),
+      ],
       child: MaterialApp(
         locale: const Locale('en'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -361,6 +369,22 @@ void main() {
     expect(control.top, greaterThanOrEqualTo(name.bottom - 1),
         reason: 'Fix 11: the words sit under the name at 320 px / 200%, never beside it');
     expect(tester.takeException(), isNull, reason: 'no row overflows at 320 px and 200%');
+  });
+
+  testWidgets('with the switch off the list keeps its switch row', (tester) async {
+    // Claude, 18:51 UAE: every new screen ships with an off switch, so a screen can be turned off during the
+    // test without a revert. Off must be the list exactly as it shipped — the switch row and its choice sheet.
+    await openAppsTab(tester, api(), uxP09: false);
+
+    expect(
+        tester.widget<Switch>(find.byKey(const ValueKey('appSwitch-com.instagram.android'))).value,
+        isTrue);
+    expect(find.byKey(const ValueKey('appAction-block-com.instagram.android')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('appRow-com.whatsapp')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('appSheetBlock')), findsOneWidget,
+        reason: 'the shipped choice sheet comes back with the switch row');
   });
 
   testWidgets('the list reads in Arabic', (tester) async {

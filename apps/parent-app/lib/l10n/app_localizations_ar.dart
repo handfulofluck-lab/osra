@@ -3923,4 +3923,191 @@ class AppLocalizationsAr extends AppLocalizations {
   String alertBodyDataCleared(String model) {
     return 'أُعيد تثبيت تطبيق أسرة للأطفال على $model، وكانت الحماية متوقفة إلى أن أُعيد الإقران.';
   }
+
+  @override
+  String accessRequestTitle(String child, String app) {
+    return 'طلب من $child لاستخدام $app';
+  }
+
+  @override
+  String accessRequestBlockedTitle(String app, String child) {
+    return 'حُظر $app على هاتف $child';
+  }
+
+  @override
+  String accessRequestBody(String child) {
+    return 'وصل طلب السماح من شاشة الحظر على هاتف $child.';
+  }
+
+  @override
+  String accessRequestBlockedBody(String child) {
+    return 'جرت محاولة لفتحه على هاتف $child. لا حاجة إلى أي إجراء منك.';
+  }
+
+  @override
+  String get accessRequestAllow => 'السماح';
+
+  @override
+  String get accessRequestAllowing => 'جارٍ الحفظ…';
+
+  @override
+  String get accessRequestKeepBlocked => 'إبقاء الحظر';
+
+  @override
+  String accessRequestDisclosure(String app) {
+    return 'سيُسمح باستخدام $app من الآن. وتبقى قواعد وقت النوم والساعات المدرسية والإيقاف المؤقت سارية.';
+  }
+
+  @override
+  String accessRequestAllowFailed(String app) {
+    return 'تعذّر السماح باستخدام $app. تحقّق من اتصالك وحاول مجددًا.';
+  }
+
+  @override
+  String accessRequestReadOnly(String owner) {
+    return 'لا يستطيع الرد على هذا الطلب إلا $owner، من تطبيق أسرة.';
+  }
+
+  @override
+  String accessRequestAllowedBy(String actor, String app, String timeSuffix) {
+    return 'سُمح باستخدام $app بقرار من $actor$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedBy(
+      String actor, String app, String timeSuffix) {
+    return 'بقي $app محظورًا بقرار من $actor$timeSuffix';
+  }
+
+  @override
+  String accessRequestAllowedByYou(String app, String timeSuffix) {
+    return 'سُمح باستخدام $app بقرارك$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedByYou(String app, String timeSuffix) {
+    return 'بقي $app محظورًا بقرارك$timeSuffix';
+  }
+
+  @override
+  String get accessRequestHandled => 'تم التعامل مع هذا الطلب';
+
+  @override
+  String accessRequestAllowedSnack(String app) {
+    return 'سُمح باستخدام $app';
+  }
+
+  @override
+  String accessRequestKeptBlockedSnack(String app) {
+    return 'بقي $app محظورًا';
+  }
+
+  @override
+  String accessRequestAllowLabel(String app) {
+    return 'السماح باستخدام $app';
+  }
+
+  @override
+  String accessRequestKeepBlockedLabel(String app) {
+    return 'إبقاء $app محظورًا';
+  }
+
+  @override
+  String get alertsOffBannerBody => 'التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.';
+
+  @override
+  String get alertsOffTurnOnAction => 'تفعيل التنبيهات';
+
+  @override
+  String timeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة إضافية',
+      many: '$minutes دقيقة إضافية',
+      few: '$minutes دقائق إضافية',
+      two: 'دقيقتان إضافيتان',
+      one: 'دقيقة إضافية واحدة',
+    );
+    return 'طلب من $child: $_temp0 اليوم';
+  }
+
+  @override
+  String timeRequestGrant(String minutes) {
+    return '+$minutes دقيقة';
+  }
+
+  @override
+  String get timeRequestDecline => 'ليس اليوم';
+
+  @override
+  String timeRequestGrantedBy(String actor, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرار من $actor: $_temp0';
+  }
+
+  @override
+  String timeRequestGrantedByYou(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرارك: $_temp0';
+  }
+
+  @override
+  String timeRequestDeclinedBy(String actor) {
+    return 'سبق رفض هذا الطلب بقرار من $actor';
+  }
+
+  @override
+  String get timeRequestDeclinedByYou => 'سبق رفض هذا الطلب بقرارك';
+
+  @override
+  String timeRequestDecidedAt(String time) {
+    return 'وقت القرار: $time';
+  }
+
+  @override
+  String get p15CanBeWrong => 'ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.';
+
+  @override
+  String get p15ActionsHeader => 'ما يمكنك فعله';
+
+  @override
+  String p15TalkWithChild(String child) {
+    return 'تحدّث مع $child';
+  }
+
+  @override
+  String p15HelpChildBlockContact(String child, String contact) {
+    return 'ساعد $child على حظر $contact';
+  }
+
+  @override
+  String p15HelpBlockGuideBody(String child, String app, String contact) {
+    return 'اجلس مع $child وافتحا $app معًا لحظر $contact وكتم رسائله.';
+  }
+
+  @override
+  String get p15AdjustLimits => 'تعديل وقت الشاشة ووقت النوم';
+
+  @override
+  String get p15ReviewAppRules => 'مراجعة قواعد التطبيقات';
+
+  @override
+  String get p15IphoneNotYet => 'غير متاح بعد على آيفون';
 }
