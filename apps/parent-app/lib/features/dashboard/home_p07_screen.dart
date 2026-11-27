@@ -20,6 +20,7 @@ import '../../theme/app_tokens.dart';
 import '../../widgets/error_retry_view.dart';
 import '../alerts/alerts_screen.dart';
 import '../alerts/app_alert_presentation.dart';
+import '../settings/settings_screen.dart' show p22SettingsEnabledProvider;
 import '../alerts/time_request_actions.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
@@ -27,7 +28,7 @@ import '../family/family_screen.dart';
 import '../map/child_location_view.dart';
 import '../pairing/pair_qr_screen.dart' show pairClaimDeviceLabel;
 import '../rules/active_window.dart';
-import 'dashboard_screen.dart' show AddChildDialog;
+import 'dashboard_screen.dart' show openAddChildFlow;
 
 /// Feature switch for UX Final Decisions P-07 Home + P-07-RTL (#1179).
 ///
@@ -382,10 +383,7 @@ class _HomeP07ScreenState extends ConsumerState<HomeP07Screen> {
                 horizontal: AppSpace.sm,
               ),
             ),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const AddChildDialog(),
-            ),
+            onPressed: () => openAddChildFlow(context, ref),
             icon: const Icon(Icons.add, size: 18),
             label: Text(l10n.addChild),
           ),
@@ -1983,38 +1981,60 @@ class _ChildActionGroup extends StatelessWidget {
   }
 }
 
-class _HomeSettingsTab extends StatelessWidget {
+class _HomeSettingsTab extends ConsumerWidget {
   final VoidCallback onSignOut;
 
   const _HomeSettingsTab({required this.onSignOut});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    // P-22 replaces exactly the four links it holds rows for. With the P-07 home there is no dashboard menu,
+    // so without this the grouped Settings screen would be unreachable when both switches are on — the failure
+    // the dashboard menu entry exists to prevent. Off by default, like P-22 itself.
+    final p22 = ref.watch(p22SettingsEnabledProvider);
     final items = <(Key, IconData, String, VoidCallback)>[
+      if (p22)
+        (
+          const ValueKey('homeSettingsP22'),
+          Icons.settings_outlined,
+          l10n.settingsTitle,
+          () => context.push('/settings'),
+        )
+      else ...[
+        (
+          const ValueKey('homeSettingsAppearance'),
+          Icons.palette_outlined,
+          l10n.appearanceMenu,
+          () => context.push('/settings/appearance'),
+        ),
+        (
+          const ValueKey('homeSettingsDigests'),
+          Icons.mail_outline,
+          l10n.digestPreferencesMenu,
+          () => context.push('/settings/digests'),
+        ),
+        (
+          const ValueKey('homeSettingsMfa'),
+          Icons.security_outlined,
+          l10n.mfaMenu,
+          () => context.push('/settings/mfa'),
+        ),
+        (
+          const ValueKey('homeSettingsDeleteAccount'),
+          Icons.delete_outline,
+          l10n.deleteAccountTitle,
+          () => context.push('/settings/delete-account'),
+        ),
+      ],
+      // "Privacy and data" has no row in P-22's approved list and its only other way in is the dashboard menu,
+      // which the P-07 home replaces. It therefore shows in **both** states: the 17:06 rule says a shipped,
+      // signed entry does not drop out without an equivalent in its place (UI/UX Bureau, 17:29).
       (
-        const ValueKey('homeSettingsAppearance'),
-        Icons.palette_outlined,
-        l10n.appearanceMenu,
-        () => context.push('/settings/appearance'),
-      ),
-      (
-        const ValueKey('homeSettingsDigests'),
-        Icons.mail_outline,
-        l10n.digestPreferencesMenu,
-        () => context.push('/settings/digests'),
-      ),
-      (
-        const ValueKey('homeSettingsMfa'),
-        Icons.security_outlined,
-        l10n.mfaMenu,
-        () => context.push('/settings/mfa'),
-      ),
-      (
-        const ValueKey('homeSettingsDeleteAccount'),
-        Icons.delete_outline,
-        l10n.deleteAccountTitle,
-        () => context.push('/settings/delete-account'),
+        const ValueKey('homeSettingsPrivacy'),
+        Icons.privacy_tip_outlined,
+        l10n.privacyMenu,
+        () => context.push('/settings/privacy'),
       ),
       (
         const ValueKey('homeSettingsSignOut'),

@@ -234,6 +234,16 @@ node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count g
 node scripts/qa-probe.mjs   # 151 passed / 0 failed / 0 targets at 2026-10-21 — any failure exits 1
 ```
 
+The [daily-limit request decision](adr/0049-time-request-resolution.md) route has focused API
+coverage in `test/timeRequests.test.ts`. Run it with `pnpm --filter @familyshield/api test
+test/timeRequests.test.ts` from the repository root. It checks duplicate submissions, competing
+caregivers, rollback if acknowledgement fails, decline, unsupported duration, consent and ordinary
+acknowledgement. For a PostgreSQL check, apply the migrations to a fresh disposable database and
+decide the same synthetic request concurrently from two allowed caregiver sessions. Expect one
+success, one conflict with that success's receipt, one bonus increment and one queued command per
+paired device. A device run is separate and must confirm that an approved grant takes effect on the
+child device.
+
 `O14`–`O23` are the ADR-0031 MFA-reset group (ten checks, plus a `setup:` check that builds the family
 they need; the dated counts above are the last measured run, not a prediction): `O14`
 `/mfa/reset/request` refuses a wrong password and an unknown
@@ -1899,6 +1909,10 @@ that the old matcher missed (#310).
 ### Staging analyzer task size (#962)
 
 For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
+
+## P-04 shared add-child widget contract
+
+Run `flutter test --no-pub test/add_child_p04_screen_test.dart`. `OSRA_UX_P04` defaults to false, preserving the legacy `AddChildDialog`; provider overrides enable the new shared form in tests. Cases pin zero POST for an unticked guardian or invalid age, the 1–17 bounds against a pinned clock, exact non-US request bodies, one atomic POST, no jurisdiction picker, privacy bottom-sheet preservation, no draft on reopen, and wizard/dashboard flag behavior. The P-07 Home Add child action must call the same `openAddChildFlow` when that branch integrates; it must not construct `AddChildDialog` directly.
 
 ### Parent Home P-07 + P-07-RTL (#1179)
 

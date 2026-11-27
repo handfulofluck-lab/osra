@@ -100,6 +100,33 @@ object WorkScheduler {
     /** Unique work name for the coalesced lifecycle-startup rules sync. */
     const val RULES_SYNC_NOW_STARTUP: String = "rules_sync_now_startup"
 
+    /**
+     * Issue #1073: asks for one command poll [delayMs] from now.
+     *
+     * A single `401 device_revoked` is only half a confirmation, so the poller needs a second answer a minute
+     * later. On a phone whose `LocationService` is down the only poll left is [CommandPollWorker], which
+     * WorkManager clamps to ~15 minutes — that clamp is what made the worst case ~30 minutes. One expedited
+     * one-off turns it into ~2. REPLACE, not KEEP: a newer answer replaces the pending follow-up instead of
+     * queueing a second one.
+     */
+    fun pollCommandsSoon(context: Context, delayMs: Long = REVOKED_FOLLOW_UP_MS) {
+        val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            COMMAND_POLL_SOON,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<CommandPollWorker>()
+                .setConstraints(network)
+                .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+                .build(),
+        )
+    }
+
+    /** Unique work name for the follow-up poll after a first `device_revoked` answer (#1073). */
+    const val COMMAND_POLL_SOON: String = "command_poll_soon"
+
+    /** 70 s: past the policy's 60 s confirmation interval, with room for a slow second request. */
+    const val REVOKED_FOLLOW_UP_MS: Long = 70_000L
+
     private fun msUntilNextMidnight(): Long {
         val now = Calendar.getInstance()
         val next = Calendar.getInstance().apply {
