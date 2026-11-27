@@ -79,7 +79,8 @@ print("Firebase config names com.osratech.parent (values withheld)")
 PY
 
 rm -f "$VALUES_XML"
-flutter build apk --release --build-number="$BUILD_NUMBER" --dart-define=API_BASE="$API_BASE"
+# OSRA_UX_FINAL: every per-screen OSRA_UX_Pxx switch falls back to it, so the staging APK shows the UX-final screens.
+flutter build apk --release --build-number="$BUILD_NUMBER" --dart-define=API_BASE="$API_BASE" --dart-define=OSRA_UX_FINAL=true
 
 python - "$CONFIG" "$VALUES_XML" <<'PY'
 import json

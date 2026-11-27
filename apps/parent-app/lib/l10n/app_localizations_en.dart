@@ -252,6 +252,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPreferencesMenu => 'Digest preferences';
 
   @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsGroupLanguage => 'Language and appearance';
+
+  @override
+  String get settingsGroupSecurity => 'Security';
+
+  @override
+  String get settingsGroupAccount => 'Account';
+
+  @override
+  String get settingsSignOut => 'Sign out';
+
+  @override
+  String get settingsSignOutAll => 'Sign out of all devices';
+
+  @override
+  String get settingsValueOn => 'On';
+
+  @override
+  String get settingsValueOff => 'Off';
+
+  @override
+  String get settingsSignOutAllTitle => 'Sign out of all devices?';
+
+  @override
+  String get settingsSignOutAllBody =>
+      'You will have to sign in again on every device that uses your account, including this one.';
+
+  @override
+  String get settingsSignOutAllConfirm => 'Sign out everywhere';
+
+  @override
+  String get settingsSecurityCardTitle => 'Finish securing your account';
+
+  @override
+  String get settingsSecurityCardLine => 'Two-step verification is off';
+
+  @override
+  String get settingsSecurityCardButton => 'Turn on';
+
+  @override
+  String get settingsTimeZone => 'Time zone';
+
+  @override
   String get signOutTooltip => 'Sign out';
 
   @override
@@ -3164,7 +3210,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get grantDeviceAdmin => 'Device admin';
 
   @override
-  String get grantWebFilter => 'Web filter (VPN consent)';
+  String get grantWebFilter => 'Web filter';
 
   @override
   String get grantLocation => 'Location (allow all the time)';
@@ -3739,6 +3785,71 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertsOffTurnOnAction => 'Turn on alerts';
 
   @override
+  String pairP05Title(String child) {
+    return 'Connect $child\'s phone';
+  }
+
+  @override
+  String get pairP05TitleGeneric => 'Connect your child\'s phone';
+
+  @override
+  String pairP05Subtitle(String child) {
+    return 'On $child\'s phone, install OSRA Kids, then scan this.';
+  }
+
+  @override
+  String get pairP05SubtitleGeneric =>
+      'Install OSRA Kids on the child\'s phone, then scan this.';
+
+  @override
+  String get pairP05OrTypeCode => 'Or type this code';
+
+  @override
+  String pairP05ValidFor(String time) {
+    return 'Valid for $time';
+  }
+
+  @override
+  String get pairP05CodeExpired => 'Code expired';
+
+  @override
+  String get pairP05NewCode => 'New code';
+
+  @override
+  String pairP05WaitingFor(String child) {
+    return 'Waiting for $child\'s phone…';
+  }
+
+  @override
+  String get pairP05WaitingGeneric => 'Waiting for the child\'s phone…';
+
+  @override
+  String get pairP05ConfirmDeviceTitle => 'Confirm this device?';
+
+  @override
+  String pairP05ConfirmDeviceBody(String model) {
+    return '$model wants to connect. Confirm to link it.';
+  }
+
+  @override
+  String get pairP05ConfirmLink => 'Confirm and link';
+
+  @override
+  String get pairP05Decline => 'Decline';
+
+  @override
+  String get pairP05Connected => 'Phone connected.';
+
+  @override
+  String get pairP05SendInstallLink => 'Send install link';
+
+  @override
+  String get pairP05InstallLinkCopied => 'Install link copied to share.';
+
+  @override
+  String get pairP05SkipForNow => 'Skip for now';
+
+  @override
   String timeRequestTitle(String child, int minutes) {
     return '$child asked for $minutes more minutes today';
   }
@@ -3777,6 +3888,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get p15CanBeWrong =>
       'Possible concern — automatic checks can be wrong.';
+
+  @override
+  String get p15PreviewLoadFailed =>
+      'Couldn\'t load the preview. Check your connection and try again.';
 
   @override
   String get p15ActionsHeader => 'What you can do';
@@ -3966,4 +4081,157 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyRetry => 'Try again';
+
+  @override
+  String get homeTabHome => 'Home';
+
+  @override
+  String get homeTabFamily => 'Family';
+
+  @override
+  String get homeTabSettings => 'Settings';
+
+  @override
+  String get homeFilterAll => 'All';
+
+  @override
+  String get homeNeedsYou => 'Needs you';
+
+  @override
+  String homeSafetyAlertsToReview(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count safety alerts to review',
+      one: '1 safety alert to review',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeDurationHoursMinutes(String hours, String minutes) {
+    return '$hours $minutes';
+  }
+
+  @override
+  String homeTimeLeft(String duration) {
+    return '$duration left';
+  }
+
+  @override
+  String homeOfLimit(String limit) {
+    return 'of $limit';
+  }
+
+  @override
+  String get homeSeenJustNow => 'Seen just now';
+
+  @override
+  String homeSeenAgo(String duration) {
+    return 'Seen $duration ago';
+  }
+
+  @override
+  String homeOfflineFor(String duration) {
+    return 'Offline for $duration';
+  }
+
+  @override
+  String get homeStateAtSchool => 'At school';
+
+  @override
+  String get homeStateBedtime => 'Bedtime';
+
+  @override
+  String get homeStateFreeTime => 'Free time';
+
+  @override
+  String get homeStateHomework => 'Homework';
+
+  @override
+  String get homeStatePaused => 'Paused';
+
+  @override
+  String homeBatteryPct(String pct) {
+    return 'Battery $pct';
+  }
+
+  @override
+  String get homeBonusPlus15 => '+15 min';
+
+  @override
+  String get homeBonusPlus30 => '+30 min';
+
+  @override
+  String get homePauseInternet => 'Pause internet';
+
+  @override
+  String get homeResumeInternet => 'Resume internet';
+
+  @override
+  String get homeLockAllDevices => 'Lock';
+
+  @override
+  String get homeUnlockAllDevices => 'Unlock';
+
+  @override
+  String get homeNotYetAvailable => 'Not yet available';
+
+  @override
+  String get homeNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
+  String get homeKeepBlocked => 'Keep blocked';
+
+  @override
+  String get homeNotToday => 'Not today';
+
+  @override
+  String homeTimeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$child asked for $minutes more minutes of screen time',
+      one: '$child asked for 1 more minute of screen time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeAccessRequestTitle(String child, String app) {
+    return '$child asked to open $app';
+  }
+
+  @override
+  String get homeSentToPhone => 'Sent to phone';
+
+  @override
+  String homeSendingBonusSnack(String duration) {
+    return 'Adding $duration for today';
+  }
+
+  @override
+  String get homeExampleBadge => 'Example';
+
+  @override
+  String get p01WelcomeSubtitle =>
+      'A clearer view of your family\'s digital day.';
+
+  @override
+  String get p01ExampleBadge => 'Example';
+
+  @override
+  String get p01NoAdsLine => 'No ads. Your family\'s data is never sold.';
+
+  @override
+  String get p01PreviewScreenTimeValue => '1 h 20 min left';
+
+  @override
+  String get p01PreviewBedtimeValue => '21:30 → 07:00';
+
+  @override
+  String get p01PreviewAppsValue => '2 blocked';
+
+  @override
+  String get p01PreviewLocationValue => 'At school';
 }

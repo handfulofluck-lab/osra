@@ -1154,7 +1154,8 @@ adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNA
 adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
 adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
 adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
-# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+# pause-internet (#1183/#1240): POST /v1/devices/:id/command {"command":"pause_internet"} → network-only
+#   (non-blocking notification, no full-screen overlay; offline apps stay open) AND
 adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
 adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
 # resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"
@@ -1165,6 +1166,12 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the SafeSearch row (#1226), use the approved paired test family and keep the supported
+browser open while the parent changes SafeSearch. Use a neutral query and check that the browser's
+SafeSearch settings report the requested state. With SafeSearch on, the `FilterVpn` diagnostic
+should record the search host and the `REWRITE` decision. Check that the diagnostic omits the
+query text and full URL. Record the exact Child build and restore the test family's prior setting.
 
 For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
 each request. The existing `paused` field reports the requested setting. Its optional
@@ -1892,3 +1899,16 @@ that the old matcher missed (#310).
 ### Staging analyzer task size (#962)
 
 For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
+
+### Parent Home P-07 + P-07-RTL (#1179)
+
+Run from `apps/parent-app`:
+
+```bash
+flutter test --dart-define=OSRA_UX_P07=true test/p07_home_screen_test.dart
+flutter test test/p07_home_screen_test.dart
+```
+
+- **Shared G4 / P-20 time-request actions:** Home `Needs you` renders `TimeRequestActions` on Android daily-limit requests (`POST /v1/alerts/:id/time-decision`, including `409` winning caregiver receipts), while child-card quick `+15 min` / `+30 min` buttons keep the 5-second local Undo hold over `POST /v1/controls/children/:id/bonus`.
+- **G5 daily time-left window:** `deviceCommandHistoryProvider` reads `limit=100` (matching the server `listDeviceCommands` cap). If more than 100 commands are sent to one device in a single day so an earlier same-day `acked` grant ages out of that slice, `computeHomeTimeSummary` conservatively drops the aged-out grant and clamps `remainingMinutes` at `0` rather than reading stale `ruleSet.bonusMinutesToday`.
+- **A10 live-arrival pairing claims:** while Home watches an unexpired pairing code in `status: waiting`, `activePairingClaimProvider` re-polls every 2 seconds until a claim arrives, `404` is returned, the code expires, or Home unmounts.

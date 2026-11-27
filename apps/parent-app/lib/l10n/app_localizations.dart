@@ -530,6 +530,96 @@ abstract class AppLocalizations {
   /// **'Digest preferences'**
   String get digestPreferencesMenu;
 
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @settingsGroupLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Language and appearance'**
+  String get settingsGroupLanguage;
+
+  /// No description provided for @settingsGroupSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get settingsGroupSecurity;
+
+  /// No description provided for @settingsGroupAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get settingsGroupAccount;
+
+  /// No description provided for @settingsSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get settingsSignOut;
+
+  /// No description provided for @settingsSignOutAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices'**
+  String get settingsSignOutAll;
+
+  /// No description provided for @settingsValueOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get settingsValueOn;
+
+  /// No description provided for @settingsValueOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get settingsValueOff;
+
+  /// No description provided for @settingsSignOutAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices?'**
+  String get settingsSignOutAllTitle;
+
+  /// No description provided for @settingsSignOutAllBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will have to sign in again on every device that uses your account, including this one.'**
+  String get settingsSignOutAllBody;
+
+  /// No description provided for @settingsSignOutAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get settingsSignOutAllConfirm;
+
+  /// No description provided for @settingsSecurityCardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish securing your account'**
+  String get settingsSecurityCardTitle;
+
+  /// No description provided for @settingsSecurityCardLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is off'**
+  String get settingsSecurityCardLine;
+
+  /// No description provided for @settingsSecurityCardButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get settingsSecurityCardButton;
+
+  /// No description provided for @settingsTimeZone.
+  ///
+  /// In en, this message translates to:
+  /// **'Time zone'**
+  String get settingsTimeZone;
+
   /// No description provided for @signOutTooltip.
   ///
   /// In en, this message translates to:
@@ -5279,7 +5369,7 @@ abstract class AppLocalizations {
   /// No description provided for @grantWebFilter.
   ///
   /// In en, this message translates to:
-  /// **'Web filter (VPN consent)'**
+  /// **'Web filter'**
   String get grantWebFilter;
 
   /// No description provided for @grantLocation.
@@ -6040,6 +6130,114 @@ abstract class AppLocalizations {
   /// **'Turn on alerts'**
   String get alertsOffTurnOnAction;
 
+  /// No description provided for @pairP05Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect {child}\'s phone'**
+  String pairP05Title(String child);
+
+  /// No description provided for @pairP05TitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect your child\'s phone'**
+  String get pairP05TitleGeneric;
+
+  /// No description provided for @pairP05Subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'On {child}\'s phone, install OSRA Kids, then scan this.'**
+  String pairP05Subtitle(String child);
+
+  /// No description provided for @pairP05SubtitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Install OSRA Kids on the child\'s phone, then scan this.'**
+  String get pairP05SubtitleGeneric;
+
+  /// No description provided for @pairP05OrTypeCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Or type this code'**
+  String get pairP05OrTypeCode;
+
+  /// No description provided for @pairP05ValidFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid for {time}'**
+  String pairP05ValidFor(String time);
+
+  /// No description provided for @pairP05CodeExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Code expired'**
+  String get pairP05CodeExpired;
+
+  /// No description provided for @pairP05NewCode.
+  ///
+  /// In en, this message translates to:
+  /// **'New code'**
+  String get pairP05NewCode;
+
+  /// No description provided for @pairP05WaitingFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for {child}\'s phone…'**
+  String pairP05WaitingFor(String child);
+
+  /// No description provided for @pairP05WaitingGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the child\'s phone…'**
+  String get pairP05WaitingGeneric;
+
+  /// No description provided for @pairP05ConfirmDeviceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm this device?'**
+  String get pairP05ConfirmDeviceTitle;
+
+  /// No description provided for @pairP05ConfirmDeviceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{model} wants to connect. Confirm to link it.'**
+  String pairP05ConfirmDeviceBody(String model);
+
+  /// No description provided for @pairP05ConfirmLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm and link'**
+  String get pairP05ConfirmLink;
+
+  /// No description provided for @pairP05Decline.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get pairP05Decline;
+
+  /// No description provided for @pairP05Connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone connected.'**
+  String get pairP05Connected;
+
+  /// No description provided for @pairP05SendInstallLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Send install link'**
+  String get pairP05SendInstallLink;
+
+  /// No description provided for @pairP05InstallLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Install link copied to share.'**
+  String get pairP05InstallLinkCopied;
+
+  /// No description provided for @pairP05SkipForNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip for now'**
+  String get pairP05SkipForNow;
+
   /// No description provided for @timeRequestTitle.
   ///
   /// In en, this message translates to:
@@ -6093,6 +6291,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Possible concern — automatic checks can be wrong.'**
   String get p15CanBeWrong;
+
+  /// No description provided for @p15PreviewLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the preview. Check your connection and try again.'**
+  String get p15PreviewLoadFailed;
 
   /// No description provided for @p15ActionsHeader.
   ///
@@ -6399,6 +6603,246 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Try again'**
   String get privacyRetry;
+
+  /// No description provided for @homeTabHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get homeTabHome;
+
+  /// No description provided for @homeTabFamily.
+  ///
+  /// In en, this message translates to:
+  /// **'Family'**
+  String get homeTabFamily;
+
+  /// No description provided for @homeTabSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get homeTabSettings;
+
+  /// No description provided for @homeFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get homeFilterAll;
+
+  /// No description provided for @homeNeedsYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs you'**
+  String get homeNeedsYou;
+
+  /// No description provided for @homeSafetyAlertsToReview.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 safety alert to review} other{{count} safety alerts to review}}'**
+  String homeSafetyAlertsToReview(int count);
+
+  /// No description provided for @homeDurationHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} {minutes}'**
+  String homeDurationHoursMinutes(String hours, String minutes);
+
+  /// No description provided for @homeTimeLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{duration} left'**
+  String homeTimeLeft(String duration);
+
+  /// No description provided for @homeOfLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'of {limit}'**
+  String homeOfLimit(String limit);
+
+  /// No description provided for @homeSeenJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen just now'**
+  String get homeSeenJustNow;
+
+  /// No description provided for @homeSeenAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen {duration} ago'**
+  String homeSeenAgo(String duration);
+
+  /// No description provided for @homeOfflineFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline for {duration}'**
+  String homeOfflineFor(String duration);
+
+  /// No description provided for @homeStateAtSchool.
+  ///
+  /// In en, this message translates to:
+  /// **'At school'**
+  String get homeStateAtSchool;
+
+  /// No description provided for @homeStateBedtime.
+  ///
+  /// In en, this message translates to:
+  /// **'Bedtime'**
+  String get homeStateBedtime;
+
+  /// No description provided for @homeStateFreeTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Free time'**
+  String get homeStateFreeTime;
+
+  /// No description provided for @homeStateHomework.
+  ///
+  /// In en, this message translates to:
+  /// **'Homework'**
+  String get homeStateHomework;
+
+  /// No description provided for @homeStatePaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get homeStatePaused;
+
+  /// No description provided for @homeBatteryPct.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery {pct}'**
+  String homeBatteryPct(String pct);
+
+  /// No description provided for @homeBonusPlus15.
+  ///
+  /// In en, this message translates to:
+  /// **'+15 min'**
+  String get homeBonusPlus15;
+
+  /// No description provided for @homeBonusPlus30.
+  ///
+  /// In en, this message translates to:
+  /// **'+30 min'**
+  String get homeBonusPlus30;
+
+  /// No description provided for @homePauseInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause internet'**
+  String get homePauseInternet;
+
+  /// No description provided for @homeResumeInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume internet'**
+  String get homeResumeInternet;
+
+  /// No description provided for @homeLockAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock'**
+  String get homeLockAllDevices;
+
+  /// No description provided for @homeUnlockAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get homeUnlockAllDevices;
+
+  /// No description provided for @homeNotYetAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available'**
+  String get homeNotYetAvailable;
+
+  /// No description provided for @homeNotYetOnIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get homeNotYetOnIphone;
+
+  /// No description provided for @homeKeepBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep blocked'**
+  String get homeKeepBlocked;
+
+  /// No description provided for @homeNotToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get homeNotToday;
+
+  /// No description provided for @homeTimeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes, plural, =1{{child} asked for 1 more minute of screen time} other{{child} asked for {minutes} more minutes of screen time}}'**
+  String homeTimeRequestTitle(String child, int minutes);
+
+  /// No description provided for @homeAccessRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked to open {app}'**
+  String homeAccessRequestTitle(String child, String app);
+
+  /// No description provided for @homeSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get homeSentToPhone;
+
+  /// No description provided for @homeSendingBonusSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Adding {duration} for today'**
+  String homeSendingBonusSnack(String duration);
+
+  /// No description provided for @homeExampleBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Example'**
+  String get homeExampleBadge;
+
+  /// No description provided for @p01WelcomeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A clearer view of your family\'s digital day.'**
+  String get p01WelcomeSubtitle;
+
+  /// No description provided for @p01ExampleBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Example'**
+  String get p01ExampleBadge;
+
+  /// No description provided for @p01NoAdsLine.
+  ///
+  /// In en, this message translates to:
+  /// **'No ads. Your family\'s data is never sold.'**
+  String get p01NoAdsLine;
+
+  /// No description provided for @p01PreviewScreenTimeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'1 h 20 min left'**
+  String get p01PreviewScreenTimeValue;
+
+  /// No description provided for @p01PreviewBedtimeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'21:30 → 07:00'**
+  String get p01PreviewBedtimeValue;
+
+  /// No description provided for @p01PreviewAppsValue.
+  ///
+  /// In en, this message translates to:
+  /// **'2 blocked'**
+  String get p01PreviewAppsValue;
+
+  /// No description provided for @p01PreviewLocationValue.
+  ///
+  /// In en, this message translates to:
+  /// **'At school'**
+  String get p01PreviewLocationValue;
 }
 
 class _AppLocalizationsDelegate
