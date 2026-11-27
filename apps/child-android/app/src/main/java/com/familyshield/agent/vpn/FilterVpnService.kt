@@ -125,6 +125,7 @@ class FilterVpnService : VpnService() {
         isInternetPausedOnServiceThread = { rules.isInternetPaused() },
         isConsentPausedOnServiceThread = { consent.isPaused() },
         isLockActiveOnServiceThread = { com.familyshield.agent.enforcement.LockState.isActive(this) },
+        pauseMsProvider = { WebFilterRow20Fallback.effectiveHopPauseMs() },
     )
     private val running = AtomicBoolean(false)
     private val generation = java.util.concurrent.atomic.AtomicInteger(0)

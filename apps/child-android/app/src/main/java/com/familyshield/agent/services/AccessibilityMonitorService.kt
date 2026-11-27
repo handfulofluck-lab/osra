@@ -66,6 +66,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class AccessibilityMonitorService : AccessibilityService() {
     @Inject lateinit var rules: RuleRepository
+    @Inject lateinit var blocklist: com.familyshield.agent.data.BlocklistStore
     @Inject lateinit var blocker: AppBlocker
     @Inject lateinit var usage: UsageReporter
     @Inject lateinit var social: SocialCapture
@@ -196,8 +197,16 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     /** Issue #444 C4: a rule sync may have just blocked an app that is playing; the check runs on the main thread. */
     private val rulesChanged: () -> Unit = {
-        android.os.Handler(android.os.Looper.getMainLooper()).post { media.onRulesChanged() }
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            media.onRulesChanged()
+            if (com.familyshield.agent.vpn.WebFilterRow20Fallback.isTabCloseEnabled()) {
+                enforceBlockedBrowserTabIfEnabled(activeWindowPackage())
+            }
+        }
     }
+
+    /** Contingency for device row 20 (#1051): pure state machine, consulted only while its switch is enabled. */
+    private val browserTabBlockPolicy = com.familyshield.agent.vpn.BrowserTabBlockPolicy()
 
     /** Issue #444 C4: a blocked app's media audio is paused, however it was started ([MediaBlockPolicy]). */
     private val media by lazy {
@@ -437,9 +446,113 @@ class AccessibilityMonitorService : AccessibilityService() {
         // or a PiP window over Home. This runs even when our own overlay is the active window, which
         // is exactly the split-screen case the child uses to keep the blocked app beside the lock.
         enforceVisibleBlocks(snapshot, foreground)
+        if (com.familyshield.agent.vpn.WebFilterRow20Fallback.isTabCloseEnabled()) {
+            enforceBlockedBrowserTabIfEnabled(foreground)
+        }
         // Issue #460: the launcher may be the Home we asked for, so the deferred block screen goes on
         // top of it. Called after the block step, which may have deferred a new raise this event.
         advanceDeferredRaise(foreground ?: eventPkg)
+    }
+
+    private fun activeWindowPackage(): String? {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return null
+        return try {
+            runCatching { root.packageName?.toString() }.getOrNull()
+        } finally {
+            runCatching { root.recycle() }
+        }
+    }
+
+    /**
+     * Contingency for device row 20 (#1051 option c), gated behind [com.familyshield.agent.vpn.WebFilterRow20Fallback].
+     * Reads only the active browser window's URL-bar view ID, recycles every [AccessibilityNodeInfo], and never
+     * logs or persists the observed text or hostname.
+     */
+    private fun enforceBlockedBrowserTabIfEnabled(foregroundPackage: String?) {
+        val enabled = com.familyshield.agent.vpn.WebFilterRow20Fallback.isTabCloseEnabled()
+        if (!enabled) {
+            browserTabBlockPolicy.reset()
+            return
+        }
+        val pkg = foregroundPackage?.trim()
+        if (!com.familyshield.agent.vpn.BrowserTabBlockPolicy.isKnownBrowser(pkg)) {
+            browserTabBlockPolicy.reset()
+            return
+        }
+        val browserPkg = pkg ?: return
+        if (rules.evaluate(browserPkg) != RuleRepository.Decision.ALLOW) {
+            // App-level block already owns the whole browser window.
+            browserTabBlockPolicy.reset()
+            return
+        }
+        val observation = readBrowserUrlBar(browserPkg)
+        val wf = rules.cachedRules()?.webFilter
+        val dnsCfg = com.familyshield.agent.vpn.DnsFilterPolicy.Config(
+            pausedInternet = false,
+            siteNamesEnabled = false,
+            safeSearch = wf?.safeSearchEnforced ?: false,
+            youtubeMode = wf?.youtubeRestrictedMode ?: "off",
+            allowedDomains = wf?.allowedDomains ?: emptyList(),
+            blockedDomains = wf?.blockedDomains ?: emptyList(),
+            categoryDomains = blocklist.domains(),
+            packLoaded = blocklist.packStored(),
+            blockedCategories = wf?.blockedCategories ?: emptyList(),
+        )
+        val decision = browserTabBlockPolicy.evaluate(
+            enabled = true,
+            paired = settings.isPairedSync(),
+            consentPaused = consentState.isPaused(),
+            lockActive = LockState.isActive(this) || Ringer.isRinging,
+            pausedInternet = rules.isInternetPaused(),
+            browserPackage = browserPkg,
+            observation = observation,
+            dnsConfig = dnsCfg,
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+        )
+        if (decision.pauseBrowserMedia) {
+            media.onRaise(browserPkg)
+        }
+        when (decision.step) {
+            com.familyshield.agent.vpn.BrowserTabBlockPolicy.Step.NONE -> Unit
+            com.familyshield.agent.vpn.BrowserTabBlockPolicy.Step.CLOSE_OR_BACK -> {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+            com.familyshield.agent.vpn.BrowserTabBlockPolicy.Step.GO_HOME -> {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+            }
+        }
+    }
+
+    private fun readBrowserUrlBar(browserPkg: String): com.familyshield.agent.vpn.BrowserTabBlockPolicy.UrlBarObservation? {
+        val viewIds = com.familyshield.agent.vpn.BrowserTabBlockPolicy.urlBarViewIdsFor(browserPkg)
+        if (viewIds.isEmpty()) return null
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return null
+        try {
+            val rootPkg = runCatching { root.packageName?.toString() }.getOrNull()
+            if (!rootPkg.equals(browserPkg, ignoreCase = true)) return null
+            for (viewId in viewIds) {
+                val matches = runCatching { root.findAccessibilityNodeInfosByViewId(viewId) }.getOrNull().orEmpty()
+                try {
+                    for (node in matches) {
+                        val visible = runCatching { node.isVisibleToUser }.getOrDefault(false)
+                        if (!visible) continue
+                        val focusedEditable = runCatching { node.isFocused && node.isEditable }.getOrDefault(false)
+                        val text = runCatching { node.text?.toString() }.getOrNull()
+                        if (focusedEditable || !text.isNullOrBlank()) {
+                            return com.familyshield.agent.vpn.BrowserTabBlockPolicy.UrlBarObservation(
+                                text = text,
+                                isFocusedEditable = focusedEditable,
+                            )
+                        }
+                    }
+                } finally {
+                    matches.forEach { runCatching { it.recycle() } }
+                }
+            }
+            return null
+        } finally {
+            runCatching { root.recycle() }
+        }
     }
 
     private fun refreshFilterRecovery() {

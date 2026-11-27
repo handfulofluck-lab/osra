@@ -111,6 +111,16 @@ android {
         // G4 of the customer guide. Declared here so every variant has the field; the real value is set on
         // `release` only (below), because a debug APK is what a tester points at a LAN server.
         buildConfigField("String", "API_BASE", "\"\"")
+        // Contingency fallback for device row 20 (#1051 / #1224), default OFF (`false`) so normal builds
+        // keep #1234's 1 s reset hop and perform zero browser-tab eviction unless explicitly enabled.
+        val row20Fallback = project.findProperty("osra.row20Fallback")?.toString()?.trim()?.lowercase() == "true"
+        val row20HopPauseMs = (project.findProperty("osra.row20HopPauseMs")?.toString()?.trim()?.toLongOrNull() ?: 5_000L)
+            .coerceIn(1_000L, 15_000L)
+        val row20TabClose = project.findProperty("osra.row20TabClose")?.toString()?.trim()?.lowercase()
+            ?.let { it == "true" } ?: row20Fallback
+        buildConfigField("boolean", "ROW20_WEB_BLOCK_FALLBACK", row20Fallback.toString())
+        buildConfigField("long", "ROW20_WEB_BLOCK_HOP_PAUSE_MS", "${row20HopPauseMs}L")
+        buildConfigField("boolean", "ROW20_WEB_BLOCK_TAB_CLOSE", row20TabClose.toString())
     }
     signingConfigs {
         // ADR-0039 D2: `fullRelease` reads only the OSRA_FULL_* variables, so the Play upload key is never
