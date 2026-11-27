@@ -326,4 +326,47 @@ void main() {
     expect(posts.map((post) => post['payload']), [legacy.id, grouped.id]);
     expect(await wake.run(page), WakeOutcome.nothingNew);
   });
+
+  test(
+      'osra-security#82: an upgrade re-raises the seen setup notice with its own delivery, shown once',
+      () async {
+    const setupAlert = 'fixture-setup-notice';
+    Alert setupNotice(Map<String, Object> metadata, int minute) =>
+        Alert.fromJson({
+          'id': setupAlert,
+          'childId': _child,
+          'category': 'tamper',
+          'severity': 'warning',
+          'title': 'Setup is not finished yet',
+          'body': 'Synthetic setup notice body',
+          'metadata': metadata,
+          'createdAt': _time(minute),
+          'updatedAt': _time(minute),
+          'attemptCount': 1,
+          'acknowledged': false,
+        });
+
+    // The first-setup notice: an ordinary unversioned alert, already shown.
+    final first = setupNotice({'type': 'setup_incomplete'}, 1);
+    expect(await wake.run([first]), WakeOutcome.shown);
+    expect(await wake.run([first]), WakeOutcome.nothingNew);
+    expect(posts, hasLength(1));
+
+    // After completion an app upgrade adds a required grant. The server keeps the one row and issues a new
+    // delivery identity for it, so the parent sees the upgrade once.
+    final upgrade = setupNotice({
+      'type': 'setup_incomplete_permissions',
+      'missingGrants': 'NOTIFICATION_LISTENER',
+      'pushDeliveryId': 'fixture-upgrade-delivery',
+      'pushDeliverySeq': 1,
+      'pushDeliveries': [_delivery('fixture-upgrade-delivery', 1, 30)],
+    }, 30);
+    expect(await wake.run([upgrade]), WakeOutcome.shown);
+    expect(posts, hasLength(2));
+    expect(posts.last['payload'], setupAlert);
+
+    // A duplicate wake for the same delivery stays quiet.
+    expect(await wake.run([upgrade]), WakeOutcome.nothingNew);
+    expect(posts, hasLength(2));
+  });
 }

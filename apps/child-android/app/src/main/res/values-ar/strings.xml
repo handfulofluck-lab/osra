@@ -199,7 +199,7 @@
     <string name="c05_grant_location_title">الموقع</string>
     <string name="c05_grant_location_why">يتيح لأهلك معرفة مكان هذا الهاتف، حتى عندما يكون تطبيق أسرة مغلقًا.</string>
     <string name="c05_grant_location_button">السماح بالموقع طوال الوقت</string>
-    <string name="c05_grant_private_dns_title">DNS الخاص</string>
+    <string name="c05_grant_private_dns_title">إعداد DNS الخاص</string>
     <string name="c05_grant_private_dns_why">إذا ضُبط DNS الخاص على مزوّد محدد، يمكن تجاوز تصفية المواقع. لذا يلزم ضبطه على «تلقائي» أو «إيقاف».</string>
     <string name="c05_grant_private_dns_button">فتح إعدادات DNS الخاص</string>
     <string name="c05_grant_battery_title">البطارية</string>
@@ -214,7 +214,7 @@
     <string name="setup_protect_title">احمِ هذا الجهاز</string>
     <string name="setup_protect_body">في الشاشة التالية، اضغط «تفعيل» ليصبح تطبيق أسرة للأطفال مسؤول الجهاز. بذلك لا يمكن إلغاء تثبيته دون رمز PIN للوالدين، ويمكن قفل الجهاز عن بُعد من تطبيق الوالدين. وبدونه تقتصر الحماية على التنبيه.</string>
     <string name="setup_activate_admin">فعّل مسؤول الجهاز</string>
-    <string name="setup_skip">تخطَّ الآن (حماية بالتنبيه فقط)</string>
+    <string name="setup_skip">التخطي الآن</string>
     <string name="setup_try_activate_again">حاول التفعيل مرة أخرى</string>
     <string name="setup_continue_without">تابع دون حماية</string>
     <string name="setup_complete_title">اكتمل الإعداد</string>
@@ -228,7 +228,7 @@
     <string name="setup_checklist_intro">كل بند أدناه يفتح الشاشة التي يُمنح منها. ارجع إلى هنا بعد كل بند، وستتحدّث القائمة تلقائيًا.</string>
     <string name="setup_back">رجوع</string>
     <string name="setup_done">تم</string>
-    <string name="setup_recommended">(موصى به)</string>
+    <string name="setup_recommended">موصى به</string>
     <string name="setup_grant_button">منح إذن: %1$s</string>
     <string name="setup_web_filter_missing">⚠️ تصفية المواقع غير مُعدّة. اسمح بشبكة VPN الخاصة بتطبيق أسرة للأطفال. هي تصفّي عناوين المواقع على هذا الهاتف فقط، ولا يغادر الهاتفَ شيء.</string>
     <string name="setup_web_filter_setup">أعدّ تصفية المواقع</string>
@@ -332,11 +332,11 @@
          overlays, which its first sweep did not cover. The lock lines drop the «· أسرة» tail, like the titles. -->
     <string name="sos_button">استغاثة</string>
     <string name="sos_tile_label">الاستغاثة</string>
-    <string name="lock_locked_title">قفل والدك أو والدتك هذا الجهاز</string>
-    <string name="lock_locked_body">سيُفتح القفل عندما يسمح والدك أو والدتك بذلك.</string>
-    <string name="lock_paused_title">أوقف والدك أو والدتك هذا الجهاز مؤقتًا</string>
+    <string name="lock_locked_title">قفل أهلك هذا الجهاز</string>
+    <string name="lock_locked_body">سيُفتح القفل عندما يسمح أهلك بذلك.</string>
+    <string name="lock_paused_title">أوقف أهلك هذا الجهاز مؤقتًا</string>
     <string name="lock_paused_body">سيعود إلى العمل عند انتهاء الإيقاف المؤقت.</string>
-    <string name="lock_paused_internet_title">أوقف والدك أو والدتك الإنترنت مؤقتًا</string>
+    <string name="lock_paused_internet_title">أوقف أهلك الإنترنت مؤقتًا</string>
     <string name="lock_paused_internet_body">تظل التطبيقات التعليمية تعمل.</string>
     <string name="notification_paused_internet_body">تظل التطبيقات التي لا تحتاج إلى إنترنت تعمل أثناء إيقاف الإنترنت مؤقتًا.</string>
     <string name="lock_always_allowed_heading">المسموح به دائمًا</string>
@@ -378,6 +378,8 @@
     <string name="notification_location_active">مشاركة الموقع تعمل</string>
     <string name="notification_channel_content_filter">تصفية المواقع</string>
     <string name="notification_content_filter_active">تصفية المواقع تعمل</string>
+    <string name="miui_popup_confirm_hint">لا يُبلغ هذا الهاتف عمّا إذا كانت النوافذ المنبثقة في الخلفية مفعّلة. لذا يلزم فتح «أذونات أخرى» وتفعيل «عرض النوافذ المنبثقة أثناء التشغيل في الخلفية»، ثم التأكيد أدناه.</string>
+    <string name="miui_popup_confirm_button">تم تفعيل النوافذ المنبثقة في الخلفية</string>
 
     <!-- C-02 Time's up / blocked (#1179; Arabic Bureau staged core copy 7191839045 + 7204732398). -->
     <string name="c02_paused_title">%1$s متوقف مؤقتًا</string>

@@ -6844,6 +6844,30 @@ abstract class AppLocalizations {
   /// **'At school'**
   String get p01PreviewLocationValue;
 
+  /// No description provided for @appsFilterAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed ({count})'**
+  String appsFilterAllowed(Object count);
+
+  /// No description provided for @appsLimitSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily limit for {app}'**
+  String appsLimitSheetTitle(Object app);
+
+  /// No description provided for @appsNoLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'No limit'**
+  String get appsNoLimit;
+
+  /// No description provided for @appsIphoneNoAppList.
+  ///
+  /// In en, this message translates to:
+  /// **'The iPhone doesn\'t send its app list yet.'**
+  String get appsIphoneNoAppList;
+
   /// No description provided for @locationP13AllChildren.
   ///
   /// In en, this message translates to:

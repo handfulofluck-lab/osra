@@ -4510,6 +4510,22 @@ class AppLocalizationsAr extends AppLocalizations {
   String get p01PreviewLocationValue => 'في المدرسة';
 
   @override
+  String appsFilterAllowed(Object count) {
+    return 'مسموح ($count)';
+  }
+
+  @override
+  String appsLimitSheetTitle(Object app) {
+    return 'الحد اليومي لتطبيق $app';
+  }
+
+  @override
+  String get appsNoLimit => 'بلا حد';
+
+  @override
+  String get appsIphoneNoAppList => 'لا يرسل هاتف آيفون قائمة التطبيقات بعد.';
+
+  @override
   String get locationP13AllChildren => 'الكل';
 
   @override
