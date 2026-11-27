@@ -414,6 +414,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             // #460 review: consent withdrawn inside the fallback window must not still show a block
             // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
             cancelDeferredRaise()
+            social.onMonitoringPaused()
             return
         }
         if (enforceFilterRecovery(snapshot, foreground)) {
