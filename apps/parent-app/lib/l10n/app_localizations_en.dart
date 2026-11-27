@@ -4238,4 +4238,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p01PreviewLocationValue => 'At school';
+
+  @override
+  String appsFilterAllowed(Object count) {
+    return 'Allowed ($count)';
+  }
+
+  @override
+  String appsLimitSheetTitle(Object app) {
+    return 'Daily limit for $app';
+  }
+
+  @override
+  String get appsNoLimit => 'No limit';
+
+  @override
+  String get appsIphoneNoAppList =>
+      'The iPhone doesn\'t send its app list yet.';
 }

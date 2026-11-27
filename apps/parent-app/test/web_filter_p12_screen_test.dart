@@ -592,7 +592,38 @@ void main() {
   });
 
   testWidgets(
-      'an iPhone child whose phone reports the filter, ready or degraded, reads the blocked-sites-only '
+      'U96: the not-ready browser card names the screen, carries the warn pill on its own line and a warn globe '
+      '(mutant: rendering the bare p12NotBlockingYet sentence, or leaving the globe on the accent colour, fails these)',
+      (tester) async {
+    await _pumpScreen(
+      tester,
+      api: _makeApi(overview: _overview(features: const {'web_filter': 'degraded'})),
+    );
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+
+    final card = find.byKey(const ValueKey('p12-browsers-card'));
+    final en = lookupAppLocalizations(const Locale('en'));
+
+    // Title is the screen's own name, in the normal body colour.
+    final title = find.byKey(const ValueKey('p12-browsers-not-ready'));
+    expect(title, findsOneWidget);
+    expect(tester.widget<Text>(title).data, en.tabWebFilter);
+
+    // The state is the existing warn pill, on its own line below the title.
+    final pill = find.byKey(const ValueKey('p12-browsers-not-ready-pill'));
+    expect(pill, findsOneWidget);
+    expect(tester.getRect(pill).top, greaterThanOrEqualTo(tester.getRect(title).bottom),
+        reason: 'the pill must sit on its own line under the title');
+
+    // The globe carries the warning colour, not the ordinary accent.
+    final globe = tester.widget<Icon>(find.descendant(of: card, matching: find.byIcon(Icons.public)));
+    final tokens = AppTokens.light;
+    expect(globe.color, tokens.warn);
+    expect(globe.color, isNot(tokens.primary));
+  });
+
+  testWidgets(
+      'an iPhone child whose phone reports the filter enforcing, ready or degraded, reads the blocked-sites-only '
       'sentence with the primary globe, never the Android claim or "Not blocking yet" '
       '(#1280 review 7224916449; mutants: Android sentence on iPhone, warn pill for degraded, any iPhone as "not yet available")',
       (tester) async {
@@ -614,21 +645,58 @@ void main() {
         reason: state,
       );
       expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsNothing, reason: state);
+      expect(find.byKey(const ValueKey('p12-iphone-not-blocking')), findsNothing, reason: state);
       expect(find.byKey(const ValueKey('p12-browsers-android')), findsNothing, reason: state);
       expect(find.descendant(of: card, matching: find.text('Not blocking yet')), findsNothing, reason: state);
       final globe = tester.widget<Icon>(find.descendant(of: card, matching: find.byIcon(Icons.public)));
       final ctx = tester.element(card);
-      expect(globe.color, ctx.tokens.primary, reason: '$state: a reported iPhone gets the primary globe');
+      expect(globe.color, ctx.tokens.primary, reason: '$state: an enforcing iPhone gets the primary globe');
     }
   });
 
   testWidgets(
-      'the Android browsers card keeps main\'s primary globe whether or not the phone reports ready '
-      '(#1280 review: the iPhone fix must not recolour Android; mutant: warn globe for a not-ready Android phone)',
+      'an iPhone that reports it cannot enforce (`unavailable`, no Screen Time access) reads "Not blocking yet" '
+      'and never the blocked-sites sentence; an iPhone that reported nothing still says "Not yet available" '
+      '(Codex 7227751401, CapabilityReport.swift:74-75; mutants: affirmative sentence for `unavailable`, warn pill for an unreported iPhone)',
       (tester) async {
-    for (final features in [
-      const {'web_filter': 'ready'},
-      const <String, String>{},
+    await _pumpScreen(
+      tester,
+      api: _makeApi(overview: _overview(platform: 'ios', features: const {'web_filter': 'unavailable'})),
+    );
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+    final card = find.byKey(const ValueKey('p12-browsers-card'));
+    final en = lookupAppLocalizations(const Locale('en'));
+
+    expect(find.byKey(const ValueKey('p12-browsers-ios-reported')), findsNothing,
+        reason: 'no Screen Time access means blocked sites are not applied');
+    expect(find.descendant(of: card, matching: find.text(en.p12IphoneBlockedSitesOnly)), findsNothing);
+    expect(find.byKey(const ValueKey('p12-iphone-not-blocking')), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text(en.p12NotBlockingYet)), findsOneWidget);
+    expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsNothing,
+        reason: 'the phone is there; only the permission is missing');
+    expect(tester.widget<Icon>(find.descendant(of: card, matching: find.byIcon(Icons.public))).color,
+        tester.element(card).tokens.warn);
+
+    await _pumpScreen(
+      tester,
+      api: _makeApi(overview: _overview(platform: 'ios', features: const {})),
+    );
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+    final unreported = find.byKey(const ValueKey('p12-browsers-card'));
+    expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p12-iphone-not-blocking')), findsNothing);
+    expect(find.byKey(const ValueKey('p12-browsers-ios-reported')), findsNothing);
+    expect(tester.widget<Icon>(find.descendant(of: unreported, matching: find.byIcon(Icons.public))).color,
+        tester.element(unreported).tokens.onSurfaceVariant);
+  });
+
+  testWidgets(
+      'the Android browsers card keeps #1264\'s warning globe until the phone reports ready, and the accent once it does '
+      '(mutant: warn globe for a ready Android phone, or accent globe for a pending one)',
+      (tester) async {
+    for (final (features, ready) in [
+      (const {'web_filter': 'ready'}, true),
+      (const <String, String>{}, false),
     ]) {
       await _pumpScreen(
         tester,
@@ -637,7 +705,8 @@ void main() {
       await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
       final card = find.byKey(const ValueKey('p12-browsers-card'));
       final globe = tester.widget<Icon>(find.descendant(of: card, matching: find.byIcon(Icons.public)));
-      expect(globe.color, tester.element(card).tokens.primary, reason: '$features');
+      final ctx = tester.element(card);
+      expect(globe.color, ready ? ctx.tokens.primary : ctx.tokens.warn, reason: '$features');
     }
   });
 

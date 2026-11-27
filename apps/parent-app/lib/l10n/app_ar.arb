@@ -1507,5 +1507,9 @@
   "p01PreviewScreenTimeValue": "المتبقي ساعة و20 دقيقة",
   "p01PreviewBedtimeValue": "من 21:30 إلى 07:00",
   "p01PreviewAppsValue": "تطبيقان محظوران",
-  "p01PreviewLocationValue": "في المدرسة"
+  "p01PreviewLocationValue": "في المدرسة",
+  "appsFilterAllowed": "مسموح ({count})",
+  "appsLimitSheetTitle": "الحد اليومي لتطبيق {app}",
+  "appsNoLimit": "بلا حد",
+  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد."
 }

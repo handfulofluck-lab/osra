@@ -2690,5 +2690,9 @@
   "p01PreviewScreenTimeValue": "1 h 20 min left",
   "p01PreviewBedtimeValue": "21:30 → 07:00",
   "p01PreviewAppsValue": "2 blocked",
-  "p01PreviewLocationValue": "At school"
+  "p01PreviewLocationValue": "At school",
+  "appsFilterAllowed": "Allowed ({count})",
+  "appsLimitSheetTitle": "Daily limit for {app}",
+  "appsNoLimit": "No limit",
+  "appsIphoneNoAppList": "The iPhone doesn't send its app list yet."
 }

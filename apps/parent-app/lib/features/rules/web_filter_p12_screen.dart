@@ -658,6 +658,12 @@ class WebFilterP12Screen extends ConsumerWidget {
   /// uses; an iPhone-only child gets the "Not yet available" state instead (F8).
   Widget _browsersCard(BuildContext context, AppLocalizations l10n, AppTokens tokens,
       {required bool iosOnly, required bool androidReady, required String? iosState}) {
+    // Codex 7227751401: the iPhone sends `unavailable` when Screen Time access is
+    // absent (CapabilityReport.swift:74–75), so the affirmative sentence belongs
+    // only to a phone that reports it is actually enforcing. Everything else that
+    // is not `ready`/`degraded` reads "Not blocking yet" — the approved fallback
+    // (UI/UX 7224921514) — rather than claiming blocked sites are blocked.
+    final iosEnforcing = iosState == 'ready' || iosState == 'degraded';
     return Card(
       key: const ValueKey('p12-browsers-card'),
       child: Padding(
@@ -665,12 +671,18 @@ class WebFilterP12Screen extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // U96 (#650): when the phone has not reported the filter ready, the globe
+            // carries the warning colour rather than the ordinary accent. On iPhone
+            // (UI/UX 7224921514) an enforcing phone gets the accent, a phone that
+            // reported it cannot enforce gets the same warning, and only a phone
+            // that reported nothing stays muted.
             Icon(
               Icons.public,
-              // Android keeps main's colour (UI/UX 7224921514). An iPhone that has
-              // reported any state gets the primary globe; only an unreported
-              // iPhone stays muted.
-              color: iosOnly && iosState == null ? tokens.onSurfaceVariant : tokens.primary,
+              color: iosOnly
+                  ? (iosState == null
+                      ? tokens.onSurfaceVariant
+                      : (iosEnforcing ? tokens.primary : tokens.warn))
+                  : (androidReady ? tokens.primary : tokens.warn),
               size: 20,
             ),
             const SizedBox(width: AppSpace.sm),
@@ -688,12 +700,12 @@ class WebFilterP12Screen extends ConsumerWidget {
                           l10n.tabWebFilter,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
                         ),
-                        if (iosState != null)
-                          // Any reported iPhone state, ready or degraded: blocked
-                          // sites apply through WebContentSettings, while categories
-                          // and SafeSearch don't exist there yet. The Android
-                          // sentence would overclaim, and "Not blocking yet" would
-                          // be false (lead 7224916449, UI/UX 7224921514).
+                        if (iosEnforcing)
+                          // A phone that reports the filter ready or degraded does
+                          // block blocked sites through WebContentSettings, while
+                          // categories and SafeSearch don't exist there yet. The
+                          // Android sentence would overclaim (lead 7224916449,
+                          // UI/UX 7224921514).
                           Text(
                             l10n.p12IphoneBlockedSitesOnly,
                             key: const ValueKey('p12-browsers-ios-reported'),
@@ -701,6 +713,19 @@ class WebFilterP12Screen extends ConsumerWidget {
                                 .textTheme
                                 .bodySmall
                                 ?.copyWith(color: tokens.onSurfaceVariant),
+                          )
+                        else if (iosState != null)
+                          // `unavailable` (no Screen Time access) and any other
+                          // reported non-enforcing state: the phone is there, so
+                          // "Not yet available on iPhone" would be false, and
+                          // nothing is blocked, so the affirmative sentence would
+                          // be too. The warn pill is the approved wording.
+                          _pill(
+                            context,
+                            key: const ValueKey('p12-iphone-not-blocking'),
+                            label: l10n.p12NotBlockingYet,
+                            icon: Icons.block,
+                            color: tokens.warn,
                           )
                         else
                           _pill(
@@ -721,13 +746,29 @@ class WebFilterP12Screen extends ConsumerWidget {
                               .bodySmall
                               ?.copyWith(color: tokens.onSurfaceVariant),
                         )
-                      : Text(
-                          l10n.p12NotBlockingYet,
-                          key: const ValueKey('p12-browsers-not-ready'),
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: tokens.onSurfaceVariant),
+                      // U96 (#650, UI/UX 12:46): no new copy. The title is the
+                      // screen's own name, and the state is carried by the existing
+                      // warn pill on its own line — the same shape as the banner.
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.tabWebFilter,
+                              key: const ValueKey('p12-browsers-not-ready'),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(color: tokens.onSurface),
+                            ),
+                            const SizedBox(height: AppSpace.xxs),
+                            _pill(
+                              context,
+                              key: const ValueKey('p12-browsers-not-ready-pill'),
+                              label: l10n.p12NotBlockingYet,
+                              icon: Icons.block,
+                              color: tokens.warn,
+                            ),
+                          ],
                         ),
             ),
           ],

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
@@ -512,6 +513,20 @@ void main() {
             tester, 'social-${locale.languageCode}-320-200.png');
       });
     }
+
+    testWidgets('empty socialMonitoring map ({}) parses empty in RuleSet and renders all apps ON (#1024)', (tester) async {
+      expect(RuleSet.fromJson(const {'socialMonitoring': {}}).socialMonitoring, isEmpty);
+      expect(RuleSet.fromJson(const {}).socialMonitoring, isEmpty);
+
+      final api = FakeApiClient(socialRoutes(socialMonitoring: const {}));
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
+      await flushFakeHttp(tester);
+
+      for (final a in kSocialApps) {
+        await reveal(tester, socialAppRow(a.appKey));
+        expect(socialAppOn(tester, a.appKey), isTrue, reason: '${a.label} should render ON for {}');
+      }
+    });
 
     testWidgets('flip + save PUTs the merged socialMonitoring map',
         (tester) async {
