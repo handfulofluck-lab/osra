@@ -1430,6 +1430,14 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
         if (d.platform.toLowerCase() != 'ios') d,
     ];
     final iosOnly = devices.isNotEmpty && nonIosDevices.isEmpty;
+    // #1089: an iPhone joins Lock / Pause internet only once its own report says `ready`.
+    final lockableDevices = [
+      for (final d in devices)
+        if (deviceRunsControl(d, 'lock_screen')) d,
+    ];
+    final iosLockReady = iosOnly && lockableDevices.isNotEmpty;
+    final iosInternetReady =
+        iosOnly && devices.any((d) => deviceRunsControl(d, 'pause_internet'));
     final primaryDevice = nonIosDevices.firstOrNull ?? devices.firstOrNull;
     final primaryHistory = primaryDevice != null
         ? (ref.watch(deviceCommandHistoryProvider(primaryDevice.id)).valueOrNull ??
@@ -1444,8 +1452,8 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
     final locationRefused = locationValue.hasError &&
         ReadPermissionRequired.isRefusal(locationValue.error!);
 
-    final derivedLocked = nonIosDevices.isNotEmpty &&
-        nonIosDevices.every((d) {
+    final derivedLocked = lockableDevices.isNotEmpty &&
+        lockableDevices.every((d) {
           final h = ref.watch(deviceCommandHistoryProvider(d.id)).valueOrNull ??
               const <DeviceCommand>[];
           return _isDeviceAckedLocked(h);
@@ -1585,7 +1593,7 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
               ),
             ],
             const SizedBox(height: AppSpace.md),
-            if (iosOnly) ...[
+            if (iosOnly && !iosLockReady && !iosInternetReady) ...[
               Container(
                 key: ValueKey('homeIosControlsNotYet-${child.id}'),
                 padding: const EdgeInsetsDirectional.symmetric(
@@ -1618,7 +1626,9 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
             _ChildActionGroup(
               childId: child.id,
               iosOnly: iosOnly,
-              hasDevices: devices.isNotEmpty,
+              iosLockReady: iosLockReady,
+              iosInternetReady: iosInternetReady,
+              hasDevices: lockableDevices.isNotEmpty,
               bonusBusy: _pendingBonusMinutes != null || _grantingBonus,
               internetBusy: _busyInternet,
               internetPaused: internetPaused,
@@ -1627,7 +1637,7 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
               onPlus15: () => _scheduleBonusGrant(15),
               onPlus30: () => _scheduleBonusGrant(30),
               onToggleInternet: () => _toggleChildInternet(internetPaused),
-              onToggleLock: () => _toggleChildLock(nonIosDevices, isLocked),
+              onToggleLock: () => _toggleChildLock(lockableDevices, isLocked),
               onIosNotYetTap: () {
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
@@ -1799,9 +1809,20 @@ class _HomeTimeLeftBlock extends StatelessWidget {
   }
 }
 
+/// #1089: whether [device] can run the control behind [feature] (`lock_screen`, `pause_internet`).
+///
+/// Android always can. An iPhone can only once its own capability report says `ready`: the server keeps
+/// answering `not_supported` from its table until the iOS build really shields (Screen Time), so the
+/// buttons stay "Not yet available on iPhone" until then and never send a command the phone would refuse.
+@visibleForTesting
+bool deviceRunsControl(Device device, String feature) =>
+    device.platform.toLowerCase() != 'ios' || device.setup?.feature(feature) == 'ready';
+
 class _ChildActionGroup extends StatelessWidget {
   final String childId;
   final bool iosOnly;
+  final bool iosLockReady;
+  final bool iosInternetReady;
   final bool hasDevices;
   final bool bonusBusy;
   final bool internetBusy;
@@ -1817,6 +1838,8 @@ class _ChildActionGroup extends StatelessWidget {
   const _ChildActionGroup({
     required this.childId,
     required this.iosOnly,
+    this.iosLockReady = false,
+    this.iosInternetReady = false,
     required this.hasDevices,
     required this.bonusBusy,
     required this.internetBusy,
@@ -1837,9 +1860,10 @@ class _ChildActionGroup extends StatelessWidget {
     required String label,
     required VoidCallback? onPressed,
     bool highlighted = false,
+    bool iosReady = false,
   }) {
     final l10n = context.l10n;
-    if (iosOnly) {
+    if (iosOnly && !iosReady) {
       final faded =
           Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
       return Semantics(
@@ -1926,6 +1950,7 @@ class _ChildActionGroup extends StatelessWidget {
             : l10n.homePauseInternet,
         onPressed: internetBusy ? null : onToggleInternet,
         highlighted: internetPaused,
+        iosReady: iosInternetReady,
       ),
       _actionButton(
         context,
@@ -1936,6 +1961,7 @@ class _ChildActionGroup extends StatelessWidget {
             : l10n.homeLockAllDevices,
         onPressed: (!hasDevices || lockBusy) ? null : onToggleLock,
         highlighted: isLocked,
+        iosReady: iosLockReady,
       ),
     ];
 
