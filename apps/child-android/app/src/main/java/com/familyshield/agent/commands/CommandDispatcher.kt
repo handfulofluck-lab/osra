@@ -115,9 +115,22 @@ class CommandDispatcher @Inject constructor(
             // best-effort and comes after the refresh, so the filter reads the new set; a failed
             // refresh still reloads from whatever is cached.
             "rules_updated" -> {
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.clearPendingRequest(context)
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "rules_updated",
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = false,
+                    ),
+                )
                 scope.launch {
+                    val beforeWebFilter = runCatching { rules.currentRules()?.webFilter }.getOrNull()
+                    var afterWebFilter: com.familyshield.agent.network.dto.WebFilterRuleDto? = null
                     val failed = refreshThenReload(
-                        refresh = { rules.refresh() },
+                        refresh = { afterWebFilter = rules.refresh()?.webFilter },
                         // #848 (Kimi): a rule edit must not revive a filter that is not running — that
                         // would also undo a paused state or a consent the child has not given yet. The
                         // refresh still lands; the next start applies it.
@@ -126,6 +139,19 @@ class CommandDispatcher @Inject constructor(
                     // #826 happened because the parent's change was live nowhere and nothing said so.
                     // A failed step is logged rather than swallowed.
                     for (stage in failed) Log.w(TAG, "rules_updated: $stage failed; the change may not be live yet")
+                    // #1224: briefly switch an active MODE_DNS tunnel through MODE_SINKHOLE_ALL (~1 s)
+                    // when a domain or category is newly blocked so open TCP/QUIC browser tabs drop.
+                    if ("refresh" !in failed) {
+                        runCatching {
+                            com.familyshield.agent.vpn.WebFilterConnectionReset.resetIfNeeded(
+                                context = context,
+                                rules = rules,
+                                consent = consent,
+                                before = beforeWebFilter,
+                                after = afterWebFilter,
+                            )
+                        }.onFailure { Log.w(TAG, "rules_updated: brief tunnel reset failed", it) }
+                    }
                 }
                 CommandOutcome.Applied()
             }
@@ -133,14 +159,59 @@ class CommandDispatcher @Inject constructor(
             "locate_now" -> locateNow(commandId)
             // Feature #11: pause the internet — block everything except alwaysAllowedApps and
             // keep the overlay up until resume_internet arrives.
-            "pause_internet" -> pauseInternet()
-            "resume_internet" -> { resumeInternet(); CommandOutcome.Applied() }
+            "pause_internet" -> {
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "pause_internet",
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = true,
+                    ),
+                )
+                pauseInternet()
+            }
+            "resume_internet" -> {
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "resume_internet",
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = true,
+                    ),
+                )
+                resumeInternet()
+                CommandOutcome.Applied()
+            }
             // Feature #10: grant N extra screen-time minutes for today only.
-            "bonus_time" -> dispatchMinutes(data) { rules.addBonusMinutes(it) }
+            "bonus_time" -> dispatchMinutes(data) { mins ->
+                rules.addBonusMinutes(mins)
+                val actor = data["byName"]?.trim()?.takeIf { it.isNotEmpty() }
+                com.familyshield.agent.ui.home.ChildHomeStore.clearPendingRequest(context)
+                com.familyshield.agent.ui.home.ChildHomeStore.recordDecision(
+                    context,
+                    com.familyshield.agent.ui.home.ChildDecisionRecord(
+                        kind = "bonus_time",
+                        minutes = mins,
+                        byName = actor,
+                        timestampMs = System.currentTimeMillis(),
+                        todayOnly = true,
+                    ),
+                )
+            }
             // Feature #22: warn, then lock after N minutes. Issue #231: the ack claims the warning
             // is posted and the timer armed, not that the lock has fired — the parent asked for the
             // warning, and waiting minutes for the timer would leave the row `delivered` meanwhile.
-            "wind_down" -> dispatchMinutes(data) { windDown(it) }
+            "wind_down" -> dispatchMinutes(data) { mins ->
+                com.familyshield.agent.ui.home.ChildHomeStore.setWindDownUntil(
+                    context,
+                    System.currentTimeMillis() + mins.toLong() * 60_000L,
+                )
+                windDown(mins)
+            }
             // ADR-0031: the family witness. Deferred, not acked at display: see [showResetCode].
             "show_reset_code" -> showResetCode(data, commandId)
             // Issue #231 review: a type this agent does not know must not stay `delivered` forever.
@@ -376,6 +447,7 @@ class CommandDispatcher @Inject constructor(
     private fun unlock(): CommandOutcome {
         windDownJob?.cancel()
         windDownJob = null
+        com.familyshield.agent.ui.home.ChildHomeStore.clearWindDown(context)
         com.familyshield.agent.enforcement.LockState.clear(context)
         reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.end(context))
         val showing = LockActivity.isShowing
@@ -390,17 +462,17 @@ class CommandDispatcher @Inject constructor(
     }
 
     /**
-     * Enables pause-the-internet (Feature #11): RuleRepository blocks every app except
-     * alwaysAllowedApps and the overlay stays up until resume_internet.
-     * Plan 1.4: when the parent granted the VPN consent, the sinkhole also takes the default
-     * route and drops every packet that is not from an always-allowed app, so "paused" holds
-     * even for an app the accessibility monitor never sees (background sync, a game's own
-     * network stack).
+     * Enables pause-the-internet (Feature #11, updated for #1183): network-only pause.
      *
-     * Issue #231 review D2: without the consent the overlay and app blocking do not stop packets,
-     * so `ok` would be false (measured: `ping 8.8.8.8` still answered after an acked pause). The
-     * refusal is [EnforceabilityPolicy.REASON_WEB_FILTER_NOT_SET_UP]; the paused state is persisted
-     * anyway so the pause applies once the filter is set up.
+     * The VPN sinkhole (`MODE_SINKHOLE_ALL`) takes the default route and drops every packet that
+     * is not from an always-allowed app, while offline apps stay open and usable (no app block in
+     * [RuleEngine] and no full-screen [LockActivity] overlay). A non-blocking ongoing notification
+     * informs the child that internet is paused until [resumeInternet] clears it.
+     *
+     * Issue #231 review D2: without the consent the sinkhole cannot stop packets, so `ok` would be
+     * false (measured: `ping 8.8.8.8` still answered after an acked pause). The refusal is
+     * [EnforceabilityPolicy.REASON_WEB_FILTER_NOT_SET_UP]; the paused state is persisted anyway so
+     * the pause applies once the filter is set up.
      *
      * "Set up" is the stored consent **and** the OS still allowing the tunnel
      * ([com.familyshield.agent.vpn.FilterVpnService.isPrepared]): `VpnState.isEnabled` is only ever
@@ -409,7 +481,6 @@ class CommandDispatcher @Inject constructor(
      */
     private fun pauseInternet(): CommandOutcome {
         rules.setPausedInternet(true)
-        com.familyshield.agent.enforcement.LockState.set(context, LockActivity.MODE_PAUSED_INTERNET)
         reportLockPeriod(com.familyshield.agent.enforcement.LockPeriodTracker.start(context, LockActivity.MODE_PAUSED_INTERNET))
         val webFilterSetUp = com.familyshield.agent.vpn.VpnState.isEnabled(context) &&
             com.familyshield.agent.vpn.FilterVpnService.isPrepared(context)
@@ -428,18 +499,14 @@ class CommandDispatcher @Inject constructor(
                     )
                 },
             )
-        context.startActivity(
-            Intent(context, LockActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_PAUSED_INTERNET),
-        )
+        postPausedInternetNotification()
         return EnforceabilityPolicy.pauseInternetOutcome(webFilterSetUp, tunnelRunning)
     }
 
-    /** Clears pause-the-internet and dismisses the paused-internet overlay (single-task onNewIntent). */
+    /** Clears network-only pause-the-internet (#1183), restores DNS mode, and cancels the notice. */
     private fun resumeInternet() {
         rules.setPausedInternet(false)
-        com.familyshield.agent.enforcement.LockState.clear(context)
+        cancelPausedInternetNotification(context)
         // Hydrogen's #836 blocker: `unlock()` closes the lock period, but this path (resume_internet)
         // cleared the state and never reported it, leaving a `paused_internet` period open until the
         // next lock command. Close and report it here too.
@@ -447,11 +514,39 @@ class CommandDispatcher @Inject constructor(
         if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_DNS) }
         }
-        context.startActivity(
-            Intent(context, LockActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_DISMISS),
-        )
+        // #1183 / #1240 B2: if an upgraded build still held retired MODE_PAUSED_INTERNET in
+        // LockState, clear and dismiss it — without ever touching an independent MODE_LOCKED/PAUSED lock.
+        if (com.familyshield.agent.enforcement.LockState.clearLegacyPausedOverlay(context)) {
+            context.startActivity(
+                Intent(context, LockActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_DISMISS),
+            )
+        }
+    }
+
+    /** Issue #1183: non-blocking ongoing notice while internet is paused (replaces full-screen overlay). */
+    private fun postPausedInternetNotification() {
+        runCatching {
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_COMMANDS,
+                    context.getString(R.string.notification_channel_commands),
+                    NotificationManager.IMPORTANCE_HIGH,
+                ),
+            )
+            val notification = NotificationCompat.Builder(context, CHANNEL_COMMANDS)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(context.getString(R.string.lock_paused_internet_title))
+                .setContentText(context.getString(R.string.notification_paused_internet_body))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .build()
+            nm.notify(PAUSED_INTERNET_NOTIFICATION_ID, notification)
+        }
     }
 
     /**
@@ -573,6 +668,15 @@ class CommandDispatcher @Inject constructor(
 
         /** The ADR-0031 notice's notification; [ResetCodeActivity] cancels it when the notice ends. */
         internal const val RESET_CODE_NOTIFICATION_ID = 43
+
+        /** Issue #1183: non-blocking ongoing notice while internet is paused (network-only). */
+        internal const val PAUSED_INTERNET_NOTIFICATION_ID = 44
+
+        internal fun cancelPausedInternetNotification(context: Context) {
+            runCatching {
+                context.getSystemService(NotificationManager::class.java)?.cancel(PAUSED_INTERNET_NOTIFICATION_ID)
+            }
+        }
         private const val MIN_MINUTES = 1
         private const val MAX_MINUTES = 240
 

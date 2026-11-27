@@ -2,6 +2,7 @@ package com.familyshield.agent
 
 import android.app.Application
 import com.familyshield.agent.di.WorkerEntryPoint
+import com.familyshield.agent.enforcement.LockState
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,9 @@ class FamilyShieldApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // #1240 (B2): upgrade migration — drop any retired pre-#1183 "paused_internet" full-screen
+        // overlay mode immediately on app startup while keeping network-only VPN pause intact.
+        LockState.clearLegacyPausedOverlay(this)
         // Feature #6: start the call/SMS content observers as early as possible. Issue #229: a stream
         // whose permission is missing is not registered here; CommsCapture.onPermissionsChanged()
         // retries the registration when the grant arrives, without a reboot.

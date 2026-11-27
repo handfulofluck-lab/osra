@@ -87,8 +87,8 @@ data class PushTokenDto(
 
 /**
  * Roadmap 3.4: one installed-launchable app for POST /v1/devices/<id>/apps. The wire payload carries
- * no icon, usage or launch data — package, launcher label and the OS system flag are the whole
- * inventory. The server caps the same values (500 apps, 100-character labels).
+ * no usage or launch data — package, launcher label, the OS system flag and (Karim, 23 Nov) the app's
+ * launcher icon. The server caps the same values (500 apps, 100-character labels, about 9 KB per icon).
  */
 data class InstalledAppDto(
     val packageId: String,
@@ -101,6 +101,8 @@ data class InstalledAppDto(
      * the OS roles. The parent shows it; nothing enforces with it.
      */
     val essential: Boolean,
+    /** Base64 WebP or PNG launcher icon from [com.familyshield.agent.apps.AppIconEncoder]; omitted when null. */
+    val icon: String? = null,
 )
 
 /** Replace-wholesale inventory report for POST /v1/devices/<id>/apps (`version` is the contract). */

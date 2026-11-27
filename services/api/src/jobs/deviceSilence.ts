@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import { getRedis } from "../redis.js";
 import { raiseAlert } from "../lib/alerts.js";
+import { runDeviceSetupCheck } from "../lib/deviceSetupTransitions.js";
 
 /**
  * Device-silence watch (found by the plan-1.9 bypass probe: `pm clear` wipes the agent's pairing with
@@ -210,6 +211,11 @@ export async function runDeviceSilenceCheck(now: Date = new Date(), env: NodeJS.
     });
     alerted.push(d.id);
   }
+  // ADR-0047: the same exported runner serves in-process ticks and external cron. Setup evaluation is
+  // isolated so a setup-alert failure cannot suppress the established device-silence result.
+  await runDeviceSetupCheck(now).catch((err) => {
+    console.error("[device-setup] tick failed", err);
+  });
   return { checked: devices.length, alerted };
 }
 

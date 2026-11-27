@@ -5,11 +5,14 @@ import 'dart:math' as math;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
+
+import '../core/bounded_refetch.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api/models.dart';
 import 'auth_provider.dart';
+import 'social_provider.dart';
 import 'world_class_provider.dart';
 
 import '../api/permission_errors.dart';
@@ -183,30 +186,38 @@ class AlertsSeenState {
   final bool hasViewedFeed;
   final int seenUnackedBaseline;
   final Map<String, int> seenVersions;
+  /// #1029: social alert `id -> socialMessageCount` at the last time the parent opened it.
+  /// Only alerts present here show a `+{delta} new` badge when more flagged messages arrive.
+  final Map<String, int> openedSocialCounts;
 
   const AlertsSeenState({
     this.hasViewedFeed = false,
     this.seenUnackedBaseline = 0,
     this.seenVersions = const {},
+    this.openedSocialCounts = const {},
   });
 
   static const empty = AlertsSeenState();
 
   factory AlertsSeenState.fromJson(Map<String, dynamic> json) {
-    final rawVersions = json['s'];
-    final versions = <String, int>{};
-    if (rawVersions is Map) {
-      for (final entry in rawVersions.entries) {
-        final v = entry.value;
-        if (entry.key is String && v is num) {
-          versions[entry.key as String] = v.toInt();
+    Map<String, int> parseIntMap(Object? raw) {
+      final out = <String, int>{};
+      if (raw is Map) {
+        for (final entry in raw.entries) {
+          final v = entry.value;
+          if (entry.key is String && v is num) {
+            out[entry.key as String] = v.toInt();
+          }
         }
       }
+      return out;
     }
+
     return AlertsSeenState(
       hasViewedFeed: json['v'] == true,
       seenUnackedBaseline: (json['b'] as num?)?.toInt() ?? 0,
-      seenVersions: versions,
+      seenVersions: parseIntMap(json['s']),
+      openedSocialCounts: parseIntMap(json['oc']),
     );
   }
 
@@ -214,6 +225,7 @@ class AlertsSeenState {
         'v': hasViewedFeed,
         'b': seenUnackedBaseline,
         's': seenVersions,
+        if (openedSocialCounts.isNotEmpty) 'oc': openedSocialCounts,
       };
 }
 
@@ -283,6 +295,33 @@ class AlertsSeenNotifier extends StateNotifier<AlertsSeenState> {
       hasViewedFeed: true,
       seenUnackedBaseline: baseline,
       seenVersions: merged,
+      openedSocialCounts: state.openedSocialCounts,
+    );
+    state = next;
+    await _persist(next);
+  }
+
+  /// #1029: records that the parent opened [alert] at its current message count,
+  /// clearing any `+{count} new` badge until additional flagged messages arrive.
+  Future<void> markAlertOpened(Alert alert) async {
+    if (!alert.isSocialAlert) return;
+    _userUpdated = true;
+    final opened = Map<String, int>.from(state.openedSocialCounts);
+    final prevOpened = opened[alert.id] ?? 0;
+    final currentCount = alert.socialMessageCount;
+    if (currentCount > prevOpened) {
+      opened[alert.id] = currentCount;
+    } else if (!opened.containsKey(alert.id)) {
+      opened[alert.id] = currentCount;
+    }
+    final versions = Map<String, int>.from(state.seenVersions);
+    final prevVer = versions[alert.id] ?? 0;
+    if (alert.attemptCount > prevVer) versions[alert.id] = alert.attemptCount;
+    final next = AlertsSeenState(
+      hasViewedFeed: state.hasViewedFeed,
+      seenUnackedBaseline: state.seenUnackedBaseline,
+      seenVersions: versions,
+      openedSocialCounts: opened,
     );
     state = next;
     await _persist(next);
@@ -293,11 +332,13 @@ class AlertsSeenNotifier extends StateNotifier<AlertsSeenState> {
   Future<void> markAcknowledged(String alertId) async {
     _userUpdated = true;
     final merged = Map<String, int>.from(state.seenVersions)..remove(alertId);
+    final opened = Map<String, int>.from(state.openedSocialCounts)..remove(alertId);
     final nextBaseline = state.seenUnackedBaseline > 0 ? state.seenUnackedBaseline - 1 : 0;
     final next = AlertsSeenState(
       hasViewedFeed: state.hasViewedFeed,
       seenUnackedBaseline: nextBaseline,
       seenVersions: merged,
+      openedSocialCounts: opened,
     );
     state = next;
     await _persist(next);
@@ -323,6 +364,17 @@ final alertsSeenProvider = StateNotifierProvider<AlertsSeenNotifier, AlertsSeenS
   });
   return notifier;
 });
+
+/// #1029: returns how many additional flagged messages have arrived on [alert]
+/// since the parent last opened it. Returns 0 if never opened yet or if no new
+/// messages have arrived since opening.
+int computeSocialNewSinceCount(Alert alert, AlertsSeenState seen) {
+  if (!alert.isSocialAlert) return 0;
+  final openedAt = seen.openedSocialCounts[alert.id];
+  if (openedAt == null) return 0;
+  final current = alert.socialMessageCount;
+  return current > openedAt ? current - openedAt : 0;
+}
 
 /// Computes how many unacknowledged alerts have not yet been viewed on `/alerts` (#936).
 int computeUnseenAlertCount(
@@ -438,11 +490,12 @@ final locationProvider = FutureProvider.family<LocationPing?, String>((ref, chil
 });
 
 /// Recent durable commands for one device (`GET /v1/devices/:id/commands/history`,
-/// newest first). The parent-facing counterpart of the agent's drain endpoint:
-/// it never consumes anything, so polling it is safe.
+/// newest first, up to the server's 100-row `listDeviceCommands` cap). The
+/// parent-facing counterpart of the agent's drain endpoint: it never consumes
+/// anything, so polling it is safe.
 final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, String>((ref, deviceId) async {
   final api = ref.watch(apiClientProvider);
-  final res = await api.raw.get('/v1/devices/$deviceId/commands/history', queryParameters: {'limit': 20});
+  final res = await api.raw.get('/v1/devices/$deviceId/commands/history', queryParameters: {'limit': 100});
   final data = res.data is Map ? res.data as Map : const <String, dynamic>{};
   final raw = data['items'];
   return [
@@ -479,6 +532,7 @@ abstract class RealtimeEffects {
   void invalidateAlerts();
   void invalidateUnacknowledgedCount();
   void invalidateFamily();
+  void invalidateSocialEvents(String childId);
   void invalidateLocation(String childId);
 
   /// Issue #253: an open consent screen watches `consentStatusProvider(childId)`, which nothing else
@@ -495,21 +549,33 @@ abstract class RealtimeEffects {
 /// [RealtimeEffects] that invalidates the affected providers and writes the
 /// `live_activity` overlay the dashboard reads.
 class RiverpodRealtimeEffects implements RealtimeEffects {
-  RiverpodRealtimeEffects(this._ref);
+  RiverpodRealtimeEffects(this._ref) {
+    _ref.onDispose(_countRefetch.cancel);
+  }
 
   final Ref _ref;
 
-  @override
-  void invalidateAlerts() => _ref.invalidate(alertsProvider);
+  /// #1056: an `alert` frame can be handled before its row is readable, so the unread count is read once
+  /// more shortly after. One extra read per event, not a poll, and cancelled with the ref.
+  late final BoundedRefetch _countRefetch = BoundedRefetch(run: _invalidateCount);
 
-  @override
-  void invalidateUnacknowledgedCount() {
+  void _invalidateCount() {
     _ref.invalidate(unacknowledgedAlertsProvider);
     _ref.invalidate(unacknowledgedCountProvider);
   }
 
   @override
+  void invalidateAlerts() => _ref.invalidate(alertsProvider);
+
+  @override
+  void invalidateUnacknowledgedCount() => _countRefetch.schedule();
+
+  @override
   void invalidateFamily() => _ref.invalidate(familyProvider);
+
+  @override
+  void invalidateSocialEvents(String childId) =>
+      _ref.invalidate(socialEventsProvider(childId));
 
   @override
   void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
@@ -536,6 +602,13 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       effects.invalidateAlerts();
       effects.invalidateUnacknowledgedCount();
       effects.invalidateFamily();
+      final payload = msg['payload'];
+      if (payload case {
+        'childId': final String childId,
+        'category': 'social_concern' || 'gaming_chat',
+      } when childId.isNotEmpty) {
+        effects.invalidateSocialEvents(childId);
+      }
     case 'location':
       final payload = msg['payload'];
       if (payload is Map && payload['childId'] != null) {

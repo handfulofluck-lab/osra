@@ -59,6 +59,12 @@ class RuleRepository @Inject constructor(
 
     @Volatile private var cached: RuleSetDto? = null
 
+    private val rulesAppliedListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    fun addRulesAppliedListener(listener: () -> Unit) {
+        rulesAppliedListeners += listener
+    }
+
     /** Issue #444 C4: told after each successful rule sync, so a newly blocked app that is playing is paused. */
     private val rulesChangedListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
 
@@ -125,7 +131,7 @@ class RuleRepository @Inject constructor(
     /** Returns the decision for [packageId]; [verdict] is the same walk with the reason attached. */
     fun evaluate(packageId: String): Decision = verdict(packageId).decision
 
-    /** Enables or clears pause-the-internet (Feature #11); while paused every app except alwaysAllowedApps is blocked. */
+    /** Enables or clears network-only pause-the-internet (Feature #11, #1183); VPN sinkhole blocks traffic while offline apps stay open. */
     fun setPausedInternet(paused: Boolean) {
         pausedInternet = paused
     }
@@ -133,8 +139,10 @@ class RuleRepository @Inject constructor(
     /** Returns true while the internet is paused by the parent (Feature #11). */
     fun isInternetPaused(): Boolean = pausedInternet
 
-    /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled). */
-    fun socialMonitoringEnabled(appKey: String): Boolean = cached?.socialMonitoring?.get(appKey) ?: true
+    /** Feature #2: true unless the cached rule set explicitly disables social monitoring for [appKey] (absent key = enabled).
+     *  Issue #1036: legacy parent builds wrote `"x"` instead of `"twitter"`; honour `"x"` when `"twitter"` is absent. */
+    fun socialMonitoringEnabled(appKey: String): Boolean =
+        socialMonitoringEnabled(cached?.socialMonitoring, appKey)
 
     /** #830 gating: true only after the server flag went on and the phone synced that rule set. */
     fun siteNamesEnabled(): Boolean = cached?.siteNames == true
@@ -156,6 +164,16 @@ class RuleRepository @Inject constructor(
         resetBonusIfNewDayLocked(LocalDate.now())
         bonusMinutesToday
     }
+
+    /** Public read-only snapshot of today's bonus minutes for UI surfaces (C-01 / C-02). */
+    fun bonusMinutesTodaySnapshot(): Int = bonusMinutes()
+
+    /** Public read-only snapshot of the merged category blocklist for C-02 block explanation. */
+    fun blocklistSnapshot(): Map<String, String> = blocklist.apps()
+
+    /** Public read-only VPN-app classification matching [verdict] for C-02 block explanation. */
+    fun declaresVpnServiceSnapshot(packageId: String): Boolean =
+        settings.isPairedSync() && packageFacts.declaresVpnService(packageId)
 
     private fun resetBonusIfNewDayLocked(today: LocalDate) {
         if (bonusDay != today) {
@@ -257,6 +275,7 @@ class RuleRepository @Inject constructor(
             }
             consent.onPollStatus(200)
             cached = updated
+            rulesAppliedListeners.forEach { runCatching { it() } }
             // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
             // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
             // Refreshing it here — under `refreshMutex`, after `cached = updated`, before the #444 C4 listeners
@@ -317,6 +336,18 @@ class RuleRepository @Inject constructor(
          * decision path and the overlay guard cannot drift apart.
          */
         fun isEssentialApp(packageId: String): Boolean = EssentialPackages.isEssential(packageId)
+
+        /**
+         * Issue #1035: a missing `socialMonitoring` key means the parent never turned that app off, so the
+         * default is ON and only an explicit `false` disables it. Pure, so the default is pinned by a test
+         * rather than by reading the elvis in the instance getter. Canonical `twitter` wins over legacy `x`.
+         */
+        fun socialMonitoringEnabled(flags: Map<String, Boolean>?, appKey: String): Boolean {
+            flags ?: return true
+            flags[appKey]?.let { return it }
+            if (appKey == "twitter") flags["x"]?.let { return it }
+            return true
+        }
 
         /**
          * #276: the persisted snapshot is milliseconds now, but a build before it wrote whole

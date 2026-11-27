@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { FcmProvider, loadServiceAccountFromEnv } from "./fcm.js";
 import { ApnsProvider, loadApnsConfigFromEnv } from "./apns.js";
@@ -20,10 +21,12 @@ export interface AlertLike {
   title: string;
   body: string;
   createdAt?: Date | string;
+  metadata?: unknown;
 }
 
 type Severity = "info" | "warning" | "critical";
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
+const GROUPED_DELIVERY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Alerts at or above this severity are pushed. Env `PUSH_MIN_SEVERITY`, default "info". */
 export function minPushSeverity(env: NodeJS.ProcessEnv = process.env): Severity {
@@ -52,24 +55,43 @@ export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | nul
  *
  * - **Android**: `dataOnly`, `{ w: "1" }` and nothing else, `HIGH` priority because the app has to wake to
  *   fetch, and a constant collapse key because one wake reads every unseen alert.
- * - **iOS**: a visible alert built from localization keys, plus `content-available` and the same data. The
- *   bundle decides the words, so `aps` carries no literal text either.
+ * - **iOS**: a visible alert built from localization keys, plus `content-available`. The bundle decides
+ *   the words. For grouped social deliveries, the content-free `g` marker selects native presentation,
+ *   and an opaque UUID lets APNs collapse retries of that delivery independently of the display thread.
  *
  * The child-device wake keeps its own builder: it must never display anything, which is a different rule.
  */
-export function buildParentAlertMessage(platform: PushPlatform): PushMessage {
+export function buildParentAlertMessage(
+  platform: PushPlatform,
+  alert?: Pick<AlertLike, "category" | "metadata">,
+): PushMessage {
   const data = { w: "1" };
   if (platform === "ios") {
+    const deliveryId = groupedDeliveryId(alert);
     return {
-      data,
+      data: deliveryId ? { ...data, g: "1" } : data,
       locKeys: { titleKey: "PUSH_ALERT_TITLE", bodyKey: "PUSH_ALERT_BODY" },
       priority: "high",
       collapseKey: PARENT_WAKE_COLLAPSE_KEY,
-      // APNs takes the collapse id from `threadId`; FCM from `collapseKey`. Same constant for both.
       threadId: PARENT_WAKE_COLLAPSE_KEY,
+      ...(deliveryId ? { apnsCollapseId: deliveryId } : {}),
     };
   }
   return { data, dataOnly: true, priority: "high", collapseKey: PARENT_WAKE_COLLAPSE_KEY, threadId: PARENT_WAKE_COLLAPSE_KEY };
+}
+
+function groupedDeliveryId(alert: Pick<AlertLike, "category" | "metadata"> | undefined): string | undefined {
+  if (alert?.category !== "social_concern" && alert?.category !== "gaming_chat") return undefined;
+  const metadata = alert.metadata;
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return undefined;
+  const { pushDeliveryId, pushDeliverySeq } = metadata as Record<string, unknown>;
+  if (typeof pushDeliverySeq !== "number" || !Number.isSafeInteger(pushDeliverySeq) || pushDeliverySeq < 1) {
+    return undefined;
+  }
+  // Only server-issued v4 UUIDs fit this contract. They are opaque, ASCII and within the APNs limit.
+  return typeof pushDeliveryId === "string" && pushDeliveryId.length === 36 && GROUPED_DELIVERY_ID.test(pushDeliveryId)
+    ? pushDeliveryId
+    : undefined;
 }
 
 /** One constant key: every unseen alert is read by the same wake, so a second pending wake is redundant. */
@@ -136,62 +158,322 @@ export interface NotifyOutcome {
   skipped: "severity" | "no_providers" | "no_tokens" | "prefs" | null;
 }
 
+export type PushErrorClass =
+  | "unregistered"
+  | "topic_mismatch"
+  | "invalid_token"
+  | "third_party_auth"
+  | "auth_error"
+  | "rate_limited"
+  | "invalid_request"
+  | "provider_unavailable"
+  | "network_error"
+  | "provider_error";
+
+type CleanupStatus = "none" | "ok" | "failed";
+type OutcomeSkipLabel = NonNullable<NotifyOutcome["skipped"]> | "error" | "none";
+
+const KNOWN_PLATFORMS = new Set(["android", "ios", "web"]);
+const KNOWN_SEVERITIES = new Set(["info", "warning", "critical"]);
+
+function safePlatform(value: unknown): string {
+  return typeof value === "string" && KNOWN_PLATFORMS.has(value) ? value : "unknown";
+}
+
+function safeSeverity(value: unknown): string {
+  return typeof value === "string" && KNOWN_SEVERITIES.has(value) ? value : "none";
+}
+
+function safeCategory(value: unknown): string {
+  return typeof value === "string" && /^[a-z0-9_]{1,40}$/.test(value) ? value : "none";
+}
+
+/**
+ * Bucket a failed provider response into a closed operator-scannable error class (#1028).
+ * Distinguishes APNs/Firebase third-party auth mismatches (`THIRD_PARTY_AUTH_ERROR`) from
+ * dead tokens, OAuth failures, rate limits, malformed payloads, and transient provider outages.
+ */
+export function classifyPushError(result: { invalidToken?: boolean; reason?: string }): PushErrorClass {
+  const reason = (result.reason ?? "").trim();
+  if (/\b(UNREGISTERED|Unregistered|NOT_FOUND)\b/.test(reason) || /\bHTTP (404|410)\b/.test(reason)) {
+    return "unregistered";
+  }
+  if (/\bDeviceTokenNotForTopic\b/.test(reason)) {
+    return "topic_mismatch";
+  }
+  if (result.invalidToken || /\bBadDeviceToken\b/.test(reason)) {
+    return "invalid_token";
+  }
+  if (/\bTHIRD_PARTY_AUTH_ERROR\b/.test(reason)) {
+    return "third_party_auth";
+  }
+  if (
+    /\b(SENDER_ID_MISMATCH|UNAUTHENTICATED|PERMISSION_DENIED|InvalidProviderToken|ExpiredProviderToken|BadCertificate|BadCertificateEnvironment)\b/.test(
+      reason,
+    ) ||
+    /\bHTTP (401|403)\b/.test(reason) ||
+    /oauth/i.test(reason)
+  ) {
+    return "auth_error";
+  }
+  if (/\b(QUOTA_EXCEEDED|TooManyRequests)\b/.test(reason) || /\bHTTP 429\b/.test(reason)) {
+    return "rate_limited";
+  }
+  if (/\b(INVALID_ARGUMENT|BadMessageId|PayloadTooLarge)\b/.test(reason) || /\bHTTP 400\b/.test(reason)) {
+    return "invalid_request";
+  }
+  if (/\b(UNAVAILABLE|INTERNAL|ServiceUnavailable|InternalServerError)\b/.test(reason) || /\bHTTP 5\d\d\b/.test(reason)) {
+    return "provider_unavailable";
+  }
+  if (/\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|ENOTFOUND|socket|fetch failed|network|timeout)\b/i.test(reason)) {
+    return "network_error";
+  }
+  return "provider_error";
+}
+
+function logParentAlertOutcome(summary: {
+  recipients: number;
+  delivered: number;
+  stale: number;
+  pruned: number;
+  failed: number;
+  cleanup: CleanupStatus;
+  skipped: OutcomeSkipLabel;
+  category?: unknown;
+  severity?: unknown;
+  platforms?: string;
+}): void {
+  const platformPart = summary.platforms ? ` platforms=${summary.platforms}` : "";
+  console.info(
+    `[push] parent alert outcome recipients=${summary.recipients} delivered=${summary.delivered} stale=${summary.stale} pruned=${summary.pruned} failed=${summary.failed} cleanup=${summary.cleanup} skipped=${summary.skipped} category=${safeCategory(summary.category)} severity=${safeSeverity(summary.severity)}${platformPart}`,
+  );
+}
+
 /**
  * Fan an alert out to every push token of every parent in the family. Never throws: push is
  * best-effort and the alert row is already committed when this runs.
+ *
+ * [#1028] Every call writes exactly one aggregate outcome line (counts, stale vs pruned cleanup
+ * status, skip reason, platform histogram, closed category/severity — never tokens, raw provider
+ * strings, message ids, database ids, or exception objects) and every per-recipient send writes
+ * one closed-classification line (platform, provider, status, errorClass).
  */
 export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, childName?: string): Promise<NotifyOutcome> {
   const outcome: NotifyOutcome = { recipients: 0, delivered: 0, pruned: 0, skipped: null };
   try {
     // Defensive: raiseAlert always passes the created row, but a caller with a mocked or failed
     // create must not turn into a TypeError in a fire-and-forget path (Antigravity review of #51).
-    if (!alert) return { ...outcome, skipped: "severity" };
-    if (!shouldPush(alert, minPushSeverity())) return { ...outcome, skipped: "severity" };
+    if (!alert) {
+      logParentAlertOutcome({ recipients: 0, delivered: 0, stale: 0, pruned: 0, failed: 0, cleanup: "none", skipped: "severity" });
+      return { ...outcome, skipped: "severity" };
+    }
+    if (!shouldPush(alert, minPushSeverity())) {
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        stale: 0,
+        pruned: 0,
+        failed: 0,
+        cleanup: "none",
+        skipped: "severity",
+        category: alert.category,
+        severity: alert.severity,
+      });
+      return { ...outcome, skipped: "severity" };
+    }
     const providers = getPushProviders();
     if (providers.size === 0) {
       if (!warnedUnconfigured) {
         console.warn("[push] no provider configured (set FCM_SERVICE_ACCOUNT_JSON or APNS_*); parent push disabled");
         warnedUnconfigured = true;
       }
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        stale: 0,
+        pruned: 0,
+        failed: 0,
+        cleanup: "none",
+        skipped: "no_providers",
+        category: alert.category,
+        severity: alert.severity,
+      });
       return { ...outcome, skipped: "no_providers" };
     }
     const prefs = await prisma.digestPrefs.findUnique({ where: { familyId } });
-    if (prefs && prefs.pushEnabled === false) return { ...outcome, skipped: "prefs" };
+    if (prefs && prefs.pushEnabled === false) {
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        stale: 0,
+        pruned: 0,
+        failed: 0,
+        cleanup: "none",
+        skipped: "prefs",
+        category: alert.category,
+        severity: alert.severity,
+      });
+      return { ...outcome, skipped: "prefs" };
+    }
 
     // ADR-0014 amendment, decision 3: a guardian without `alerts` must not be pushed an alert either,
     // or the gate on `GET /v1/alerts` would be cosmetic — the push *is* the alert text on a lock
     // screen. Owners and co-parents are unaffected, which is why only guardians are filtered.
-    const parents = await prisma.parent.findMany({
-      where: {
-        familyId,
-        OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+    const { parents, rawTokens } = await prisma.$transaction(
+      async (tx) => {
+        const eligibleParents = await tx.parent.findMany({
+          where: {
+            familyId,
+            OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+          },
+          select: { id: true, sessionVersion: true },
+        });
+        const candidateTokens = eligibleParents.length === 0
+          ? []
+          : await tx.parentPushToken.findMany({
+              where: { parentId: { in: eligibleParents.map((p) => p.id) } },
+            });
+        return { parents: eligibleParents, rawTokens: candidateTokens };
       },
-      select: { id: true },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    const minSessionVersionByParent = new Map(
+      parents.map((p) => [p.id, typeof p.sessionVersion === "number" ? p.sessionVersion : 0]),
+    );
+    const retired: Array<{ id: string; parentId: string; minVersion: number }> = [];
+    const tokens = rawTokens.filter((row) => {
+      const minVersion = minSessionVersionByParent.get(row.parentId);
+      // Exclude any row whose parent is not in the eligible snapshot (never default a missing parent to version 0).
+      if (minVersion === undefined) {
+        return false;
+      }
+      const rowVersion = typeof (row as { sessionVersion?: unknown }).sessionVersion === "number"
+        ? ((row as { sessionVersion: number }).sessionVersion)
+        : 0;
+      if (rowVersion < minVersion) {
+        retired.push({ id: row.id, parentId: row.parentId, minVersion });
+        return false;
+      }
+      return true;
     });
-    const tokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
-    if (tokens.length === 0) return { ...outcome, skipped: "no_tokens" };
+    if (retired.length > 0) {
+      await prisma.parentPushToken.deleteMany({
+        where: {
+          OR: retired.map(({ id, parentId, minVersion }) => ({
+            id,
+            parentId,
+            sessionVersion: { lt: minVersion },
+          })),
+        },
+      }).catch(() => undefined);
+    }
+    if (tokens.length === 0) {
+      logParentAlertOutcome({
+        recipients: 0,
+        delivered: 0,
+        stale: 0,
+        pruned: 0,
+        failed: 0,
+        cleanup: "none",
+        skipped: "no_tokens",
+        category: alert.category,
+        severity: alert.severity,
+      });
+      return { ...outcome, skipped: "no_tokens" };
+    }
 
     outcome.recipients = tokens.length;
     const dead: string[] = [];
+    let failed = 0;
+    const byPlatform = new Map<string, number>();
+    for (const row of tokens) {
+      const p = safePlatform(row.platform);
+      byPlatform.set(p, (byPlatform.get(p) ?? 0) + 1);
+    }
+    const platforms = [...byPlatform.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([platform, count]) => `${platform}:${count}`)
+      .join(",");
+
     await Promise.all(
       tokens.map(async (t) => {
+        const platformLabel = safePlatform(t.platform);
         const provider = providerFor(t.platform as PushPlatform, providers);
-        if (!provider) return;
+        if (!provider) {
+          failed += 1;
+          console.warn(`[push] parent alert send outcome=skipped platform=${platformLabel} errorClass=no_provider`);
+          return;
+        }
         // #410: per-platform, and never the alert's text. `childName` is deliberately unused here now.
-        const message = buildParentAlertMessage(t.platform as PushPlatform);
-        const result = await provider.send(t.token, message);
-        if (result.ok) outcome.delivered += 1;
-        else if (result.invalidToken) dead.push(t.id);
-        else console.warn(`[push] delivery failed platform=${t.platform} reason=${result.reason}`);
+        const message = buildParentAlertMessage(t.platform as PushPlatform, alert);
+        try {
+          const result = await provider.send(t.token, message);
+          if (result.ok) {
+            outcome.delivered += 1;
+            console.info(`[push] parent alert send outcome=sent platform=${platformLabel} provider=${provider.platform}`);
+          } else if (result.invalidToken) {
+            dead.push(t.id);
+            const errorClass = classifyPushError(result);
+            console.info(
+              `[push] parent alert send outcome=stale platform=${platformLabel} provider=${provider.platform} errorClass=${errorClass}`,
+            );
+          } else {
+            failed += 1;
+            const errorClass = classifyPushError(result);
+            console.warn(
+              `[push] delivery failed platform=${platformLabel} provider=${provider.platform} errorClass=${errorClass}`,
+            );
+          }
+        } catch (sendErr) {
+          failed += 1;
+          const errorClass = classifyPushError({ reason: sendErr instanceof Error ? sendErr.message : undefined });
+          console.warn(
+            `[push] delivery failed platform=${platformLabel} provider=${provider.platform} errorClass=${errorClass}`,
+          );
+        }
       }),
     );
+
+    let cleanup: CleanupStatus = "none";
     if (dead.length > 0) {
-      await prisma.parentPushToken.deleteMany({ where: { id: { in: dead } } });
-      outcome.pruned = dead.length;
+      try {
+        const deleted = await prisma.parentPushToken.deleteMany({ where: { id: { in: dead } } });
+        outcome.pruned = typeof deleted?.count === "number" ? deleted.count : 0;
+        cleanup = "ok";
+      } catch {
+        outcome.pruned = 0;
+        cleanup = "failed";
+        console.error("[push] parent alert cleanup failed errorClass=cleanup_failed");
+      }
     }
+
+    logParentAlertOutcome({
+      recipients: outcome.recipients,
+      delivered: outcome.delivered,
+      stale: dead.length,
+      pruned: outcome.pruned,
+      failed,
+      cleanup,
+      skipped: "none",
+      category: alert.category,
+      severity: alert.severity,
+      platforms,
+    });
     return outcome;
   } catch (err) {
-    console.error("[push] notifyParentsOfAlert failed", err);
+    const errorClass = classifyPushError({ reason: err instanceof Error ? err.message : undefined });
+    console.error(`[push] notifyParentsOfAlert failed errorClass=${errorClass}`);
+    logParentAlertOutcome({
+      recipients: outcome.recipients,
+      delivered: outcome.delivered,
+      stale: 0,
+      pruned: outcome.pruned,
+      failed: 0,
+      cleanup: "none",
+      skipped: "error",
+      category: alert?.category,
+      severity: alert?.severity,
+    });
     return outcome;
   }
 }

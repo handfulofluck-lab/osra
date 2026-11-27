@@ -31,6 +31,7 @@ import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.j
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
 import { bootReportBody, decideBootReport, zonedUtcOffsetMinutes } from "../lib/bootReport.js";
+import { completeDeviceSetupIfReady, evaluateDeviceSetupIncomplete, type SetupTransitionDevice } from "../lib/deviceSetupTransitions.js";
 import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
@@ -222,16 +223,36 @@ function activityEventTs(ts: string | undefined, now: Date = new Date()): Date {
 /**
  * Roadmap 3.4: the installed-launchable-app inventory contract.
  *
- * The payload is an inventory only — package id, launcher label, system flag — never usage. Icons
- * are deliberately not accepted: they are large (tens of KB per app), the parent picker can render a
- * generic icon from the package today, and an icon column would make a privacy-minimised list heavier
- * for little gain. The device and the server share the same bounds so a buggy agent cannot enlarge
- * the table: 500 apps, 100-character labels, one row per package.
+ * The payload is an inventory only — package id, launcher label, system flag — never usage. The device
+ * and the server share the same bounds so a buggy agent cannot enlarge the table: 500 apps,
+ * 100-character labels, one row per package.
+ *
+ * Icons (Karim, 23 Nov: "the Apps tab lacks any app icons"): each row may carry the app's launcher icon
+ * as a small base64 PNG or WebP (the agent renders it at 72 px). It is the app's public launcher icon,
+ * not child content. The server checks the image signature and the size, stores it as a data URI, and the
+ * parent reads it back as `iconUrl`. Optional on the wire, so an older agent still posts a valid report
+ * and its rows draw the letter avatar.
  */
 const INSTALLED_APPS_VERSION = 1;
 const MAX_INSTALLED_APPS = 500;
 const MAX_APP_LABEL_LENGTH = 100;
 const APP_PACKAGE_ID = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
+/** About 9 KB of image per app; a 72 px WebP launcher icon is typically 2 to 4 KB. */
+export const MAX_APP_ICON_BASE64 = 12_000;
+/** 500 apps at the icon cap, plus labels: well inside this, and far above Fastify's 1 MiB default. */
+const INSTALLED_APPS_BODY_LIMIT = 8 * 1024 * 1024;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/** `data:image/png;base64,…` or `data:image/webp;base64,…` when the bytes are one of those images, else null. */
+export function appIconDataUri(base64: string | undefined): string | null {
+  if (!base64 || base64.length > MAX_APP_ICON_BASE64 || base64.length % 4 !== 0 || !BASE64.test(base64)) return null;
+  const head = Buffer.from(base64.slice(0, 24), "base64");
+  const isPng = head.length >= 8 && head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const isWebp = head.length >= 12 && head.toString("latin1", 0, 4) === "RIFF" && head.toString("latin1", 8, 12) === "WEBP";
+  if (isPng) return `data:image/png;base64,${base64}`;
+  if (isWebp) return `data:image/webp;base64,${base64}`;
+  return null;
+}
 
 const InstalledAppSchema = z.object({
   packageId: z.string().trim().min(1).max(255).regex(APP_PACKAGE_ID),
@@ -247,6 +268,8 @@ const InstalledAppSchema = z.object({
    * device-only, `requireDeviceRole` + `requireOwnDevice`).
    */
   essential: z.boolean().optional(),
+  /** Base64 PNG or WebP launcher icon. Anything that is not one of those, or too large, is dropped, not refused. */
+  icon: z.string().max(MAX_APP_ICON_BASE64 * 2).optional(),
 });
 
 const InstalledAppsSchema = z.object({
@@ -257,16 +280,19 @@ const InstalledAppsSchema = z.object({
 /** Trim labels, fall back to the package id, and keep the first occurrence of a package (dedupe). */
 function normalizeInstalledApps(
   apps: Array<z.infer<typeof InstalledAppSchema>>,
-): Array<{ packageId: string; label: string; isSystem: boolean; essential: boolean | null }> {
-  const seen = new Map<string, { packageId: string; label: string; isSystem: boolean; essential: boolean | null }>();
+): Array<{ packageId: string; label: string; isSystem: boolean; essential: boolean | null; icon?: string }> {
+  const seen = new Map<string, { packageId: string; label: string; isSystem: boolean; essential: boolean | null; icon?: string }>();
   for (const app of apps) {
     if (seen.has(app.packageId)) continue;
+    const icon = appIconDataUri(app.icon);
     seen.set(app.packageId, {
       packageId: app.packageId,
       label: app.label.trim() || app.packageId,
       isSystem: app.isSystem,
       // An older agent omits it: store null, which is "not reported", never "not essential".
       essential: app.essential ?? null,
+      // Only a real PNG or WebP within the cap is kept; the row is stored either way.
+      ...(icon ? { icon } : {}),
     });
   }
   return [...seen.values()];
@@ -487,6 +513,8 @@ export async function deviceRoutes(app: FastifyInstance) {
             category: "tamper",
             title: "OSRA's data was cleared on a phone",
             body: `${record.deviceName ?? record.model} was paired again after OSRA's data on it was cleared. Its protection was off until now.`,
+            bodyKey: "alertBodyDataCleared",
+            params: { model: record.deviceName ?? record.model },
             metadata: { type: "agent_data_cleared" },
             dedupeKey: `agent_data_cleared|${record.claimId}`,
           });
@@ -642,7 +670,7 @@ export async function deviceRoutes(app: FastifyInstance) {
     const device = (req as unknown as { device: { appsReportedAt?: Date | null } }).device;
     const apps = await prisma.deviceApp.findMany({
       where: { deviceId: id },
-      select: { packageId: true, label: true, isSystem: true, essential: true },
+      select: { packageId: true, label: true, isSystem: true, essential: true, icon: true },
       orderBy: [{ label: "asc" }, { packageId: "asc" }],
     });
     return {
@@ -650,7 +678,8 @@ export async function deviceRoutes(app: FastifyInstance) {
       version: INSTALLED_APPS_VERSION,
       reportedAt: device?.appsReportedAt ? new Date(device.appsReportedAt).toISOString() : null,
       count: apps.length,
-      apps,
+      // The stored icon is already a data URI; the parent reads it as `iconUrl` (null draws the letter avatar).
+      apps: apps.map(({ icon, ...app }) => ({ ...app, iconUrl: icon ?? null })),
     };
   });
 
@@ -667,7 +696,7 @@ export async function deviceRoutes(app: FastifyInstance) {
    * list clears the inventory. That is the honest model for "what is installed now"; a merge would
    * accumulate ghosts forever.
    */
-  app.post("/:id/apps", { preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] }, async (req, reply) => {
+  app.post("/:id/apps", { bodyLimit: INSTALLED_APPS_BODY_LIMIT, preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = InstalledAppsSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -761,6 +790,11 @@ export async function deviceRoutes(app: FastifyInstance) {
     // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
     const device = (req as unknown as { device: PolledDevice & { childId: string } }).device;
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    // ADR-0047: lazy timeout even with JOBS_ENABLED=0; completion itself is never inferred from this poll.
+    if (device) {
+      await evaluateDeviceSetupIncomplete(device as unknown as SetupTransitionDevice, new Date())
+        .catch((err) => req.log.warn({ err, deviceId: id }, "device setup timeout evaluation failed (command poll)"));
+    }
     const ackCapable = (req.query as { ack?: string })?.ack === "1";
     const commands = await claimPendingCommands(id, { ackCapable });
     reply.header(POLL_AFTER_HEADER, String(pollAfterSeconds(device)));
@@ -957,17 +991,24 @@ export async function deviceRoutes(app: FastifyInstance) {
       });
       const current = issued?.rulesVersion ?? 0;
       if (reportedVersion <= current) {
-        await prisma.device.update({ where: { id }, data: { appliedRulesVersion: reportedVersion } });
+        // Codex #1002 review (23 Nov): the phone now reports its applied version at once *and* on the periodic
+        // upload, so two uploads can arrive out of order. The write only ever moves the stored version up, in
+        // one statement, so a delayed report of 3 cannot overwrite a 4 that landed first (and two concurrent
+        // reports cannot both claim the transition). A new pairing is a new device row (null), so its first
+        // report is always taken.
+        const written = await prisma.device.updateMany({
+          where: { id, OR: [{ appliedRulesVersion: null }, { appliedRulesVersion: { lt: reportedVersion } }] },
+          data: { appliedRulesVersion: reportedVersion },
+        });
         // #865: tell the family's parents the moment its last reporting device catches up. Without this
         // the "hasn't picked this change up yet" line is refreshed only by an unrelated socket frame, so
         // a parent reads "not picked up" while the phone is already enforcing. The frame carries the
         // same reduced number the banner reads and nothing else: no rule content, no device detail.
         //
-        // Only on the transition: `req.device` is the row as it was before this upload, so an upload that
-        // repeats a version the phone already reported must not publish — otherwise every telemetry tick
-        // makes every open parent app refetch the family snapshot, changed or not.
-        const previousVersion = (device as { appliedRulesVersion?: number | null }).appliedRulesVersion ?? null;
-        const advanced = previousVersion === null || reportedVersion > previousVersion;
+        // Only on the transition: the guarded write above changed the row only if this report moved the version
+        // up, so an upload that repeats (or trails) a version the phone already reported does not publish —
+        // otherwise every telemetry tick makes every open parent app refetch the family snapshot, changed or not.
+        const advanced = (written?.count ?? 0) > 0;
         const familyId = (device as { child?: { familyId?: string } }).child?.familyId;
         if (familyId && advanced) {
           const siblings = await prisma.device.findMany({
@@ -1068,6 +1109,13 @@ export async function deviceRoutes(app: FastifyInstance) {
         ...(boot.kind === "same_boot_adopt_count" ? { lastBootCount: boot.bootCount } : {}),
       },
     });
+    // ADR-0047: only this authenticated telemetry report may complete setup. Pair-claim and stored
+    // reports are deliberately excluded; a failed protected-alert write rolls back this attempt, and
+    // a failed rollback is recovered by retrying the deduped alert on a later all-ready report.
+    if (capabilitiesOk && capabilitiesParsed) {
+      await completeDeviceSetupIfReady(device as unknown as SetupTransitionDevice, capabilitiesParsed, now)
+        .catch((err) => req.log.warn({ err, deviceId: id }, "device setup completion failed (telemetry)"));
+    }
     if (boot.kind === "new_boot" && bootFamilyId) {
       // Issue #867 / #889: the restart itself, reported by the phone because the 30-minute silence window
       // can never see a 1–2 minute gap. Carries `bodyKey: "alertBodyDeviceRestarted"` so updated parent apps

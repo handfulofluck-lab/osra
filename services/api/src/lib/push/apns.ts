@@ -173,12 +173,13 @@ export class ApnsProvider implements PushProvider {
     if (message.dataOnly && !this.cfg.deviceBundleId) {
       return { ok: false, invalidToken: false, reason: "APNS_DEVICE_BUNDLE_ID unset: device wake not sent" };
     }
+    const collapse = message.apnsCollapseId ?? message.threadId;
     const headers = {
       authorization: `bearer ${this.providerToken()}`,
       "apns-topic": message.dataOnly ? (this.cfg.deviceBundleId as string) : this.cfg.bundleId,
       "apns-push-type": message.dataOnly ? "background" : "alert",
       "apns-priority": message.dataOnly ? "5" : message.priority === "high" ? "10" : "5",
-      ...(message.threadId ? { "apns-collapse-id": message.threadId.slice(0, 64) } : {}),
+      ...(collapse ? { "apns-collapse-id": collapse.slice(0, 64) } : {}),
     };
     // #842: one bounded, capped backoff for the connection-level failures (#843 retried once); the
     // transport still disposes a dead HTTP/2 session on error, so the retry dials a fresh one.

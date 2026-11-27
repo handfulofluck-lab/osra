@@ -1,13 +1,18 @@
 import hashlib
 import json
+import sys
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 from uuid import uuid4
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError, ParamValidationError
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import own_model_service
 import staging_qa
 from app import app
 from eval.prompt import CATEGORIES
@@ -109,6 +114,120 @@ def setup_qa(monkeypatch):
 
 def payload(**overrides):
     return {"text": APPROVED_TEXT, "trace_id": str(uuid4()), **overrides}
+
+
+@pytest.fixture
+def consented_staging(setup_qa, monkeypatch):
+    monkeypatch.setenv("OSRA_STAGING_AI_ALL_CHILDREN", "1")
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "own")
+    monkeypatch.setenv("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "1")
+    monkeypatch.setenv("OSRA_OWN_MODEL_REGION", "eu-north-1")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    monkeypatch.setattr(own_model_service, "APPROVED_PROMPT_SHA256", staging_qa.APPROVED_PROMPT_SHA256, raising=False)
+    config = own_model_service.load_serving_config()
+    for version in ("V9", "V9B"):
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{version}_MODEL_SHA256", "1" * 64)
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{version}_THRESHOLDS_SHA256", config.sha256)
+    scores = {label: 0.01 for label in own_model_service.LABELS}
+    scores["cyberbullying"] = 0.999
+    scorer = Mock(return_value=scores)
+    model = own_model_service.LoadedModel(tag="v9", model_name="osra-own-v9",
+                                         model_sha256="1" * 64, scorer=scorer)
+    registry = own_model_service.OwnModelRegistry(config=config, models={"v9": model})
+    monkeypatch.setattr(own_model_service, "_registry", registry)
+    hosted = Mock(side_effect=AssertionError("unexpected hosted inference"))
+    monkeypatch.setattr(staging_qa, "score_own", hosted)
+    return scorer, hosted, setup_qa
+
+
+def test_consented_stockholm_collector_reaches_cpu_without_fixture_or_expiry(consented_staging, monkeypatch, caplog):
+    # Mutants: require legacy fixtures, select an external provider, or leak the request text.
+    scorer, hosted, bedrock = consented_staging
+    monkeypatch.delenv("OSRA_STAGING_QA_EXPIRES_AT")
+    monkeypatch.delenv("OSRA_STAGING_QA_FIXTURE_SHA256")
+    text = "The group agreed to leave an example out."
+    body = payload(text=text, include_provider_outcomes=True, consented_staging=True)
+    with caplog.at_level("INFO"):
+        response = TestClient(app).post(PATH, json=body)
+
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["trace_id"] == body["trace_id"]
+    assert receipt["mode"] == "own" and receipt["region"] == "eu-north-1"
+    assert set(receipt["outcomes"]) == {"own"}
+    assert receipt["outcomes"]["own"]["status"] == "scored"
+    assert receipt["outcomes"]["own"]["model"] == "v9"
+    assert receipt["outcomes"]["own"]["flagged_categories"] == ["cyberbullying"]
+    assert text not in response.text + caplog.text
+    scorer.assert_called_once_with(text)
+    hosted.assert_not_called()
+    assert bedrock.calls == []
+
+
+@pytest.mark.parametrize("name,value", [
+    ("OSRA_DEPLOYMENT_SCOPE", "production"),
+    ("OSRA_STAGING_QA_ANALYZER_ENABLED", "0"),
+    ("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0"),
+    ("OSRA_STAGING_QA_ENGINE", "bedrock"),
+    ("OSRA_STAGING_QA_ENGINE", "both"),
+    ("OSRA_OWN_MODEL_REGION", "eu-central-1"),
+    ("AWS_REGION", "eu-central-1"),
+    ("OSRA_STAGING_QA_SYSTEM_PROMPT", "Unapproved prompt"),
+])
+def test_consented_mode_fails_closed_on_wrong_configuration(consented_staging, monkeypatch, name, value):
+    # Mutant: treat an invalid explicit broad mode as a legacy audited fixture request.
+    scorer, hosted, bedrock = consented_staging
+    monkeypatch.setenv(name, value)
+    response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True, consented_staging=True))
+    assert response.status_code == 404 and response.json() == {"detail": "not_found"}
+    scorer.assert_not_called()
+    hosted.assert_not_called()
+    assert bedrock.calls == []
+
+
+def test_legacy_pair_text_collector_rejects_consented_rollout_marker(setup_qa, monkeypatch):
+    # Mutant: accept a new caller's consented request while still in the legacy pair-text window.
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    text = "A message outside the legacy fixture file."
+    with TestClient(app) as client:
+        mismatched = client.post(PATH, json=payload(text=text, include_provider_outcomes=True,
+                                                    consented_staging=True))
+        assert mismatched.status_code == 422 and mismatched.json() == {"detail": "invalid_request"}
+        assert setup_qa.calls == []
+        legacy = client.post(PATH, json=payload(text=text, include_provider_outcomes=True))
+    assert legacy.status_code == 200
+    assert legacy.json()["outcomes"]["bedrock"]["status"] == "scored"
+    assert len(setup_qa.calls) == 1
+
+
+@pytest.mark.parametrize("marker", [{}, {"consented_staging": False}, {"consented_staging": "true"}])
+def test_consented_collector_requires_strict_true_rollout_marker(consented_staging, marker):
+    # Mutants: accept a legacy caller or coerce a string into an enabled consented request.
+    scorer, hosted, bedrock = consented_staging
+    response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True, **marker))
+    assert response.status_code == 422 and response.json() == {"detail": "invalid_request"}
+    scorer.assert_not_called()
+    hosted.assert_not_called()
+    assert bedrock.calls == []
+
+
+def test_consented_mode_applies_body_guards_and_closes_raw_cpu_http(consented_staging):
+    # Mutants: accept direct HTTP CPU calls or remove the text-byte/receipt boundary.
+    scorer, hosted, bedrock = consented_staging
+    with TestClient(app) as client:
+        direct = client.post(f"{PATH}/own", json=payload())
+        missing_outcomes = client.post(PATH, json=payload(consented_staging=True))
+        oversized = client.post(PATH, json=payload(text="é" * 513, include_provider_outcomes=True,
+                                                  consented_staging=True))
+    with TestClient(own_model_service.own_model_app) as standalone:
+        direct_alias = standalone.post(PATH, json=payload())
+    assert direct.status_code == direct_alias.status_code == 404
+    assert missing_outcomes.status_code == 422
+    assert missing_outcomes.json() == {"detail": "provider_outcomes_required"}
+    assert oversized.status_code == 422 and oversized.json() == {"detail": "invalid_request"}
+    scorer.assert_not_called()
+    hosted.assert_not_called()
+    assert bedrock.calls == []
 
 
 @pytest.mark.parametrize("name,value", [
@@ -234,3 +353,232 @@ def test_unusable_provider_answer_cannot_be_reported_as_inference(setup_qa, capl
     assert len(setup_qa.calls) == 1
     assert "provider-private-detail" not in caplog.text
     assert APPROVED_TEXT not in caplog.text
+
+
+@pytest.mark.parametrize(("error", "diagnostic"), [
+    (ClientError({"Error": {"Code": "AccessDeniedException", "Message": "provider-private-detail"}}, "Converse"), "access_denied"),
+    (ClientError({"Error": {"Code": "ValidationException", "Message": "provider-private-detail"}}, "Converse"), "provider_validation"),
+    (ClientError({"Error": {"Code": "provider-private-detail", "Message": "provider-private-detail"}}, "Converse"), "provider_error"),
+    (ParamValidationError(report="provider-private-detail"), "sdk_validation"),
+    (EndpointConnectionError(endpoint_url=BEDROCK_ENDPOINT), "transport"),
+])
+def test_provider_diagnostic_contains_only_an_allowlisted_kind(setup_qa, caplog, error, diagnostic):
+    # Logging the exception text or a provider-controlled code would leak private fields.
+    setup_qa.answer = error
+    response = TestClient(app).post(PATH, json=payload())
+    assert response.status_code == 502
+    assert response.json() == {"detail": "model_unavailable"}
+    assert f"failure_kind={diagnostic}" in caplog.text
+    assert "provider-private-detail" not in caplog.text
+    assert BEDROCK_ENDPOINT not in caplog.text
+    assert APPROVED_TEXT not in caplog.text
+
+
+def test_opt_in_bedrock_receipt_distinguishes_benign_from_provider_failure(setup_qa):
+    # Mutant: return an empty benign verdict when Bedrock fails.
+    body = payload(include_provider_outcomes=True)
+    setup_qa.probabilities = dict.fromkeys(CATEGORIES, 0.0)
+    setup_qa.probabilities["safe"] = 1.0
+    setup_qa.answer = model_reply(json.dumps({"categories": setup_qa.probabilities}))
+    response = TestClient(app).post(PATH, json=body)
+    assert response.status_code == 200
+    result = response.json()
+    assert result["trace_id"] == body["trace_id"] and result["mode"] == "bedrock"
+    outcome = result["outcomes"]["bedrock"]
+    assert set(result["outcomes"]) == {"bedrock"}
+    assert outcome["status"] == "scored" and outcome["flagged"] is False
+    assert outcome["severity"] == "info" and outcome["flagged_categories"] == []
+
+    setup_qa.answer = RuntimeError("private marker not for evidence")
+    failed = TestClient(app).post(PATH, json=body)
+    assert failed.status_code == 200
+    assert failed.json()["outcomes"] == {"bedrock": {"status": "unavailable", "reason": "unavailable"}}
+    assert "private marker" not in failed.text
+
+
+def test_receipt_requires_valid_selection_and_approved_fixture(setup_qa, monkeypatch):
+    body = payload(include_provider_outcomes=True)
+    client = TestClient(app)
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "unapproved")
+    assert client.post(PATH, json=body).status_code == 404
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    assert client.post(PATH, json={**body, "text": "different synthetic sample"}).status_code == 403
+    assert client.post(PATH, json=payload()).status_code == 422
+    assert setup_qa.calls == []
+
+
+@pytest.mark.parametrize("mode", ["own", "both"])
+def test_receipt_honors_native_calibrated_labels_in_each_mode(setup_qa, monkeypatch, mode):
+    # Mutants: turn a calibrated 0.41 flag benign, or hide a successful provider when its peer fails.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", mode)
+    probs = {category: 0.0 for category in CATEGORIES if category != "safe"}
+    probs["grooming"] = 0.41
+    own = Mock(return_value={"model": "v9b", "language": "fr", "categories": probs, "flagged_categories": ["grooming"]})
+    monkeypatch.setattr(staging_qa, "score_own", own)
+    setup_qa.answer = RuntimeError("discard private reason")
+    result = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True)).json()
+    own.assert_called_once()
+    assert len(setup_qa.calls) == (1 if mode == "both" else 0)
+    assert result["outcomes"]["own"] == {
+        "status": "scored", "model": "v9b", "language": "fr", "flagged": True, "severity": "warning",
+        "categories": probs, "flagged_categories": ["grooming"],
+    }
+    if mode == "both":
+        assert result["outcomes"]["bedrock"] == {"status": "unavailable", "reason": "unavailable"}
+    else:
+        assert set(result["outcomes"]) == {"own"}
+
+
+def test_bedrock_positive_survives_missing_own_checkpoint(setup_qa, monkeypatch):
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    monkeypatch.setattr(staging_qa, "score_own", Mock(side_effect=TimeoutError))
+    result = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True)).json()
+    assert result["outcomes"]["own"] == {"status": "unavailable", "reason": "timeout"}
+    bedrock = result["outcomes"]["bedrock"]
+    assert bedrock["model"] == staging_qa.MODEL_ID and bedrock["flagged"] is True
+    assert bedrock["flagged_categories"] == ["cyberbullying"] and bedrock["severity"] == "critical"
+    assert "language" not in bedrock
+
+
+@pytest.mark.parametrize("bedrock_flag,own_flag", [(False, False), (True, False), (False, True), (True, True)])
+def test_both_returns_independent_verdicts_for_one_scan(setup_qa, monkeypatch, bedrock_flag, own_flag):
+    # Mutants: use one provider as fallback, duplicate its result, or overwrite the first positive.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    scores = {category: 0.0 for category in CATEGORIES}
+    scores["violence" if bedrock_flag else "safe"] = 0.93
+    setup_qa.answer = model_reply(json.dumps({"categories": scores}))
+    native = {key: 0.1 for key in CATEGORIES if key != "safe"}
+    native["grooming"] = 0.41
+    own = Mock(return_value={"model": "v9", "language": "en", "categories": native,
+                             "flagged_categories": ["grooming"] if own_flag else []})
+    monkeypatch.setattr(staging_qa, "score_own", own)
+    body = payload(include_provider_outcomes=True)
+    response = TestClient(app).post(PATH, json=body)
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["trace_id"] == body["trace_id"] and receipt["mode"] == "both"
+    bedrock, local = receipt["outcomes"]["bedrock"], receipt["outcomes"]["own"]
+    assert bedrock["flagged"] is bedrock_flag and local["flagged"] is own_flag
+    assert bedrock["flagged_categories"] == (["violence"] if bedrock_flag else [])
+    assert local["flagged_categories"] == (["grooming"] if own_flag else [])
+    assert len(setup_qa.calls) == own.call_count == 1
+    assert own.call_args.args[1] == setup_qa.calls[0]["requestMetadata"]["osraQaTraceId"] == body["trace_id"]
+
+
+def test_actual_route_deadline_keeps_already_completed_bedrock_result(setup_qa, monkeypatch):
+    # Mutant: a timeout around gather() discards the completed positive.
+    import time
+
+    def delayed(*_):
+        time.sleep(0.12)
+        return {"model": "v9", "language": "en", "categories": {}, "flagged_categories": []}
+
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    monkeypatch.setattr(staging_qa, "MAX_INFERENCE_SECONDS", 0.05)
+    monkeypatch.setattr(staging_qa, "score_own", delayed)
+    with TestClient(app) as client:
+        result = client.post(PATH, json=payload(include_provider_outcomes=True)).json()
+    assert result["outcomes"]["bedrock"]["flagged"] is True
+    assert result["outcomes"]["own"] == {"status": "unavailable", "reason": "timeout"}
+
+
+def test_provider_exception_and_input_stay_out_of_logs_and_receipt(setup_qa, monkeypatch, caplog):
+    # Mutants: log the model exception or echo the request when neither provider can score it.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "both")
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    sample = "private synthetic free-wording marker"
+    failure = "private synthetic provider response marker"
+    setup_qa.answer = RuntimeError(failure)
+    monkeypatch.setattr(staging_qa, "score_own", Mock(side_effect=RuntimeError(sample)))
+    with caplog.at_level("INFO", logger=staging_qa.__name__):
+        response = TestClient(app).post(PATH, json=payload(text=sample, include_provider_outcomes=True))
+    assert response.status_code == 200
+    assert response.json()["outcomes"] == {
+        "bedrock": {"status": "unavailable", "reason": "unavailable"},
+        "own": {"status": "unavailable", "reason": "unavailable"},
+    }
+    assert caplog.text.count("staging QA provider unavailable") == 2
+    assert sample not in response.text + caplog.text and failure not in response.text + caplog.text
+
+
+@pytest.mark.parametrize("kind", ["ConnectTimeoutError", "ReadTimeoutError"])
+def test_bedrock_sdk_socket_timeout_receives_timeout_class(setup_qa, kind):
+    # Mutant: classify a socket timeout as a generic unavailable model.
+    from botocore import exceptions
+
+    setup_qa.answer = getattr(exceptions, kind)(endpoint_url="synthetic")
+    response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True))
+    assert response.json()["outcomes"] == {"bedrock": {"status": "unavailable", "reason": "timeout"}}
+
+@pytest.mark.parametrize("fault", [None, "stockholm", "wrong_reported_region", "benign", "trace", "model_pin", "threshold_pin", "language", "flags", "missing_score", "region"])
+def test_local_cpu_receipt_uses_native_flags_and_pins(setup_qa, monkeypatch, fault):
+    # Mutants: switch to a remote endpoint on failure, accept stale digests, or re-threshold the native flag.
+    from staging_own_model import LABELS
+
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "own")
+    monkeypatch.setenv("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "1")
+    if fault in ("stockholm", "wrong_reported_region"):
+        monkeypatch.setenv("OSRA_OWN_MODEL_REGION", "eu-north-1")
+    for name in ("V9", "V9B"):
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{name}_MODEL_SHA256", "1" * 64)
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{name}_THRESHOLDS_SHA256", "2" * 64)
+    service = FastAPI()
+    requests = []
+
+    @service.post("/analyze/staging-qa/own")
+    async def classify(body: dict):
+        requests.append(body)
+        scores = {label: 0.1 for label in LABELS}
+        scores.update(grooming=0.41, safe=0.59)
+        if fault == "missing_score":
+            del scores["violence"]
+        flagged = fault != "benign"
+        return {
+            "trace_id": str(uuid4()) if fault == "trace" else body["trace_id"],
+            "model": "osra-own-v9b", "lang": "en" if fault == "language" else "fr",
+            "region": "other" if fault == "region" else ("eu-north-1" if fault == "stockholm" else "eu-central-1"),
+            "model_sha256": ("3" if fault == "model_pin" else "1") * 64,
+            "thresholds_sha256": ("4" if fault == "threshold_pin" else "2") * 64,
+            "flagged": flagged, "severity": "warning" if flagged else "info",
+            "categories": scores, "flagged_categories": ["grooming"] if flagged and fault != "flags" else [],
+        }
+
+    monkeypatch.setitem(sys.modules, "own_model_service", SimpleNamespace(own_model_app=service))
+    hosted = Mock(side_effect=AssertionError("unexpected hosted request"))
+    monkeypatch.setattr(staging_qa, "score_own", hosted)
+    body = payload(include_provider_outcomes=True)
+    response = TestClient(app).post(PATH, json=body).json()
+    outcome = response["outcomes"]["own"]
+    if fault == "stockholm":
+        assert response["region"] == "eu-north-1"
+    assert requests == [{"text": APPROVED_TEXT, "trace_id": body["trace_id"]}]
+    hosted.assert_not_called()
+    assert setup_qa.calls == []
+    if fault not in (None, "stockholm", "benign"):
+        assert outcome == {"status": "unavailable", "reason": "unavailable"}
+    else:
+        assert outcome["status"] == "scored" and outcome["model"] == "v9b"
+        assert outcome["language"] == "fr" and set(outcome["categories"]) == set(LABELS)
+        assert outcome["flagged"] is (fault != "benign")
+        assert outcome["flagged_categories"] == (["grooming"] if fault != "benign" else [])
+
+
+@pytest.mark.parametrize(("mode", "expires_in", "expected"), [
+    ("own", 60, 9), ("own", 1, 1), ("bedrock", 60, 2), ("both", 60, 2),
+])
+def test_provider_deadline_for_staging_mode(setup_qa, monkeypatch, mode, expires_in, expected):
+    # Mutants: keep the two-second CPU deadline, extend Bedrock, or outlive the staging approval.
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", mode)
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    monkeypatch.setenv("OSRA_STAGING_QA_EXPIRES_AT", expiry.isoformat())
+    remaining = []
+
+    async def inspect_deadline(providers, *, deadline):
+        remaining.append(deadline - staging_qa.monotonic())
+        return {}
+
+    monkeypatch.setattr(staging_qa, "collect_provider_results", inspect_deadline)
+    TestClient(app).post(PATH, json=payload(include_provider_outcomes=True))
+    assert remaining == [pytest.approx(expected, abs=0.2)]
+    if mode == "own" and expires_in == 60:
+        assert 8 < remaining[0] < 10 < 30
