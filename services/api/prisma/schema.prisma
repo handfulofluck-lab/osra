@@ -627,7 +627,18 @@ model Alert {
   heldDuringSetup Boolean @default(false)
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])
+  timeRequestResolution TimeRequestResolution?
   @@index([childId, createdAt])
+}
+
+/// G4: an alert-keyed decision written with the bonus grant and alert acknowledgement.
+model TimeRequestResolution {
+  alertId    String   @id
+  action     String
+  minutes    Int?
+  actorName  String
+  resolvedAt DateTime @default(now()) @db.Timestamptz(3)
+  alert      Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
 }
 
 /// ADR-0043 D2 / #846 part A step 2: one append-only row per consent act by an account holder.

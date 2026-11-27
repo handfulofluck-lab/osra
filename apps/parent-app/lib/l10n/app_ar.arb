@@ -79,6 +79,21 @@
   "familyMembersMenu": "أفراد العائلة",
   "appearanceMenu": "المظهر",
   "digestPreferencesMenu": "تفضيلات الملخص",
+  "settingsTitle": "الإعدادات",
+  "settingsGroupLanguage": "اللغة والمظهر",
+  "settingsGroupSecurity": "الأمان",
+  "settingsGroupAccount": "الحساب",
+  "settingsSignOut": "تسجيل الخروج",
+  "settingsSignOutAll": "تسجيل الخروج من كل الأجهزة",
+  "settingsValueOn": "مفعّل",
+  "settingsValueOff": "غير مفعّل",
+  "settingsSignOutAllTitle": "تسجيل الخروج من كل الأجهزة؟",
+  "settingsSignOutAllBody": "سيلزم تسجيل الدخول من جديد على كل جهاز يستخدم حسابك، بما فيه هذا الجهاز.",
+  "settingsSignOutAllConfirm": "تسجيل الخروج من كل الأجهزة",
+  "settingsSecurityCardTitle": "إكمال تأمين حسابك",
+  "settingsSecurityCardLine": "التحقق بخطوتين غير مفعّل",
+  "settingsSecurityCardButton": "تفعيل",
+  "settingsTimeZone": "المنطقة الزمنية",
   "signOutTooltip": "تسجيل الخروج",
   "familyLoadFailed": "تعذّر تحميل بيانات عائلتك. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noChildrenYet": "لا يوجد أطفال بعد — اضغط «إضافة طفل»",
@@ -1245,6 +1260,59 @@
   "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
   "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
   "alertsOffTurnOnAction": "تفعيل التنبيهات",
+  "pairP05Title": "ربط هاتف {child}",
+  "@pairP05Title": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05TitleGeneric": "ربط هاتف الطفل",
+  "pairP05Subtitle": "ثبّت تطبيق أسرة للأطفال على هاتف {child} ثم امسح هذا الرمز.",
+  "@pairP05Subtitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05SubtitleGeneric": "ثبّت تطبيق أسرة للأطفال على هاتف الطفل ثم امسح هذا الرمز.",
+  "pairP05OrTypeCode": "أو أدخل هذا الرمز",
+  "pairP05ValidFor": "صالح لمدة {time}",
+  "@pairP05ValidFor": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05CodeExpired": "انتهت صلاحية الرمز",
+  "pairP05NewCode": "رمز جديد",
+  "pairP05WaitingFor": "بانتظار هاتف {child}…",
+  "@pairP05WaitingFor": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05WaitingGeneric": "بانتظار هاتف الطفل…",
+  "pairP05ConfirmDeviceTitle": "تأكيد هذا الجهاز؟",
+  "pairP05ConfirmDeviceBody": "يطلب {model} الاتصال. أكّد الربط للمتابعة.",
+  "@pairP05ConfirmDeviceBody": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05ConfirmLink": "التأكيد والربط",
+  "pairP05Decline": "رفض",
+  "pairP05Connected": "تم ربط الهاتف.",
+  "pairP05SendInstallLink": "إرسال رابط التثبيت",
+  "pairP05InstallLinkCopied": "تم نسخ رابط التثبيت للمشاركة.",
+  "pairP05SkipForNow": "التخطي حاليًا",
   "timeRequestTitle": "طلب من {child}: {minutes, plural, =1{دقيقة إضافية واحدة} =2{دقيقتان إضافيتان} few{{minutes} دقائق إضافية} many{{minutes} دقيقة إضافية} other{{minutes} دقيقة إضافية}} اليوم",
   "timeRequestGrant": "+{minutes} دقيقة",
   "timeRequestDecline": "ليس اليوم",
@@ -1469,6 +1537,10 @@
   "p01PreviewBedtimeValue": "من 21:30 إلى 07:00",
   "p01PreviewAppsValue": "تطبيقان محظوران",
   "p01PreviewLocationValue": "في المدرسة",
+  "appsFilterAllowed": "مسموح ({count})",
+  "appsLimitSheetTitle": "الحد اليومي لتطبيق {app}",
+  "appsNoLimit": "بلا حد",
+  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد.",
   "p14DayToday": "اليوم",
   "p14DayYesterday": "أمس"
 }

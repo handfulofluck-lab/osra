@@ -93,6 +93,21 @@
   "familyMembersMenu": "Family members",
   "appearanceMenu": "Appearance",
   "digestPreferencesMenu": "Digest preferences",
+  "settingsTitle": "Settings",
+  "settingsGroupLanguage": "Language and appearance",
+  "settingsGroupSecurity": "Security",
+  "settingsGroupAccount": "Account",
+  "settingsSignOut": "Sign out",
+  "settingsSignOutAll": "Sign out of all devices",
+  "settingsValueOn": "On",
+  "settingsValueOff": "Off",
+  "settingsSignOutAllTitle": "Sign out of all devices?",
+  "settingsSignOutAllBody": "You will have to sign in again on every device that uses your account, including this one.",
+  "settingsSignOutAllConfirm": "Sign out everywhere",
+  "settingsSecurityCardTitle": "Finish securing your account",
+  "settingsSecurityCardLine": "Two-step verification is off",
+  "settingsSecurityCardButton": "Turn on",
+  "settingsTimeZone": "Time zone",
   "signOutTooltip": "Sign out",
   "familyLoadFailed": "Couldn't load your family. Check your connection and try again.",
   "noChildrenYet": "No children yet — tap \"Add child\"",
@@ -2346,6 +2361,59 @@
   },
   "alertsOffBannerBody": "Alerts are off. You won't hear about urgent messages.",
   "alertsOffTurnOnAction": "Turn on alerts",
+  "pairP05Title": "Connect {child}'s phone",
+  "@pairP05Title": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05TitleGeneric": "Connect your child's phone",
+  "pairP05Subtitle": "On {child}'s phone, install OSRA Kids, then scan this.",
+  "@pairP05Subtitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05SubtitleGeneric": "Install OSRA Kids on the child's phone, then scan this.",
+  "pairP05OrTypeCode": "Or type this code",
+  "pairP05ValidFor": "Valid for {time}",
+  "@pairP05ValidFor": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05CodeExpired": "Code expired",
+  "pairP05NewCode": "New code",
+  "pairP05WaitingFor": "Waiting for {child}'s phone…",
+  "@pairP05WaitingFor": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05WaitingGeneric": "Waiting for the child's phone…",
+  "pairP05ConfirmDeviceTitle": "Confirm this device?",
+  "pairP05ConfirmDeviceBody": "{model} wants to connect. Confirm to link it.",
+  "@pairP05ConfirmDeviceBody": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "pairP05ConfirmLink": "Confirm and link",
+  "pairP05Decline": "Decline",
+  "pairP05Connected": "Phone connected.",
+  "pairP05SendInstallLink": "Send install link",
+  "pairP05InstallLinkCopied": "Install link copied to share.",
+  "pairP05SkipForNow": "Skip for now",
   "timeRequestTitle": "{child} asked for {minutes} more minutes today",
   "@timeRequestTitle": {
     "placeholders": {
@@ -2649,6 +2717,10 @@
   "p01PreviewBedtimeValue": "21:30 → 07:00",
   "p01PreviewAppsValue": "2 blocked",
   "p01PreviewLocationValue": "At school",
+  "appsFilterAllowed": "Allowed ({count})",
+  "appsLimitSheetTitle": "Daily limit for {app}",
+  "appsNoLimit": "No limit",
+  "appsIphoneNoAppList": "The iPhone doesn't send its app list yet.",
   "p14DayToday": "Today",
   "p14DayYesterday": "Yesterday"
 }

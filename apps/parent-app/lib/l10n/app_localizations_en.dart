@@ -252,6 +252,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPreferencesMenu => 'Digest preferences';
 
   @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsGroupLanguage => 'Language and appearance';
+
+  @override
+  String get settingsGroupSecurity => 'Security';
+
+  @override
+  String get settingsGroupAccount => 'Account';
+
+  @override
+  String get settingsSignOut => 'Sign out';
+
+  @override
+  String get settingsSignOutAll => 'Sign out of all devices';
+
+  @override
+  String get settingsValueOn => 'On';
+
+  @override
+  String get settingsValueOff => 'Off';
+
+  @override
+  String get settingsSignOutAllTitle => 'Sign out of all devices?';
+
+  @override
+  String get settingsSignOutAllBody =>
+      'You will have to sign in again on every device that uses your account, including this one.';
+
+  @override
+  String get settingsSignOutAllConfirm => 'Sign out everywhere';
+
+  @override
+  String get settingsSecurityCardTitle => 'Finish securing your account';
+
+  @override
+  String get settingsSecurityCardLine => 'Two-step verification is off';
+
+  @override
+  String get settingsSecurityCardButton => 'Turn on';
+
+  @override
+  String get settingsTimeZone => 'Time zone';
+
+  @override
   String get signOutTooltip => 'Sign out';
 
   @override
@@ -3739,6 +3785,71 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertsOffTurnOnAction => 'Turn on alerts';
 
   @override
+  String pairP05Title(String child) {
+    return 'Connect $child\'s phone';
+  }
+
+  @override
+  String get pairP05TitleGeneric => 'Connect your child\'s phone';
+
+  @override
+  String pairP05Subtitle(String child) {
+    return 'On $child\'s phone, install OSRA Kids, then scan this.';
+  }
+
+  @override
+  String get pairP05SubtitleGeneric =>
+      'Install OSRA Kids on the child\'s phone, then scan this.';
+
+  @override
+  String get pairP05OrTypeCode => 'Or type this code';
+
+  @override
+  String pairP05ValidFor(String time) {
+    return 'Valid for $time';
+  }
+
+  @override
+  String get pairP05CodeExpired => 'Code expired';
+
+  @override
+  String get pairP05NewCode => 'New code';
+
+  @override
+  String pairP05WaitingFor(String child) {
+    return 'Waiting for $child\'s phone…';
+  }
+
+  @override
+  String get pairP05WaitingGeneric => 'Waiting for the child\'s phone…';
+
+  @override
+  String get pairP05ConfirmDeviceTitle => 'Confirm this device?';
+
+  @override
+  String pairP05ConfirmDeviceBody(String model) {
+    return '$model wants to connect. Confirm to link it.';
+  }
+
+  @override
+  String get pairP05ConfirmLink => 'Confirm and link';
+
+  @override
+  String get pairP05Decline => 'Decline';
+
+  @override
+  String get pairP05Connected => 'Phone connected.';
+
+  @override
+  String get pairP05SendInstallLink => 'Send install link';
+
+  @override
+  String get pairP05InstallLinkCopied => 'Install link copied to share.';
+
+  @override
+  String get pairP05SkipForNow => 'Skip for now';
+
+  @override
   String timeRequestTitle(String child, int minutes) {
     return '$child asked for $minutes more minutes today';
   }
@@ -4123,6 +4234,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p01PreviewLocationValue => 'At school';
+
+  @override
+  String appsFilterAllowed(Object count) {
+    return 'Allowed ($count)';
+  }
+
+  @override
+  String appsLimitSheetTitle(Object app) {
+    return 'Daily limit for $app';
+  }
+
+  @override
+  String get appsNoLimit => 'No limit';
+
+  @override
+  String get appsIphoneNoAppList =>
+      'The iPhone doesn\'t send its app list yet.';
 
   @override
   String get p14DayToday => 'Today';

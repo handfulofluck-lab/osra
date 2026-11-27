@@ -77,6 +77,82 @@ class AccessibilityMonitorService : AccessibilityService() {
     /** Issue #83 review F1 / #165: what the OS says a package is, shared with [AppBlocker]'s overlay guard. */
     @Inject lateinit var packageFacts: PackageFacts
 
+    /** Issue #1174 & osra-security#80: live grant state + one-way completion latch so enforcement
+     *  waits ONLY until required grants finish the first time for this device id, never weakening
+     *  blocking if a grant is later revoked, and avoiding per-event IPC once latched. */
+    private val grantChecks by lazy {
+        com.familyshield.agent.setup.GrantChecks(this, deviceAdmin)
+    }
+
+    @Volatile private var latchedCompletedDeviceId: String? = null
+    private var lastIncompleteGrantCheckElapsedMs: Long = 0L
+    private var lastIncompleteMissingGrants: List<com.familyshield.agent.setup.OnboardingPolicy.Grant> = emptyList()
+
+    private fun requiredGrantsIncompleteForPairedDevice(): Boolean {
+        if (!settings.isPairedSync()) return false
+        val deviceId = settings.deviceIdSync()
+        if (deviceId != null && latchedCompletedDeviceId == deviceId) return false
+        val upgradeSeeded = com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(this, deviceId)
+        val alreadyCompleted = com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(this, deviceId)
+        if (alreadyCompleted && !upgradeSeeded) {
+            latchedCompletedDeviceId = deviceId
+            return false
+        }
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val missing: List<com.familyshield.agent.setup.OnboardingPolicy.Grant> = if (lastIncompleteGrantCheckElapsedMs != 0L &&
+            nowElapsed - lastIncompleteGrantCheckElapsedMs < com.familyshield.agent.setup.FirstRunOrderPolicy.INCOMPLETE_RECHECK_INTERVAL_MS
+        ) {
+            lastIncompleteMissingGrants
+        } else {
+            val rows = com.familyshield.agent.setup.OnboardingPolicy.rows(
+                com.familyshield.agent.BuildConfig.CAPTURE_NOTIFICATIONS,
+            ) { grantChecks.isGranted(it) }
+            val computed = com.familyshield.agent.setup.OnboardingPolicy.missingRequired(rows)
+            lastIncompleteGrantCheckElapsedMs = nowElapsed
+            lastIncompleteMissingGrants = computed
+            computed
+        }
+        val ready = missing.isEmpty()
+        if (ready && deviceId != null) {
+            com.familyshield.agent.setup.SetupCompletionStore.markCompleted(this, deviceId)
+            latchedCompletedDeviceId = deviceId
+        }
+        val suppressed = com.familyshield.agent.setup.FirstRunOrderPolicy.shouldSuppressEnforcement(
+            paired = true,
+            requiredGrantsReady = ready,
+            setupCompletedOnce = alreadyCompleted || (ready && deviceId != null),
+        )
+        if (!ready && deviceId != null) {
+            val fingerprint = com.familyshield.agent.setup.FirstRunOrderPolicy.missingGrantsFingerprint(missing)
+            val lastNotified = com.familyshield.agent.setup.SetupCompletionStore.lastNotifiedMissingFingerprint(this, deviceId)
+            if (com.familyshield.agent.setup.FirstRunOrderPolicy.shouldEnqueueMissingAlert(
+                    paired = true,
+                    setupCompletedOnce = alreadyCompleted,
+                    currentFingerprint = fingerprint,
+                    lastNotifiedFingerprint = lastNotified,
+                    upgradeSeeded = upgradeSeeded,
+                )
+            ) {
+                com.familyshield.agent.setup.SetupCompletionStore.recordNotifiedMissingFingerprint(this, deviceId, fingerprint)
+                val labels = missing.map { getString(it.titleRes) }
+                runCatching {
+                    TamperAlertWorker.enqueue(
+                        this,
+                        TamperAlertWorker.TYPE_SETUP_INCOMPLETE,
+                        detail = com.familyshield.agent.setup.FirstRunOrderPolicy.missingPermissionsAlertBody(labels),
+                        app = fingerprint,
+                    )
+                }.onFailure { Log.w(TAG, "could not enqueue setup-incomplete alert (#1174)", it) }
+            }
+            if (alreadyCompleted && upgradeSeeded) {
+                // Upgraded phone reported its newly required missing grants once; cache latch in memory
+                // so future events avoid per-event IPC while keeping full protection active.
+                latchedCompletedDeviceId = deviceId
+            }
+        }
+        return suppressed
+    }
+
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
 
@@ -284,6 +360,9 @@ class AccessibilityMonitorService : AccessibilityService() {
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         refreshFilterRecovery()
+        // Issue #1174 / osra-security#80: evaluate setup completion once on connect so upgraded
+        // already-complete devices latch immediately and incomplete paired phones emit one alert.
+        requiredGrantsIncompleteForPairedDevice()
         calls.onConnected()
         media.onConnected()
         rules.addRulesChangedListener(rulesChanged)
@@ -444,7 +523,8 @@ class AccessibilityMonitorService : AccessibilityService() {
     }
 
     private fun refreshFilterRecovery() {
-        if (!VpnState.isFilterLost(this, settings, consentState)) {
+        // Issue #1174 (path 2): never show filter-lost recovery while initial required grants are incomplete.
+        if (requiredGrantsIncompleteForPairedDevice() || !VpnState.isFilterLost(this, settings, consentState)) {
             updateFilterRecoveryCovers(emptySet())
             return
         }
@@ -453,7 +533,8 @@ class AccessibilityMonitorService : AccessibilityService() {
     }
 
     private fun enforceFilterRecovery(snapshot: WindowSnapshot, foreground: String?): Boolean {
-        if (!VpnState.isFilterLost(this, settings, consentState) ||
+        if (requiredGrantsIncompleteForPairedDevice() ||
+            !VpnState.isFilterLost(this, settings, consentState) ||
             LockState.isActive(this) || Ringer.isRinging ||
             getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
         ) {
@@ -513,7 +594,7 @@ class AccessibilityMonitorService : AccessibilityService() {
      * reports no event, that is the app staying blocked with no screen.
      */
     private fun raiseDeferredIfDue() {
-        if (consentState.isPaused()) {
+        if (consentState.isPaused() || requiredGrantsIncompleteForPairedDevice()) {
             cancelDeferredRaise()
             return
         }
@@ -544,6 +625,12 @@ class AccessibilityMonitorService : AccessibilityService() {
      * by [pipCover], because a PiP window stays above the block screen.
      */
     private fun enforceVisibleBlocks(snapshot: WindowSnapshot, active: String?) {
+        // Issue #1174: no app-block or routine enforcement until all required onboarding grants are done.
+        if (requiredGrantsIncompleteForPairedDevice()) {
+            pipCover.update(null)
+            cancelDeferredRaise()
+            return
+        }
         val found = VisibleBlockStep.decide(
             snapshot,
             active,
@@ -876,6 +963,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             )
         }
         if (!settings.isPairedSync()) return
+        // Issue #1174 (path 1): never block Settings changes while initial required grants are incomplete.
+        if (requiredGrantsIncompleteForPairedDevice()) return
         val now = System.currentTimeMillis()
         // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
         // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
@@ -956,6 +1045,8 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private fun coverSharedProtectionScreens() {
         if (!settings.isPairedSync()) return removeGuardCover()
+        // Issue #1174 (path 1): never cover shared protection screens while initial required grants are incomplete.
+        if (requiredGrantsIncompleteForPairedDevice()) return removeGuardCover()
         val now = System.currentTimeMillis()
         val guardActive = pinStore.isConfigured() && now >= TamperState.graceUntil(this)
         if (!guardActive) return removeGuardCover()
