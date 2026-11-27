@@ -26,6 +26,7 @@ import '../rules/app_picker.dart' show AppIconBadge;
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
 import '../social/social_vote_controls.dart';
 import 'access_request_actions.dart';
+import 'alert_detail_p15.dart';
 import 'app_alert_presentation.dart';
 import 'time_request_actions.dart';
 import 'sos_alert_actions.dart';
@@ -330,6 +331,13 @@ class AlertDetailScreen extends ConsumerWidget {
               nowProvider: nowProvider,
             );
           }
+          if (ref.watch(p15AlertDetailEnabledProvider)) {
+            return AlertDetailP15Body(
+              alert: alert,
+              showAllAlertsButton: !canPop,
+              nowProvider: nowProvider,
+            );
+          }
           return _SocialAlertDetailBody(
             alert: alert,
             showAllAlertsButton: !canPop,
@@ -598,7 +606,7 @@ class _SocialAlertDetailBodyState
         // 3. Primary Social activity action OR preview-availability / retry callout (inside scroll for 200%).
         if (availability == SocialPreviewAvailability.available) ...[
           if (concernId == null) ...[
-            const _PreviewUnavailableCard(
+            const PreviewUnavailableCard(
                 availability: SocialPreviewAvailability.expired),
             const SizedBox(height: AppSpace.sm),
           ],
@@ -616,7 +624,7 @@ class _SocialAlertDetailBodyState
             ),
           ),
         ] else if (availability == SocialPreviewAvailability.transientError)
-          _PreviewRetryCard(
+          PreviewRetryCard(
             message: friendlyErrorText(
               l10n,
               eventsAsync.error ?? Exception('preview_unavailable'),
@@ -625,7 +633,7 @@ class _SocialAlertDetailBodyState
             onRetry: () => ref.invalidate(eventsProvider),
           )
         else
-          _PreviewUnavailableCard(availability: availability),
+          PreviewUnavailableCard(availability: availability),
         if (latestSourceEventId != null &&
             availability != SocialPreviewAvailability.noPermission &&
             availability != SocialPreviewAvailability.expired) ...[
@@ -653,9 +661,9 @@ class _SocialAlertDetailBodyState
   }
 }
 
-class _PreviewUnavailableCard extends StatelessWidget {
+class PreviewUnavailableCard extends StatelessWidget {
   final SocialPreviewAvailability availability;
-  const _PreviewUnavailableCard({required this.availability});
+  const PreviewUnavailableCard({super.key, required this.availability});
 
   @override
   Widget build(BuildContext context) {
@@ -710,11 +718,12 @@ class _PreviewUnavailableCard extends StatelessWidget {
   }
 }
 
-class _PreviewRetryCard extends StatelessWidget {
+class PreviewRetryCard extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _PreviewRetryCard({
+  const PreviewRetryCard({
+    super.key,
     required this.message,
     required this.onRetry,
   });
