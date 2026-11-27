@@ -633,7 +633,14 @@ class PairingActivity : ComponentActivity() {
         statusScreenShown = false
         activeGuidedStage = null
         skippedPermissionSteps.clear()
-        if (ChildUxFlags.c05FirstRunEnabled) {
+        // G4: a scanned code wins, then the build's own server, then what the tester typed. A locked
+        // field is never empty — `PairingServerFieldPolicy` owns that rule and its rows.
+        val serverField = PairingServerFieldPolicy.field(
+            scannedUrl = scanned?.apiBaseUrl,
+            builtInUrl = com.familyshield.agent.BuildConfig.API_BASE,
+            typed = prefillServer,
+        )
+        if (PairingServerFieldPolicy.useCodeOnlyC05Step(ChildUxFlags.c05FirstRunEnabled, serverField)) {
             formServer = null
             formCode = null
             formName = null
@@ -674,13 +681,6 @@ class PairingActivity : ComponentActivity() {
                 )
             }
 
-            // G4: a scanned code wins, then the build's own server, then what the tester typed. A locked
-            // field is never empty — `PairingServerFieldPolicy` owns that rule and its rows.
-            val serverField = PairingServerFieldPolicy.field(
-                scannedUrl = scanned?.apiBaseUrl,
-                builtInUrl = com.familyshield.agent.BuildConfig.API_BASE,
-                typed = prefillServer,
-            )
             val server = editText(serverField.value, InputType.TYPE_TEXT_VARIATION_URI).apply {
                 hint = getString(R.string.pair_server_hint)
                 isEnabled = serverField.editable

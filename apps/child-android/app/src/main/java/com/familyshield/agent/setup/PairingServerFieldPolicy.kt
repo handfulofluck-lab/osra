@@ -56,4 +56,14 @@ object PairingServerFieldPolicy {
      * code, so the six digits stay the one thing a person must read out of the parent's screen.
      */
     fun codeEditable(field: Field): Boolean = !field.fromQr
+
+    /**
+     * C-05 (#1208 follow-up, Codex finding 7209071167): the code-only C-05 pairing step hides the
+     * server field, so it runs only when the server is already preset (built-in `API_BASE` or a
+     * scanned QR payload, i.e. `!field.editable && field.value.isNotBlank()`). When the build has
+     * no preset server and `field` is editable, fall back to the existing manual form so testers
+     * can type a LAN server address.
+     */
+    fun useCodeOnlyC05Step(c05Enabled: Boolean, field: Field): Boolean =
+        c05Enabled && !field.editable && field.value.isNotBlank()
 }
