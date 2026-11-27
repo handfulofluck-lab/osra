@@ -8,6 +8,7 @@ import 'package:familyshield_parent/features/rules/web_filter_p12_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
+import 'package:familyshield_parent/theme/app_tokens.dart';
 
 import 'fake_api_client.dart';
 
@@ -591,25 +592,77 @@ void main() {
   });
 
   testWidgets(
-      'an iPhone child whose phone reports the filter shows the REAL state, not the roadmap note '
-      '(#1279: ready reads as enforced, degraded as the warn pill; mutant: treating any iPhone as "not yet available")',
+      'an iPhone child whose phone reports the filter, ready or degraded, reads the blocked-sites-only '
+      'sentence with the primary globe, never the Android claim or "Not blocking yet" '
+      '(#1280 review 7224916449; mutants: Android sentence on iPhone, warn pill for degraded, any iPhone as "not yet available")',
       (tester) async {
-    await _pumpScreen(
-      tester,
-      api: _makeApi(overview: _overview(platform: 'ios', features: const {'web_filter': 'ready'})),
-    );
-    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
-    expect(find.byKey(const ValueKey('p12-browsers-ios-ready')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsNothing);
+    for (final state in ['ready', 'degraded']) {
+      await _pumpScreen(
+        tester,
+        api: _makeApi(overview: _overview(platform: 'ios', features: {'web_filter': state})),
+      );
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+      final card = find.byKey(const ValueKey('p12-browsers-card'));
+      expect(find.byKey(const ValueKey('p12-browsers-ios-reported')), findsOneWidget, reason: state);
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+              "On iPhone, the sites you block are blocked in Safari and other browsers. Categories and SafeSearch aren't available on iPhone yet."),
+        ),
+        findsOneWidget,
+        reason: state,
+      );
+      expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsNothing, reason: state);
+      expect(find.byKey(const ValueKey('p12-browsers-android')), findsNothing, reason: state);
+      expect(find.descendant(of: card, matching: find.text('Not blocking yet')), findsNothing, reason: state);
+      final globe = tester.widget<Icon>(find.descendant(of: card, matching: find.byIcon(Icons.public)));
+      final ctx = tester.element(card);
+      expect(globe.color, ctx.tokens.primary, reason: '$state: a reported iPhone gets the primary globe');
+    }
+  });
 
-    await _pumpScreen(
-      tester,
-      api: _makeApi(
-          overview: _overview(platform: 'ios', features: const {'web_filter': 'degraded'})),
-    );
-    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
-    expect(find.byKey(const ValueKey('p12-iphone-degraded')), findsOneWidget);
-    expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsNothing);
-    expect(find.byKey(const ValueKey('p12-browsers-ios-ready')), findsNothing);
+  testWidgets(
+      'the Android browsers card keeps main\'s primary globe whether or not the phone reports ready '
+      '(#1280 review: the iPhone fix must not recolour Android; mutant: warn globe for a not-ready Android phone)',
+      (tester) async {
+    for (final features in [
+      const {'web_filter': 'ready'},
+      const <String, String>{},
+    ]) {
+      await _pumpScreen(
+        tester,
+        api: _makeApi(overview: _overview(platform: 'android', features: features)),
+      );
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+      final card = find.byKey(const ValueKey('p12-browsers-card'));
+      final globe = tester.widget<Icon>(find.descendant(of: card, matching: find.byIcon(Icons.public)));
+      expect(globe.color, tester.element(card).tokens.primary, reason: '$features');
+    }
+  });
+
+  testWidgets(
+      'Bureau compact row: the iPhone blocked-sites sentence stays inside the card at 320x568 @2.0 in EN and AR '
+      '(UI/UX 7224921514 and Arabic Bureau 7224950500 sign on this row)',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    for (final locale in const [Locale('en'), Locale('ar')]) {
+      await _pumpScreen(
+        tester,
+        api: _makeApi(overview: _overview(platform: 'ios', features: const {'web_filter': 'degraded'})),
+        locale: locale,
+        textScale: 2.0,
+      );
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-ios-reported')));
+      expect(tester.takeException(), isNull, reason: 'iPhone sentence overflowed ($locale)');
+      final line = tester.getRect(find.byKey(const ValueKey('p12-browsers-ios-reported')));
+      expect(line.left, greaterThanOrEqualTo(0.0), reason: '$locale');
+      expect(line.right, lessThanOrEqualTo(320.0), reason: '$locale');
+      expect(find.text(lookupAppLocalizations(locale).p12IphoneBlockedSitesOnly), findsOneWidget,
+          reason: '$locale');
+    }
   });
 }

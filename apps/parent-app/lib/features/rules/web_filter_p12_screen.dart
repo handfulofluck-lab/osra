@@ -667,11 +667,10 @@ class WebFilterP12Screen extends ConsumerWidget {
           children: [
             Icon(
               Icons.public,
-              color: iosOnly
-                  ? (iosState == null
-                      ? tokens.onSurfaceVariant
-                      : (iosState == 'ready' ? tokens.primary : tokens.warn))
-                  : (androidReady ? tokens.primary : tokens.warn),
+              // Android keeps main's colour (UI/UX 7224921514). An iPhone that has
+              // reported any state gets the primary globe; only an unreported
+              // iPhone stays muted.
+              color: iosOnly && iosState == null ? tokens.onSurfaceVariant : tokens.primary,
               size: 20,
             ),
             const SizedBox(width: AppSpace.sm),
@@ -689,26 +688,19 @@ class WebFilterP12Screen extends ConsumerWidget {
                           l10n.tabWebFilter,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
                         ),
-                        if (iosState == 'ready')
-                          // The phone reports the filter running: say so with the
-                          // same sentence the Android card uses, not a roadmap note.
+                        if (iosState != null)
+                          // Any reported iPhone state, ready or degraded: blocked
+                          // sites apply through WebContentSettings, while categories
+                          // and SafeSearch don't exist there yet. The Android
+                          // sentence would overclaim, and "Not blocking yet" would
+                          // be false (lead 7224916449, UI/UX 7224921514).
                           Text(
-                            l10n.searchSafetyEmptyBody,
-                            key: const ValueKey('p12-browsers-ios-ready'),
+                            l10n.p12IphoneBlockedSitesOnly,
+                            key: const ValueKey('p12-browsers-ios-reported'),
                             style: Theme.of(context)
                                 .textTheme
                                 .bodySmall
                                 ?.copyWith(color: tokens.onSurfaceVariant),
-                          )
-                        else if (iosState != null)
-                          // Reported and not ready: the state is the phone's, so
-                          // it reads as the warn pill the rest of the screen uses.
-                          _pill(
-                            context,
-                            key: const ValueKey('p12-iphone-degraded'),
-                            label: l10n.p12NotBlockingYet,
-                            icon: Icons.block,
-                            color: tokens.warn,
                           )
                         else
                           _pill(
