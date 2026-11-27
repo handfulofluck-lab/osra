@@ -304,7 +304,13 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
 
   Widget _editorBody(AppLocalizations l10n) {
     if (widget.initialTab == RulesEditorScreen.webFilterTab && ref.watch(p12WebFilterEnabledProvider)) {
-      return WebFilterP12Screen(childId: widget.childId);
+      // P-12 renders its controls over THIS screen's draft, so the footer Save below
+      // (the only Save on the screen) submits what the parent sees — #1238 review.
+      return WebFilterP12Screen(
+        childId: widget.childId,
+        webFilter: _draft.webFilter,
+        onChanged: (webFilter) => setState(() => _draft = _draft.copyWith(webFilter: webFilter)),
+      );
     }
     return DefaultTabController(
       length: 4,

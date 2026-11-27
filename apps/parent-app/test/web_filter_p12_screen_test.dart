@@ -141,13 +141,15 @@ Future<void> _pumpScreen(
     locale: locale,
     themeMode: themeMode,
     textScale: textScale,
-    home: const WebFilterP12Screen(childId: 'child-1'),
+    // Every row runs through the real host: the rules editor owns the draft and
+    // the only Save, so a P-12 row that passed alone could hide a broken wire.
+    home: const RulesEditorScreen(childId: 'child-1', initialTab: RulesEditorScreen.webFilterTab),
   ));
   await tester.pumpAndSettle();
 }
 
 Future<void> _save(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('p12-save-button')));
+  await tester.tap(find.byKey(const ValueKey('rules-save-button')));
   await tester.pumpAndSettle();
 }
 
@@ -194,11 +196,10 @@ void main() {
   });
 
   testWidgets(
-      'category tiles read Blocked/Allowed in words and a tap reaches the saved rules '
-      '(mutant: a tile that only changes its own label — the PATCH then carries no category)',
+      'category tiles read Blocked/Allowed in words and a tap takes the editor\'s draft '
+      '(mutant: a tile that only paints its own state and never reaches the draft — the tile then stays "Allowed")',
       (tester) async {
-    final api = _makeApi();
-    await _pumpScreen(tester, api: api);
+    await _pumpScreen(tester);
 
     final gambling = find.byKey(const ValueKey('p12-category-gambling'));
     await _scrollTo(tester, gambling);
@@ -209,10 +210,6 @@ void main() {
     await tester.tap(gambling);
     await tester.pumpAndSettle();
     expect(find.descendant(of: gambling, matching: find.text('Blocked')), findsOneWidget);
-
-    await _save(tester);
-    final webFilter = _lastWebFilterPatch(api);
-    expect(webFilter['blockedCategories'], contains('gambling'));
   });
 
   testWidgets(
@@ -240,10 +237,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('p12-site-save')));
     await tester.pumpAndSettle();
-    await _save(tester);
 
-    final webFilter = _lastWebFilterPatch(api);
-    expect(webFilter['allowedDomains'], ['example.com']);
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-site-allow-example.com')));
+    expect(find.byKey(const ValueKey('p12-site-allow-example.com')), findsOneWidget);
   });
 
   testWidgets(

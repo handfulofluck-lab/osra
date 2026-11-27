@@ -1,18 +1,13 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models.dart';
-import '../../api/permission_errors.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
-import '../../widgets/error_retry_view.dart';
-import 'rules_behind_banner.dart';
 import 'rules_editor_screen.dart' show RulesEditorScreen, kLegacyWebCategories;
 
 /// Build-time switch for the P-12 Web filter redesign (#1179, `OSRA_UX_P12`).
@@ -24,19 +19,18 @@ const bool kP12WebFilterDefault = bool.fromEnvironment('OSRA_UX_P12', defaultVal
 /// Feature switch for P-12 Web filter (#1179).
 final p12WebFilterEnabledProvider = Provider<bool>((ref) => kP12WebFilterDefault);
 
-/// `/child/:id/web-filter` (#1229): the P-12 screen when its switch is on, the
-/// legacy web-filter tab of the rules editor when it is off. One entry point,
-/// so a parent can always reach their filter either way.
-class WebFilterP12Route extends ConsumerWidget {
+/// `/child/:id/web-filter` (#1229): one entry point to the web filter. It opens
+/// the rules editor on its web-filter tab, and the editor's own switch decides
+/// whether that tab is P-12 or the legacy body — so the parent always lands on
+/// an editor that owns one draft and one Save.
+class WebFilterP12Route extends StatelessWidget {
   final String childId;
 
   const WebFilterP12Route({super.key, required this.childId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(p12WebFilterEnabledProvider)) return WebFilterP12Screen(childId: childId);
-    return RulesEditorScreen(childId: childId, initialTab: RulesEditorScreen.webFilterTab);
-  }
+  Widget build(BuildContext context) =>
+      RulesEditorScreen(childId: childId, initialTab: RulesEditorScreen.webFilterTab);
 }
 
 /// P-12 Web filter (#1229, row P-12 of the UX final breakdown).
@@ -51,37 +45,36 @@ class WebFilterP12Route extends ConsumerWidget {
 /// A11 ("Recommended protection" for the 13 categories) keeps its place above
 /// the tiles and A14 ("Searches and videos") links the existing search screen.
 /// There is no single shield toggle and no school whitelist (Bureau row P-12).
-class WebFilterP12Screen extends ConsumerStatefulWidget {
+///
+/// It is a **view over the rules editor's draft** (#1238 review): every edit
+/// goes through [onChanged] into `RulesEditorScreen`'s `_draft`, and the
+/// editor's footer is the only Save. The screen posts nothing itself, so a
+/// parent's change can never be saved by a path that skipped the draft.
+class WebFilterP12Screen extends ConsumerWidget {
   final String childId;
 
-  const WebFilterP12Screen({super.key, required this.childId});
+  /// The editor's current web-filter draft for this child.
+  final WebFilterRule webFilter;
 
-  @override
-  ConsumerState<WebFilterP12Screen> createState() => _WebFilterP12ScreenState();
-}
+  /// Writes a new web-filter draft back into the editor.
+  final ValueChanged<WebFilterRule> onChanged;
 
-class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
-  RuleSet _draft = const RuleSet();
-  RuleSet? _saved;
-  bool _saving = false;
-  String? _error;
+  const WebFilterP12Screen({
+    super.key,
+    required this.childId,
+    required this.webFilter,
+    required this.onChanged,
+  });
 
   /// Days the recently-blocked list covers, matching the reports screen's short window.
-  static const int _recentDays = 7;
+  static const int recentDays = 7;
 
-  bool get _recommendedOn => kRecommendedCategories.every(_draft.webFilter.blockedCategories.contains);
+  bool get _recommendedOn => kRecommendedCategories.every(webFilter.blockedCategories.contains);
 
-  void _applyLoaded(RuleSet ruleSet) {
-    if (_saved != null) return;
-    _saved = ruleSet;
-    _draft = ruleSet;
-  }
+  /// The one write path: the editor's draft, never a local copy.
+  void _updateWebFilter(WebFilterRule Function(WebFilterRule) f) => onChanged(f(webFilter));
 
-  void _updateWebFilter(WebFilterRule Function(WebFilterRule) f) {
-    setState(() => _draft = _draft.copyWith(webFilter: f(_draft.webFilter)));
-  }
-
-  Future<void> _toggleRecommended(bool enable) async {
+  Future<void> _toggleRecommended(BuildContext context, bool enable) async {
     final l10n = context.l10n;
     if (enable) {
       _updateWebFilter((w) => w.copyWith(
@@ -101,7 +94,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true) return;
     _updateWebFilter((w) => w.copyWith(
           blockedCategories: ({...w.blockedCategories}..removeAll(kRecommendedCategories)).toList(),
         ));
@@ -138,7 +131,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
   /// The always-allow dialog, also used by "Allow site" on one recently blocked
   /// host: the field arrives filled with that exact domain, so saving it stores
   /// the host and nothing wider.
-  Future<void> _addSiteDialog({String? exactDomain, required bool allowed}) async {
+  Future<void> _addSiteDialog(BuildContext context, {String? exactDomain, required bool allowed}) async {
     final l10n = context.l10n;
     final value = await showDialog<String>(
       context: context,
@@ -147,102 +140,37 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
         initial: exactDomain ?? '',
       ),
     );
-    if (value == null || !mounted) return;
+    if (value == null) return;
     _addDomain(value, allowed: allowed);
   }
 
-  Future<void> _save() async {
-    final saved = _saved;
-    if (saved == null || _saving) return;
-    final submitted = _draft;
-    final l10n = context.l10n;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      await ref.read(apiClientProvider).raw.patch(
-            '/v1/rules/${widget.childId}',
-            data: submitted.changesFrom(saved),
-          );
-      if (!mounted) return;
-      _saved = submitted;
-      ref.invalidate(rulesProvider(widget.childId));
-      ref.invalidate(familyProvider);
-      final savedDevices =
-          ref.read(familyProvider).valueOrNull?.devicesFor(widget.childId) ?? const <Device>[];
-      for (final device in savedDevices) {
-        ref.invalidate(deviceCommandHistoryProvider(device.id));
-      }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.rulesSaved)));
-    } on DioException catch (e) {
-      if (!mounted) return;
-      setState(() => _error = saveErrorText(l10n, e));
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final rules = ref.watch(rulesProvider(widget.childId));
-    ref.listen(rulesProvider(widget.childId), (_, next) => next.whenData(_applyLoaded));
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.tabWebFilter, maxLines: 2, overflow: TextOverflow.ellipsis),
-      ),
-      body: rules.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorRetryView(
-          message: friendlyErrorText(l10n, e, () => l10n.rulesLoadFailed),
-          onRetry: () => ref.invalidate(rulesProvider(widget.childId)),
-        ),
-        data: (ruleSet) {
-          _applyLoaded(ruleSet);
-          return _buildBody(context, l10n);
-        },
-      ),
-      bottomNavigationBar: rules.valueOrNull != null ? _buildSaveFooter(context, l10n) : null,
-    );
-  }
-
-  Widget _buildBody(BuildContext context, AppLocalizations l10n) {
     final tokens = context.tokens;
-    final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(widget.childId) ?? const <Device>[];
+    final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
     final iosOnly = devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
 
-    return Column(
+    return ListView(
+      key: const ValueKey('p12-list'),
+      padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
       children: [
-        RulesBehindBanner(childId: widget.childId),
-        Expanded(
-          child: ListView(
-            key: const ValueKey('p12-list'),
-            padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.lg),
-            children: [
-              _enforcementBanner(context, l10n, tokens, devices),
-              _recommendedCard(context, l10n, tokens),
-              const SizedBox(height: AppSpace.md),
-              _categoriesCard(context, l10n, tokens),
-              const SizedBox(height: AppSpace.md),
-              _blockedCard(context, l10n, tokens),
-              const SizedBox(height: AppSpace.md),
-              _blockedSitesCard(context, l10n, tokens),
-              const SizedBox(height: AppSpace.md),
-              _allowedCard(context, l10n, tokens),
-              const SizedBox(height: AppSpace.md),
-              _safeSearchAndYouTubeCard(context, l10n, tokens),
-              const SizedBox(height: AppSpace.md),
-              _browsersCard(context, l10n, tokens, iosOnly: iosOnly),
-              const SizedBox(height: AppSpace.sm),
-              _searchesRow(context, l10n, tokens),
-            ],
-          ),
-        ),
+        _enforcementBanner(context, l10n, tokens, devices),
+        _recommendedCard(context, l10n, tokens),
+        const SizedBox(height: AppSpace.md),
+        _categoriesCard(context, l10n, tokens),
+        const SizedBox(height: AppSpace.md),
+        _blockedCard(context, ref, l10n, tokens),
+        const SizedBox(height: AppSpace.md),
+        _blockedSitesCard(context, l10n, tokens),
+        const SizedBox(height: AppSpace.md),
+        _allowedCard(context, l10n, tokens),
+        const SizedBox(height: AppSpace.md),
+        _safeSearchAndYouTubeCard(context, l10n, tokens),
+        const SizedBox(height: AppSpace.md),
+        _browsersCard(context, l10n, tokens, iosOnly: iosOnly),
+        const SizedBox(height: AppSpace.sm),
+        _searchesRow(context, l10n, tokens),
       ],
     );
   }
@@ -363,7 +291,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
         title: Text(l10n.recommendedProtection),
         subtitle: Text(l10n.recommendedProtectionSubtitle),
         value: _recommendedOn,
-        onChanged: _toggleRecommended,
+        onChanged: (v) => _toggleRecommended(context, v),
       ),
     );
   }
@@ -371,7 +299,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
   /// One category as a tile that says its state in words, not a switch: the
   /// Bureau's row asks for "Blocked" / "Allowed" and no icon-only control.
   Widget _categoryTile(BuildContext context, AppLocalizations l10n, AppTokens tokens, String category) {
-    final blocked = _draft.webFilter.blockedCategories.contains(category);
+    final blocked = webFilter.blockedCategories.contains(category);
     final color = blocked ? tokens.ok : tokens.onSurfaceVariant;
     return Material(
       color: Colors.transparent,
@@ -417,7 +345,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
       ...kRecommendedCategories,
       for (final c in kLegacyWebCategories)
         if (!kRecommendedCategories.contains(c)) c,
-      for (final c in _draft.webFilter.blockedCategories)
+      for (final c in webFilter.blockedCategories)
         if (!kRecommendedCategories.contains(c) && !kLegacyWebCategories.contains(c)) c,
     ];
     return Card(
@@ -449,8 +377,8 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
   /// and the whole card is hidden when the server withholds host names
   /// (SITE_NAMES off, or a guardian without `social`), per the P-12 row's
   /// dependency — an absent list is never drawn as a clean week.
-  Widget _blockedCard(BuildContext context, AppLocalizations l10n, AppTokens tokens) {
-    final summary = ref.watch(reportSummaryProvider((childId: widget.childId, days: _recentDays))).valueOrNull;
+  Widget _blockedCard(BuildContext context, WidgetRef ref, AppLocalizations l10n, AppTokens tokens) {
+    final summary = ref.watch(reportSummaryProvider((childId: childId, days: recentDays))).valueOrNull;
     final recent = summary?.blockedDomainsVisible == true ? summary!.topBlockedDomains : null;
     if (recent == null) return const SizedBox.shrink();
     return Card(
@@ -467,7 +395,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
             const SizedBox(height: AppSpace.xs),
             if (recent.isEmpty)
               Text(
-                l10n.noBlockedSites(_recentDays),
+                l10n.noBlockedSites(recentDays),
                 key: const ValueKey('p12-recently-empty'),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
               )
@@ -503,7 +431,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
           TextButton(
             key: ValueKey('p12-allow-${site.domain}'),
             style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-            onPressed: () => _addSiteDialog(exactDomain: site.domain, allowed: true),
+            onPressed: () => _addSiteDialog(context, exactDomain: site.domain, allowed: true),
             child: Text(l10n.p12AllowSite),
           ),
         ],
@@ -560,7 +488,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
     AppTokens tokens, {
     required bool allowed,
   }) {
-    final domains = allowed ? _draft.webFilter.allowedDomains : _draft.webFilter.blockedDomains;
+    final domains = allowed ? webFilter.allowedDomains : webFilter.blockedDomains;
     return [
       if (domains.isEmpty)
         Text(
@@ -588,7 +516,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
         style: TextButton.styleFrom(minimumSize: const Size(48, 48), alignment: AlignmentDirectional.centerStart),
         icon: const Icon(Icons.add),
         label: Text(l10n.add),
-        onPressed: () => _addSiteDialog(allowed: allowed),
+        onPressed: () => _addSiteDialog(context, allowed: allowed),
       ),
     ];
   }
@@ -597,7 +525,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
   /// YouTube line carrying the UI/UX Bureau's binding English verbatim
   /// (#1226, 7201504906). A12's three levels stay reachable here.
   Widget _safeSearchAndYouTubeCard(BuildContext context, AppLocalizations l10n, AppTokens tokens) {
-    final wf = _draft.webFilter;
+    final wf = webFilter;
     return Card(
       key: const ValueKey('p12-safe-search-youtube'),
       child: Padding(
@@ -697,56 +625,7 @@ class _WebFilterP12ScreenState extends ConsumerState<WebFilterP12Screen> {
         leading: Icon(Icons.manage_search, color: tokens.primary),
         title: Text(l10n.searchSafetyTitle),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () => context.push('/child/${widget.childId}/searches'),
-      ),
-    );
-  }
-
-  Widget _buildSaveFooter(BuildContext context, AppLocalizations l10n) {
-    final tokens = context.tokens;
-    return SafeArea(
-      top: false,
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: tokens.surface,
-          border: Border(top: BorderSide(color: tokens.border)),
-        ),
-        padding: const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.sm),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_error != null) ...[
-              Container(
-                key: const ValueKey('p12-save-error'),
-                decoration: BoxDecoration(
-                  color: tokens.danger.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  border: Border.all(color: tokens.danger),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.sm),
-                child: Text(
-                  _error!,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
-                ),
-              ),
-              const SizedBox(height: AppSpace.sm),
-            ],
-            FilledButton(
-              key: const ValueKey('p12-save-button'),
-              style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
-              onPressed: (_saved != null && !_saving) ? _save : null,
-              child: _saving
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: tokens.onPrimary),
-                    )
-                  : Text(l10n.save),
-            ),
-          ],
-        ),
+        onTap: () => context.push('/child/\$childId/searches'),
       ),
     );
   }
