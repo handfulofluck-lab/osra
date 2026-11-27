@@ -27,7 +27,7 @@ import '../family/family_screen.dart';
 import '../map/child_location_view.dart';
 import '../pairing/pair_qr_screen.dart' show pairClaimDeviceLabel;
 import '../rules/active_window.dart';
-import 'dashboard_screen.dart' show AddChildDialog;
+import 'dashboard_screen.dart' show openAddChildFlow;
 
 /// Feature switch for UX Final Decisions P-07 Home + P-07-RTL (#1179).
 ///
@@ -382,10 +382,7 @@ class _HomeP07ScreenState extends ConsumerState<HomeP07Screen> {
                 horizontal: AppSpace.sm,
               ),
             ),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const AddChildDialog(),
-            ),
+            onPressed: () => openAddChildFlow(context, ref),
             icon: const Icon(Icons.add, size: 18),
             label: Text(l10n.addChild),
           ),

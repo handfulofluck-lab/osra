@@ -16,7 +16,10 @@ const kChildAgeMin = 1;
 const kChildAgeMax = 17;
 
 final p04AddChildEnabledProvider = Provider<bool>(
-  (_) => const bool.fromEnvironment('OSRA_UX_P04', defaultValue: false),
+  (_) => const bool.fromEnvironment(
+    'OSRA_UX_P04',
+    defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+  ),
 );
 
 class AddChildP04Screen extends ConsumerWidget {
