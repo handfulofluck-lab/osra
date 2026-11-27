@@ -618,7 +618,7 @@ void main() {
     });
 
     /// Mutant: omit `FamilyScreen` or settings items on tabs 2 and 3 (A21, A22, A29)
-    /// and invited members / MFA / digests become unreachable from P-07.
+    /// and invited members / MFA / digests / Privacy and data become unreachable from P-07.
     testWidgets('4-tab bar switches cleanly between Home, Alerts, Family, and Settings', (tester) async {
       final api = FakeApiClient({
         ...p07Routes(),
@@ -639,6 +639,7 @@ void main() {
       expect(find.byKey(const ValueKey('homeSettingsDigests')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsMfa')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsDeleteAccount')), findsOneWidget);
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget);
     });
   });
 

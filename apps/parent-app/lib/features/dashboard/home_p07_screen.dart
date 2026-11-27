@@ -2016,6 +2016,14 @@ class _HomeSettingsTab extends StatelessWidget {
         l10n.deleteAccountTitle,
         () => context.push('/settings/delete-account'),
       ),
+      // P-23 Privacy and data (#1179 U-review 7219547315): the old dashboard menu
+      // was its only way in, and P-07 replaces that screen.
+      (
+        const ValueKey('homeSettingsPrivacy'),
+        Icons.privacy_tip_outlined,
+        l10n.privacyMenu,
+        () => context.push('/settings/privacy'),
+      ),
       (
         const ValueKey('homeSettingsSignOut'),
         Icons.logout,
