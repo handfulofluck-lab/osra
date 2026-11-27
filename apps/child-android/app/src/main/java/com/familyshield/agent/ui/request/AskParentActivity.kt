@@ -105,7 +105,6 @@ class AskParentActivity : ComponentActivity() {
         val options = listOf(
             AskDurationOptionUi(
                 minutes = 15,
-                eyebrow = getString(R.string.c03_option_15_eyebrow),
                 amountLabel = getString(R.string.c03_option_15_amount),
                 previewSentence = getString(
                     R.string.c03_preview_sentence,
@@ -114,7 +113,6 @@ class AskParentActivity : ComponentActivity() {
             ),
             AskDurationOptionUi(
                 minutes = 30,
-                eyebrow = getString(R.string.c03_option_30_eyebrow),
                 amountLabel = getString(R.string.c03_option_30_amount),
                 previewSentence = getString(
                     R.string.c03_preview_sentence,
@@ -141,7 +139,6 @@ class AskParentActivity : ComponentActivity() {
             title = getString(R.string.c03_title, adultsSpeaking),
             closeLabel = getString(R.string.c03_close),
             questionLabel = getString(R.string.c03_question_label),
-            selectedBadge = getString(R.string.c03_selected_badge),
             options = options,
             previewEyebrow = getString(R.string.c03_preview_eyebrow, adultsAddressing),
             goesToLine = getString(R.string.c03_goes_to, adultsAddressing),

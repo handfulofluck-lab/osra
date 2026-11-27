@@ -196,7 +196,7 @@
     <string name="setup_protect_title">Protect this device · أسرة</string>
     <string name="setup_protect_body">On the next screen, tap \"Activate\" to give OSRA device-admin rights. With it, this app cannot be uninstalled without the parent PIN and your parent can lock the device remotely. Without it, protection is alert-only.</string>
     <string name="setup_activate_admin">Activate device admin</string>
-    <string name="setup_skip">Skip for now (alert-only protection)</string>
+    <string name="setup_skip">Skip for now</string>
     <string name="setup_try_activate_again">Try Activate again</string>
     <string name="setup_continue_without">Continue without protection</string>
     <string name="setup_complete_title">Setup complete</string>
@@ -204,13 +204,13 @@
     <string name="setup_call_sms_invite">Optional: let OSRA check calls and texts for safety</string>
     <string name="setup_grant_call_sms">Allow calls and texts</string>
     <string name="setup_open_status">Open status</string>
-    <string name="setup_checklist_first_title">Finish protecting this device · أسرة</string>
+    <string name="setup_checklist_first_title">Finish protecting this device</string>
     <string name="setup_checklist_title">Protection checklist · أسرة</string>
     <string name="setup_checklist_button">Protection checklist</string>
     <string name="setup_checklist_intro">Each item below opens the one screen that grants it. Come back here after each one; the list re-checks itself.</string>
     <string name="setup_back">Back</string>
     <string name="setup_done">Done</string>
-    <string name="setup_recommended">(recommended)</string>
+    <string name="setup_recommended">Recommended</string>
     <string name="setup_grant_button">Allow %1$s</string>
     <string name="setup_web_filter_missing">⚠️ Web filter not set up — allow the OSRA VPN (it only filters web addresses on this phone; nothing leaves the device).</string>
     <string name="setup_web_filter_setup">Set up web filter</string>
@@ -360,14 +360,17 @@
     <string name="notification_channel_content_filter">Content filter</string>
     <string name="notification_content_filter_active">Content filter active</string>
 
-    <!-- LockActivity: the lock and pause overlays. #725's Bureau section 9 supplied the Arabic; the English
-         bodies keep the `· أسرة` tail, which the Arabic drops, exactly as the titles do. -->
+    <!-- LockActivity: the lock and pause overlays. #725's Bureau section 9 supplied the Arabic (which drops
+         the `· أسرة` tail). U85 (#650) dropped `· أسرة` from `lock_locked_body` in English too; the paused
+         bodies currently retain it. -->
     <string name="lock_locked_title">This device is locked by your parent</string>
-    <string name="lock_locked_body">It will unlock when your parent allows it. · أسرة</string>
+    <string name="lock_locked_body">It will unlock when your parent allows it.</string>
     <string name="lock_paused_title">Device paused by your parent</string>
     <string name="lock_paused_body">Your parent will resume it shortly. · أسرة</string>
     <string name="lock_paused_internet_title">Internet paused by your parent</string>
     <string name="lock_paused_internet_body">Educational apps still work. · أسرة</string>
+    <string name="miui_popup_confirm_hint">This phone does not report whether background pop-ups are turned on. Open Other permissions, turn on \"Display pop-up windows while running in the background\", then confirm below.</string>
+    <string name="miui_popup_confirm_button">I turned on background pop-ups</string>
     <string name="notification_paused_internet_body">Offline apps still work while internet is paused.</string>
     <string name="lock_always_allowed_heading">Always allowed</string>
 
@@ -486,10 +489,7 @@
     <string name="c03_adults_fallback_speaking">my parents</string>
     <string name="c03_adults_fallback_addressing">your parents</string>
     <string name="c03_question_label">How much more time?</string>
-    <string name="c03_selected_badge">Selected</string>
-    <string name="c03_option_15_eyebrow">A little more</string>
     <string name="c03_option_15_amount">+15 min</string>
-    <string name="c03_option_30_eyebrow">More time</string>
     <string name="c03_option_30_amount">+30 min</string>
     <string name="c03_preview_eyebrow">What %1$s will see</string>
     <string name="c03_preview_sentence">Request for %1$s more minutes of screen time, today only.</string>
