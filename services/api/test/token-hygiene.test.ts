@@ -6,7 +6,7 @@ import { DEVICE_TOKEN_TTL_SECONDS, deviceRoutes } from "../src/routes/devices.js
 import { createHash } from "node:crypto";
 import { alertsRoutes } from "../src/routes/alerts.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, authHeader, buildApp, deviceHeader, evalSessionVersionScript, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -28,7 +28,9 @@ function wireRedisStore() {
   redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
   redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
   // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL).
-  redis.eval.mockImplementation(async (_script: string, _n: number, key: string) => {
+  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string) => {
+    const sv = evalSessionVersionScript(redis, script, key, floorArg);
+    if (sv !== undefined) return sv;
     const v = store.get(key) ?? null;
     if (v !== null) store.delete(key);
     return v;

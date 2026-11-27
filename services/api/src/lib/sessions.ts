@@ -249,12 +249,54 @@ export interface InvalidateSessionsOptions {
 }
 
 /**
- * Raise `auth:session-version:<parentId>` monotonically to at least `committedVersion`:
- *  - Preserves `DELETED_SESSION_MARKER` (`"deleted"`), including if written concurrently during a cold load.
- *  - Preserves any cached numeric generation already rebuilt at or above `committedVersion` (no overshoot or rollback).
- *  - On a cold/missing cache entry, loads unexpired `RevokedToken` single-logout keys first (ADR-0032
- *    marker invariant) and places the floor with `SET NX` before reconciling any racing writer.
+ * Atomic Lua monotonic floor for `auth:session-version:<parentId>`:
+ *  - Preserves `DELETED_SESSION_MARKER` (`"deleted"`).
+ *  - Preserves any cached integer generation already `>= floor` (no overshoot or rollback).
+ *  - Raises missing (`false`), malformed non-integer, negative, or lower values to `floor` (no TTL).
  */
+export const SESSION_VERSION_FLOOR_SCRIPT = [
+  "-- osra:session-version-floor",
+  "local cur = redis.call('GET', KEYS[1])",
+  `if cur == '${DELETED_SESSION_MARKER}' then return '${DELETED_SESSION_MARKER}' end`,
+  "local floor = tonumber(ARGV[1])",
+  "if cur == false then",
+  "  if floor == 0 then",
+  "    redis.call('SET', KEYS[1], '0')",
+  "    return '0'",
+  "  end",
+  "  return tostring(redis.call('INCRBY', KEYS[1], floor))",
+  "end",
+  "local n = tonumber(cur)",
+  "if n == nil or cur ~= tostring(math.floor(n)) or n < 0 then",
+  "  redis.call('SET', KEYS[1], tostring(floor))",
+  "  return tostring(floor)",
+  "end",
+  "local curFloor = math.floor(n)",
+  "if curFloor < floor then",
+  "  return tostring(redis.call('INCRBY', KEYS[1], floor - curFloor))",
+  "end",
+  "return cur",
+].join("\n");
+
+/**
+ * Atomic conditional error cleanup for `auth:session-version:<parentId>`:
+ *  - Uses only `GET` and `DEL` (permitted under Redis `noeviction` OOM).
+ *  - Preserves `DELETED_SESSION_MARKER` (`"deleted"`) and any integer generation `>= floor`
+ *    written concurrently before cleanup runs.
+ *  - Deletes the key only if it still holds a stale generation `< floor` or malformed value.
+ */
+export const SESSION_VERSION_CLEANUP_BELOW_FLOOR_SCRIPT = [
+  "-- osra:session-version-cleanup-below-floor",
+  "local cur = redis.call('GET', KEYS[1])",
+  `if cur == false or cur == '${DELETED_SESSION_MARKER}' then return 0 end`,
+  "local floor = tonumber(ARGV[1])",
+  "local n = tonumber(cur)",
+  "if n == nil or cur ~= tostring(math.floor(n)) or n < floor then",
+  "  return redis.call('DEL', KEYS[1])",
+  "end",
+  "return 0",
+].join("\n");
+
 async function applySessionVersionFloor(
   redis: Redis,
   parentId: string,
@@ -274,46 +316,34 @@ async function applySessionVersionFloor(
       const ttl = Math.ceil((new Date(token.expiresAt).getTime() - now) / 1000);
       if (ttl > 0) await redis.set(revokedTokenKey(token.jti), "1", "EX", ttl);
     }
-    const placed = await redis.set(key, String(floor), "NX");
-    if (placed === "OK") return "updated";
-    const raced = await redis.get(key);
-    if (raced === DELETED_SESSION_MARKER) return "deleted";
-    if (raced === null) {
-      await redis.set(key, String(floor));
-      return "updated";
-    }
-    if (!/^\d+$/.test(raced)) {
-      await redis.set(key, String(floor));
-      return "updated";
-    }
-    const racedNum = parseVersion(raced);
-    if (racedNum < floor) {
-      await redis.incrby(key, floor - racedNum);
-    }
-    return "updated";
   }
-  if (!/^\d+$/.test(initial)) {
-    await redis.set(key, String(floor));
-    return "updated";
-  }
-  const current = parseVersion(initial);
-  if (current < floor) {
-    await redis.incrby(key, floor - current);
-  }
-  return "updated";
+  const applied = await redis.eval(SESSION_VERSION_FLOOR_SCRIPT, 1, key, String(floor));
+  return applied === DELETED_SESSION_MARKER ? "deleted" : "updated";
+}
+
+async function cleanupSessionVersionBelowFloor(
+  redis: Redis,
+  parentId: string,
+  committedVersion: number,
+): Promise<void> {
+  const floor = Math.max(0, Math.floor(committedVersion));
+  await redis
+    .eval(SESSION_VERSION_CLEANUP_BELOW_FLOOR_SCRIPT, 1, sessionVersionKey(parentId), String(floor))
+    .catch(() => {});
 }
 
 /**
  * Reconcile `auth:session-version:<parentId>` after a confirmed durable `Parent.sessionVersion` increment
  * committed alongside one-time recovery codes (`/v1/auth/mfa/verify`).
  *
- * Uses `committedVersion` as a monotonic floor rather than incrementing a pre-transaction counter:
+ * Uses `committedVersion` as an atomic Lua monotonic floor (`SESSION_VERSION_FLOOR_SCRIPT`):
  *  - Preserves `DELETED_SESSION_MARKER` (`"deleted"`).
  *  - Preserves any cached generation already rebuilt at or above `committedVersion`.
  *  - On a cold/missing cache entry, loads unexpired `RevokedToken` single-logout keys first (ADR-0032
- *    marker invariant) before establishing the floor at `committedVersion`.
- *  - If Redis refuses writes (`OOM` under `noeviction`), drops the marker via `DEL` so the next session
- *    read rebuilds from `Parent.sessionVersion` without discarding the caller's recovery codes.
+ *    marker invariant) before atomically applying the floor.
+ *  - If Redis refuses writes (`OOM` under `noeviction`), conditionally deletes stale `< committedVersion`
+ *    markers via `SESSION_VERSION_CLEANUP_BELOW_FLOOR_SCRIPT` (preserving `"deleted"` and `>= committedVersion`)
+ *    without discarding the caller's recovery codes.
  */
 export async function reconcileSessionVersionCacheAfterCommit(
   parentId: string,
@@ -322,12 +352,11 @@ export async function reconcileSessionVersionCacheAfterCommit(
 ): Promise<void> {
   if (!Number.isFinite(committedVersion)) return;
   const redis = getRedis();
-  const key = sessionVersionKey(parentId);
   let outcome: "deleted" | "updated";
   try {
     outcome = await applySessionVersionFloor(redis, parentId, committedVersion);
   } catch {
-    await redis.del(key).catch(() => {});
+    await cleanupSessionVersionBelowFloor(redis, parentId, committedVersion);
     return;
   }
   if (outcome === "deleted") return;
@@ -365,11 +394,10 @@ export async function invalidateSessionsBefore(
   try {
     outcome = await applySessionVersionFloor(redis, parentId, committedVersion);
   } catch (err) {
-    // The column moved and the cache did not: drop the marker so the next read rebuilds from the
-    // column. This is not hypothetical — with `noeviction` a full node refuses writes but still
-    // serves reads and still accepts DEL, so without this the old marker would keep answering and
-    // the token this request was meant to kill would stay live while the node stayed full.
-    await redis.del(sessionVersionKey(parentId)).catch(() => {});
+    // Conditionally drop the marker only if it still sits below `committedVersion` (preserving
+    // `DELETED_SESSION_MARKER` and any newer generation written concurrently). `GET` and `DEL`
+    // both execute under `noeviction` OOM so stale markers never outvote Postgres.
+    await cleanupSessionVersionBelowFloor(redis, parentId, committedVersion);
     throw err;
   }
   if (outcome !== "deleted") {

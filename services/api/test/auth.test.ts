@@ -11,7 +11,7 @@ import { setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/
 import { notifyParentsOfAlert, setPushProviders } from "../src/lib/push/notify.js";
 import type { PushMessage, PushProvider, PushResult } from "../src/lib/push/types.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis, SIGNUP_CONSENTS, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, SIGNUP_CONSENTS, authHeader, buildApp, evalSessionVersionScript, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -80,8 +80,11 @@ function wireRedisStore() {
     }
     return "OK";
   });
-  // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL).
-  redis.eval.mockImplementation(async (_script: string, _n: number, key: string) => {
+  // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL), plus the
+  // session-version floor/cleanup scripts from `lib/sessions.ts`.
+  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string) => {
+    const sv = evalSessionVersionScript(redis, script, key, floorArg);
+    if (sv !== undefined) return sv;
     const v = live(key);
     if (v !== null) {
       store.delete(key);
@@ -166,7 +169,7 @@ describe("auth routes", () => {
     // defaults so an implementation from one test cannot leak into the next.
     const redis = getRedis() as unknown as MockRedis;
     redis.get.mockImplementation(async () => null);
-    redis.eval.mockImplementation(async () => null);
+    redis.eval.mockImplementation(async (...args: unknown[]) => evalSessionVersionScript(redis, args[0], args[2], args[3]) ?? null);
     redis.set.mockImplementation(async () => "OK");
     redis.del.mockImplementation(async () => 0);
     redis.incrby.mockImplementation(async () => 1);
