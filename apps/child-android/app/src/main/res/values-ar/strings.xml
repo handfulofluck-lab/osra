@@ -246,6 +246,8 @@
     <string name="lock_paused_body">سيعود إلى العمل عند انتهاء الإيقاف المؤقت.</string>
     <string name="lock_paused_internet_title">أوقف والدك أو والدتك الإنترنت مؤقتًا</string>
     <string name="lock_paused_internet_body">تظل التطبيقات التعليمية تعمل.</string>
+    <string name="notification_paused_internet_body">تظل التطبيقات التي لا تحتاج إلى إنترنت تعمل أثناء إيقاف الإنترنت مؤقتًا.</string>
+    <string name="lock_always_allowed_heading">المسموح به دائمًا</string>
 
     <string name="qr_permission_denied">رُفض إذن الكاميرا، لذلك لا يمكن تشغيل ماسح رمز QR. أدخل عنوان الخادم ورمز الإقران أدناه، أو اسمح بالكاميرا من الإعدادات وامسح مرة أخرى.</string>
     <string name="qr_preview_description">معاينة الكاميرا</string>
@@ -315,20 +317,20 @@
     <string name="c02_send_sos_row">إرسال استغاثة إلى أهلي</string>
     <string name="c02_emergency_note">مكالمات الطوارئ تعمل دائمًا</string>
     <plurals name="c02_hours">
-        <item quantity="zero">%1$d ساعة</item>
+        <item quantity="zero">%1$s ساعة</item>
         <item quantity="one">ساعة</item>
         <item quantity="two">ساعتان</item>
-        <item quantity="few">%1$d ساعات</item>
-        <item quantity="many">%1$d ساعة</item>
-        <item quantity="other">%1$d ساعة</item>
+        <item quantity="few">%1$s ساعات</item>
+        <item quantity="many">%1$s ساعة</item>
+        <item quantity="other">%1$s ساعة</item>
     </plurals>
     <plurals name="c02_minutes">
-        <item quantity="zero">%1$d دقيقة</item>
+        <item quantity="zero">%1$s دقيقة</item>
         <item quantity="one">دقيقة</item>
         <item quantity="two">دقيقتان</item>
-        <item quantity="few">%1$d دقائق</item>
-        <item quantity="many">%1$d دقيقة</item>
-        <item quantity="other">%1$d دقيقة</item>
+        <item quantity="few">%1$s دقائق</item>
+        <item quantity="many">%1$s دقيقة</item>
+        <item quantity="other">%1$s دقيقة</item>
     </plurals>
     <string name="c02_hours_and_minutes">%1$s و%2$s</string>
     <string name="c02_rules_sheet_title">قواعدي</string>
@@ -338,6 +340,77 @@
     <string name="c02_rules_routines">الجداول: %1$s</string>
     <string name="c02_rules_none">قواعد أهلك مفعّلة على هذا الهاتف.</string>
     <string name="c02_rules_close">إغلاق</string>
+
+    <!-- C-01 Child home + C-01-RTL (#1179; Arabic Bureau staged core copy 7191839045). -->
+    <string name="c01_tab_today">يومي</string>
+    <string name="c01_tab_requests">الطلبات</string>
+    <string name="c01_tab_messages">الرسائل</string>
+    <string name="c01_header_title">يومي</string>
+    <string name="c01_call_parent">الاتصال بأهلي</string>
+    <string name="c01_adults_fallback_speaking">أهلي</string>
+    <string name="c01_adults_fallback_addressing">أهلك</string>
+    <string name="c01_time_left_today">المتبقي اليوم: %1$s</string>
+    <string name="c01_used_of_limit">المستخدم: %1$s · الحد: %2$s</string>
+    <string name="c01_no_daily_limit">لا يوجد حد يومي محدد</string>
+    <string name="c01_used_today_only">المستخدم اليوم: %1$s</string>
+    <string name="c01_ring_unit_min">بالدقائق</string>
+    <string name="c01_ask_more_time">طلب وقت إضافي</string>
+    <string name="c01_wind_down_banner">الوقت المتبقي قبل قفل الشاشة: %1$s</string>
+    <string name="c01_next_label">التالي</string>
+    <string name="c01_next_routine_line">التالي: %1$s %2$s · الوقت المتبقي: %3$s</string>
+    <string name="c01_next_routine_none">لا يوجد جدول قادم اليوم</string>
+    <string name="c01_bedtime_label">وقت النوم</string>
+    <string name="c01_pending_time_title">طلبك: %1$s دقيقة إضافية من وقت الشاشة</string>
+    <string name="c01_pending_access_title">طلبك: %1$s</string>
+    <string name="c01_sent_to_line">أُرسل إلى %1$s · %2$s</string>
+    <string name="c01_waiting_reply">بانتظار الرد</string>
+    <string name="c01_no_answer_yet">لا يوجد رد بعد</string>
+    <string name="c01_latest_from_adults">من %1$s</string>
+    <string name="c01_see_all">عرض الكل</string>
+    <string name="c01_what_adults_see">ما الذي يُعرض على %1$s؟</string>
+    <string name="c01_rules_and_shared">قواعدك وما يُشارَك معهم</string>
+    <string name="c01_my_activity">نشاطي</string>
+    <string name="c01_same_numbers">الأرقام نفسها التي تُعرض على %1$s</string>
+    <string name="c01_open">فتح</string>
+    <string name="c01_send_sos">إرسال استغاثة إلى %1$s</string>
+    <string name="c01_requests_title">طلب وقت إضافي</string>
+    <string name="c01_goes_to">سيصل طلبك إلى %1$s</string>
+    <string name="c01_request_15_min">طلب 15 دقيقة إضافية من وقت الشاشة</string>
+    <string name="c01_request_30_min">طلب 30 دقيقة إضافية من وقت الشاشة</string>
+    <string name="c01_requests_no_limit">لا يوجد حد يومي مفعّل لوقت الشاشة حاليًا.</string>
+    <string name="c01_messages_title">الرسائل</string>
+    <string name="c01_messages_empty">لا توجد تحديثات من %1$s بعد.</string>
+    <string name="c01_decision_bonus_named">%1$s دقيقة إضافية من %2$s</string>
+    <string name="c01_decision_bonus_unnamed">%1$s دقيقة إضافية من وقت الشاشة</string>
+    <string name="c01_decision_rules_updated">تم تحديث القواعد</string>
+    <string name="c01_decision_pause_internet">تم إيقاف الإنترنت مؤقتًا</string>
+    <string name="c01_decision_resume_internet">تمت إعادة تشغيل الإنترنت</string>
+    <string name="c01_badge_today_only">اليوم فقط</string>
+    <string name="c01_badge_working_on_phone">تعمل على هذا الهاتف</string>
+    <string name="c01_transparency_apps">إجمالي استخدام التطبيقات وقواعد عائلتك المفعّلة</string>
+    <string name="c01_transparency_location">الموقع عند تفعيله على هذا الهاتف</string>
+    <string name="c01_transparency_safety">تنبيهات السلامة حسب إعدادات %1$s</string>
+    <string name="c01_open_device_setup">إعداد الهاتف وحالته</string>
+    <string name="c01_activity_empty">لم يُسجَّل استخدام للتطبيقات اليوم بعد.</string>
+    <string name="c01_close">إغلاق</string>
+    <string name="c01_request_failed">تعذّر إرسال طلبك الآن. تحقّق من الاتصال وحاول مرة أخرى.</string>
+    <plurals name="c01_hours">
+        <item quantity="zero">%1$s ساعة</item>
+        <item quantity="one">ساعة</item>
+        <item quantity="two">ساعتان</item>
+        <item quantity="few">%1$s ساعات</item>
+        <item quantity="many">%1$s ساعة</item>
+        <item quantity="other">%1$s ساعة</item>
+    </plurals>
+    <plurals name="c01_minutes">
+        <item quantity="zero">%1$s دقيقة</item>
+        <item quantity="one">دقيقة واحدة</item>
+        <item quantity="two">دقيقتان</item>
+        <item quantity="few">%1$s دقائق</item>
+        <item quantity="many">%1$s دقيقة</item>
+        <item quantity="other">%1$s دقيقة</item>
+    </plurals>
+    <string name="c01_hours_and_minutes">%1$s و%2$s</string>
 
     <!-- C-03 Ask a parent (#1179; Arabic Bureau staged core copy 7191839045 + review 7197378987). -->
     <string name="c03_title">أطلب من %1$s</string>
