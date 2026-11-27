@@ -153,6 +153,14 @@ class WebFilterP12Screen extends ConsumerWidget {
     final tokens = context.tokens;
     final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
     final iosOnly = devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
+    // #1279 order (Karim 19:38): an iPhone child whose phone reports the web
+    // filter at all is NOT "not yet available" — WebContentSettings applies
+    // blocked sites there. Only say the features are missing when the phone
+    // has reported nothing.
+    final iosState = iosOnly
+        ? devices.map((d) => d.setup?.feature('web_filter')).firstWhere((f) => f != null,
+            orElse: () => null)
+        : null;
     // #1238 review (Codex, 11:26): the browser card's affirmative sentence claims
     // active enforcement and inspection. Only say that when an Android phone
     // actually reports the filter ready; a pending, empty or degraded device list
@@ -177,7 +185,8 @@ class WebFilterP12Screen extends ConsumerWidget {
         const SizedBox(height: AppSpace.md),
         _safeSearchAndYouTubeCard(context, l10n, tokens),
         const SizedBox(height: AppSpace.md),
-        _browsersCard(context, l10n, tokens, iosOnly: iosOnly, androidReady: androidReady),
+        _browsersCard(context, l10n, tokens,
+            iosOnly: iosOnly, androidReady: androidReady, iosState: iosState),
         const SizedBox(height: AppSpace.sm),
         _searchesRow(context, l10n, tokens),
       ],
@@ -648,7 +657,7 @@ class WebFilterP12Screen extends ConsumerWidget {
   /// Which browsers the filter covers, in the Android wording the existing app
   /// uses; an iPhone-only child gets the "Not yet available" state instead (F8).
   Widget _browsersCard(BuildContext context, AppLocalizations l10n, AppTokens tokens,
-      {required bool iosOnly, required bool androidReady}) {
+      {required bool iosOnly, required bool androidReady, required String? iosState}) {
     return Card(
       key: const ValueKey('p12-browsers-card'),
       child: Padding(
@@ -656,7 +665,15 @@ class WebFilterP12Screen extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.public, color: iosOnly ? tokens.onSurfaceVariant : tokens.primary, size: 20),
+            Icon(
+              Icons.public,
+              color: iosOnly
+                  ? (iosState == null
+                      ? tokens.onSurfaceVariant
+                      : (iosState == 'ready' ? tokens.primary : tokens.warn))
+                  : (androidReady ? tokens.primary : tokens.warn),
+              size: 20,
+            ),
             const SizedBox(width: AppSpace.sm),
             Expanded(
               child: iosOnly
@@ -672,13 +689,35 @@ class WebFilterP12Screen extends ConsumerWidget {
                           l10n.tabWebFilter,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
                         ),
-                        _pill(
-                          context,
-                          key: const ValueKey('p12-iphone-not-available'),
-                          label: l10n.appsNotYetOnIphone,
-                          icon: Icons.phone_iphone,
-                          color: tokens.onSurfaceVariant,
-                        ),
+                        if (iosState == 'ready')
+                          // The phone reports the filter running: say so with the
+                          // same sentence the Android card uses, not a roadmap note.
+                          Text(
+                            l10n.searchSafetyEmptyBody,
+                            key: const ValueKey('p12-browsers-ios-ready'),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: tokens.onSurfaceVariant),
+                          )
+                        else if (iosState != null)
+                          // Reported and not ready: the state is the phone's, so
+                          // it reads as the warn pill the rest of the screen uses.
+                          _pill(
+                            context,
+                            key: const ValueKey('p12-iphone-degraded'),
+                            label: l10n.p12NotBlockingYet,
+                            icon: Icons.block,
+                            color: tokens.warn,
+                          )
+                        else
+                          _pill(
+                            context,
+                            key: const ValueKey('p12-iphone-not-available'),
+                            label: l10n.appsNotYetOnIphone,
+                            icon: Icons.phone_iphone,
+                            color: tokens.onSurfaceVariant,
+                          ),
                       ],
                     )
                   : androidReady

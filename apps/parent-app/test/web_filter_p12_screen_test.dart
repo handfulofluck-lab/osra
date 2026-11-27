@@ -345,7 +345,10 @@ void main() {
       'an iPhone-only child reads "Not yet available on iPhone" instead of the Android browser coverage line '
       '(mutant: branching on the Android wording for every platform)',
       (tester) async {
-    await _pumpScreen(tester, api: _makeApi(overview: _overview(platform: 'ios')));
+    await _pumpScreen(
+      tester,
+      api: _makeApi(overview: _overview(platform: 'ios', features: const {})),
+    );
     await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
     final pill = find.byKey(const ValueKey('p12-iphone-not-available'));
     expect(pill, findsOneWidget);
@@ -416,7 +419,7 @@ void main() {
 
       await _pumpScreen(
         tester,
-        api: _makeApi(overview: _overview(platform: 'ios')),
+        api: _makeApi(overview: _overview(platform: 'ios', features: const {})),
         locale: locale,
         textScale: 2.0,
       );
@@ -585,5 +588,28 @@ void main() {
       expect(find.byKey(const ValueKey('p12-browsers-not-ready')), ready ? findsNothing : findsOneWidget,
           reason: '${entry.key}: the fallback must be shown when the phone has not reported ready');
     }
+  });
+
+  testWidgets(
+      'an iPhone child whose phone reports the filter shows the REAL state, not the roadmap note '
+      '(#1279: ready reads as enforced, degraded as the warn pill; mutant: treating any iPhone as "not yet available")',
+      (tester) async {
+    await _pumpScreen(
+      tester,
+      api: _makeApi(overview: _overview(platform: 'ios', features: const {'web_filter': 'ready'})),
+    );
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+    expect(find.byKey(const ValueKey('p12-browsers-ios-ready')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsNothing);
+
+    await _pumpScreen(
+      tester,
+      api: _makeApi(
+          overview: _overview(platform: 'ios', features: const {'web_filter': 'degraded'})),
+    );
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+    expect(find.byKey(const ValueKey('p12-iphone-degraded')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p12-iphone-not-available')), findsNothing);
+    expect(find.byKey(const ValueKey('p12-browsers-ios-ready')), findsNothing);
   });
 }
