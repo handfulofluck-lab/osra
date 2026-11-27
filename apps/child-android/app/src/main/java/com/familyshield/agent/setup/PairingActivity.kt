@@ -1800,9 +1800,7 @@ class PairingActivity : ComponentActivity() {
         !isFinishing && !isDestroyed && !forceLegacyStatusView
 
     private fun isChildHomeResumed(): Boolean =
-        activityResumed &&
-            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) &&
-            isChildHomeEligible()
+        activityResumed && isChildHomeEligible()
 
     private fun startChildHomeRefresh() {
         stopChildHomeRefresh()
