@@ -38,6 +38,12 @@ void main() {
     required double textScale,
     required Map<String, dynamic> family,
   }) async {
+    // B1: seed the two preferences the Settings values read, so the frame shows a chosen
+    // language and theme rather than 'System' on both rows.
+    SharedPreferences.setMockInitialValues({
+      'app_locale': locale.languageCode,
+      'theme_mode': dark ? 'dark' : 'light',
+    });
     tester.view.physicalSize = Size(width, width >= 380 ? 1400 : 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
