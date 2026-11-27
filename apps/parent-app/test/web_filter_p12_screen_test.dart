@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:familyshield_parent/features/rules/rules_editor_screen.dart';
 import 'package:familyshield_parent/features/rules/web_filter_p12_screen.dart';
@@ -155,8 +156,16 @@ Future<void> _save(WidgetTester tester) async {
 
 /// The list scrolls: a card below the fold is not built yet, so a finder for it
 /// is empty rather than "not there".
+///
+/// P-12 now lives in the editor's Web filter tab, so the screen owns two
+/// scrollables (the tab strip and the list) and the default lookup is
+/// ambiguous. Scroll the P-12 list itself when it is on screen.
 Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
-  await tester.scrollUntilVisible(finder, 200);
+  final p12List = find.byKey(const ValueKey('p12-list'));
+  final scrollable = p12List.evaluate().isEmpty
+      ? find.byType(Scrollable).first
+      : find.descendant(of: p12List, matching: find.byType(Scrollable)).first;
+  await tester.scrollUntilVisible(finder, 200, scrollable: scrollable);
   await tester.pumpAndSettle();
 }
 
@@ -486,6 +495,93 @@ void main() {
       await _scrollTo(tester, find.byKey(const ValueKey('p12-youtube-mode')));
       expect(find.byType(SegmentedButton<String>), findsOneWidget,
           reason: 'normal text keeps the compact control ($locale)');
+    }
+  });
+
+  testWidgets(
+      'P-12 is reachable by the normal route: Child -> Rules (starts on Screen time) -> tap Web filter '
+      '(mutant: gating on `initialTab` instead of the selected tab leaves the legacy list in place — this test then finds no p12-list)',
+      (tester) async {
+    final en = lookupAppLocalizations(const Locale('en'));
+    for (final p12 in [true, false]) {
+      await tester.pumpWidget(_harness(
+        api: _makeApi(),
+        p12Enabled: p12,
+        // The normal route starts on Screen time; nothing here says "web filter".
+        home: const RulesEditorScreen(childId: 'child-1'),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('p12-list')), findsNothing);
+      await tester.tap(find.text(en.tabWebFilter));
+      await tester.pumpAndSettle();
+
+      if (p12) {
+        expect(find.byKey(const ValueKey('p12-list')), findsOneWidget,
+            reason: 'flag on must show P-12 after tapping the tab');
+        expect(find.byKey(const ValueKey('webFilterList')), findsNothing);
+      } else {
+        expect(find.byKey(const ValueKey('webFilterList')), findsOneWidget,
+            reason: 'flag off must keep the legacy list');
+        expect(find.byKey(const ValueKey('p12-list')), findsNothing);
+      }
+    }
+  });
+
+  testWidgets(
+      'the Searches and videos row pushes the real child id, not the literal \$childId '
+      '(mutant: the escaped interpolation at :694 sends the literal dollar-childId and the destination sees it verbatim)',
+      (tester) async {
+    final router = GoRouter(routes: [
+      GoRoute(
+        path: '/',
+        builder: (_, __) => const RulesEditorScreen(
+            childId: 'child-1', initialTab: RulesEditorScreen.webFilterTab),
+      ),
+      GoRoute(
+        path: '/child/:id/searches',
+        builder: (_, s) => Scaffold(body: Text('searches:${s.pathParameters['id']}')),
+      ),
+    ]);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(_makeApi()),
+        p12WebFilterEnabledProvider.overrideWithValue(true),
+      ],
+      child: MaterialApp.router(
+        routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const ValueKey('p12-searches-row')));
+    await tester.tap(find.byKey(const ValueKey('p12-searches-row')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('searches:child-1'), findsOneWidget);
+    expect(find.text(r'searches:$childId'), findsNothing);
+  });
+
+  testWidgets(
+      'the browser coverage sentence is only claimed when an Android phone reports the filter ready '
+      '(mutant: rendering searchSafetyEmptyBody for a pending or degraded device claims enforcement nobody confirmed)',
+      (tester) async {
+    final cases = <String, Map<String, dynamic>>{
+      'ready': _overview(),
+      'degraded': _overview(features: const {'web_filter': 'degraded'}),
+      'pending': _overview(features: const {}),
+    };
+    for (final entry in cases.entries) {
+      await _pumpScreen(tester, api: _makeApi(overview: entry.value));
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+      final ready = entry.key == 'ready';
+      expect(find.byKey(const ValueKey('p12-browsers-android')), ready ? findsOneWidget : findsNothing,
+          reason: '${entry.key}: affirmative copy must follow the reported state');
+      expect(find.byKey(const ValueKey('p12-browsers-not-ready')), ready ? findsNothing : findsOneWidget,
+          reason: '${entry.key}: the fallback must be shown when the phone has not reported ready');
     }
   });
 }

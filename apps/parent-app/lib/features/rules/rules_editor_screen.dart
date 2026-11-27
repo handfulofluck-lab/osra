@@ -303,15 +303,11 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
   }
 
   Widget _editorBody(AppLocalizations l10n) {
-    if (widget.initialTab == RulesEditorScreen.webFilterTab && ref.watch(p12WebFilterEnabledProvider)) {
-      // P-12 renders its controls over THIS screen's draft, so the footer Save below
-      // (the only Save on the screen) submits what the parent sees — #1238 review.
-      return WebFilterP12Screen(
-        childId: widget.childId,
-        webFilter: _draft.webFilter,
-        onChanged: (webFilter) => setState(() => _draft = _draft.copyWith(webFilter: webFilter)),
-      );
-    }
+    // #1238 review (Codex, 11:25): the flag must follow the SELECTED tab, not the
+    // one the editor was constructed with. /child/:id/rules starts on Screen time,
+    // so gating on `initialTab` meant the Web filter tab never showed P-12 in real
+    // navigation — only in tests that passed `initialTab`.
+    final p12Enabled = ref.watch(p12WebFilterEnabledProvider);
     return DefaultTabController(
       length: 4,
       initialIndex: widget.initialTab.clamp(0, 3),
@@ -330,7 +326,23 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           ),
           Expanded(
             child: TabBarView(
-              children: [_buildScreenTime(), _buildWebFilter(), _buildApps(), _buildRoutines()],
+              children: [
+                _buildScreenTime(),
+                // P-12 renders its controls over THIS screen's draft, so the footer
+                // Save below (the only Save on the screen) submits what the parent
+                // sees — #1238 review.
+                if (p12Enabled)
+                  WebFilterP12Screen(
+                    childId: widget.childId,
+                    webFilter: _draft.webFilter,
+                    onChanged: (webFilter) =>
+                        setState(() => _draft = _draft.copyWith(webFilter: webFilter)),
+                  )
+                else
+                  _buildWebFilter(),
+                _buildApps(),
+                _buildRoutines(),
+              ],
             ),
           ),
         ],

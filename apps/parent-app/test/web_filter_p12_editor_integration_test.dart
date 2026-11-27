@@ -127,7 +127,8 @@ void main() {
     expect(find.byKey(const ValueKey('p12-save-button')), findsNothing);
 
     final gambling = find.byKey(const ValueKey('p12-category-gambling'));
-    await tester.scrollUntilVisible(gambling, 200);
+    await tester.scrollUntilVisible(gambling, 200, scrollable: find.descendant(
+        of: find.byKey(const ValueKey('p12-list')), matching: find.byType(Scrollable)).first);
     await tester.pumpAndSettle();
     await tester.tap(gambling);
     await tester.pumpAndSettle();
@@ -150,7 +151,8 @@ void main() {
     await _pumpEditor(tester, api);
 
     final allow = find.byKey(const ValueKey('p12-allow-example.com'));
-    await tester.scrollUntilVisible(allow, 200);
+    await tester.scrollUntilVisible(allow, 200, scrollable: find.descendant(
+        of: find.byKey(const ValueKey('p12-list')), matching: find.byType(Scrollable)).first);
     await tester.pumpAndSettle();
     await tester.tap(allow);
     await tester.pumpAndSettle();

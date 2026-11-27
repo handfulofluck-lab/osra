@@ -150,6 +150,12 @@ class WebFilterP12Screen extends ConsumerWidget {
     final tokens = context.tokens;
     final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
     final iosOnly = devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
+    // #1238 review (Codex, 11:26): the browser card's affirmative sentence claims
+    // active enforcement and inspection. Only say that when an Android phone
+    // actually reports the filter ready; a pending, empty or degraded device list
+    // must not inherit the claim. `p12NotBlockingYet` is the approved fallback.
+    final androidReady =
+        devices.any((d) => d.platform != 'ios' && d.setup?.feature('web_filter') == 'ready');
 
     return ListView(
       key: const ValueKey('p12-list'),
@@ -168,7 +174,7 @@ class WebFilterP12Screen extends ConsumerWidget {
         const SizedBox(height: AppSpace.md),
         _safeSearchAndYouTubeCard(context, l10n, tokens),
         const SizedBox(height: AppSpace.md),
-        _browsersCard(context, l10n, tokens, iosOnly: iosOnly),
+        _browsersCard(context, l10n, tokens, iosOnly: iosOnly, androidReady: androidReady),
         const SizedBox(height: AppSpace.sm),
         _searchesRow(context, l10n, tokens),
       ],
@@ -638,7 +644,8 @@ class WebFilterP12Screen extends ConsumerWidget {
 
   /// Which browsers the filter covers, in the Android wording the existing app
   /// uses; an iPhone-only child gets the "Not yet available" state instead (F8).
-  Widget _browsersCard(BuildContext context, AppLocalizations l10n, AppTokens tokens, {required bool iosOnly}) {
+  Widget _browsersCard(BuildContext context, AppLocalizations l10n, AppTokens tokens,
+      {required bool iosOnly, required bool androidReady}) {
     return Card(
       key: const ValueKey('p12-browsers-card'),
       child: Padding(
@@ -671,11 +678,23 @@ class WebFilterP12Screen extends ConsumerWidget {
                         ),
                       ],
                     )
-                  : Text(
-                      l10n.searchSafetyEmptyBody,
-                      key: const ValueKey('p12-browsers-android'),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
-                    ),
+                  : androidReady
+                      ? Text(
+                          l10n.searchSafetyEmptyBody,
+                          key: const ValueKey('p12-browsers-android'),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: tokens.onSurfaceVariant),
+                        )
+                      : Text(
+                          l10n.p12NotBlockingYet,
+                          key: const ValueKey('p12-browsers-not-ready'),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: tokens.onSurfaceVariant),
+                        ),
             ),
           ],
         ),
@@ -691,7 +710,7 @@ class WebFilterP12Screen extends ConsumerWidget {
         leading: Icon(Icons.manage_search, color: tokens.primary),
         title: Text(l10n.searchSafetyTitle),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () => context.push('/child/\$childId/searches'),
+        onTap: () => context.push('/child/$childId/searches'),
       ),
     );
   }
