@@ -289,10 +289,11 @@ object BlockExplainPolicy {
         minutesUsedToday: Map<String, Int>,
         bonusMinutes: Int,
     ): ChildRulesSummary {
+        val dailyUsed = EssentialPackages.sumDailyBudgetMinutes(minutesUsedToday)
         if (ruleSet == null) {
             return ChildRulesSummary(
                 dailyLimitMinutes = null,
-                dailyUsedMinutes = minutesUsedToday.values.sum(),
+                dailyUsedMinutes = dailyUsed,
                 bedtimeWindow = null,
                 schoolWindow = null,
                 routineNames = emptyList(),
@@ -313,7 +314,7 @@ object BlockExplainPolicy {
         }
         return ChildRulesSummary(
             dailyLimitMinutes = limit,
-            dailyUsedMinutes = minutesUsedToday.values.sum(),
+            dailyUsedMinutes = dailyUsed,
             bedtimeWindow = bedtime,
             schoolWindow = school,
             routineNames = ruleSet.routines.mapNotNull { it.name.trim().takeIf(String::isNotEmpty) },
