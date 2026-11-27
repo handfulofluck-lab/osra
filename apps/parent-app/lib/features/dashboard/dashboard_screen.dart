@@ -24,6 +24,7 @@ import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
 import '../map/child_location_view.dart';
+import 'home_p07_screen.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -32,6 +33,9 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(p07HomeEnabledProvider)) {
+      return const HomeP07Screen();
+    }
     final family = ref.watch(familyProvider);
     final unread = ref.watch(alertsBadgeCountProvider);
     // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
@@ -67,6 +71,7 @@ class DashboardScreen extends ConsumerWidget {
               'family' => '/family',
               'appearance' => '/settings/appearance',
               'mfa' => '/settings/mfa',
+              'privacy' => '/settings/privacy',
               'delete-account' => '/settings/delete-account',
               _ => '/settings/digests',
             }),
@@ -75,6 +80,7 @@ class DashboardScreen extends ConsumerWidget {
               PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
               PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
               PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
+              PopupMenuItem(value: 'privacy', child: Text(l10n.privacyMenu)),
               PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
             ],
           ),

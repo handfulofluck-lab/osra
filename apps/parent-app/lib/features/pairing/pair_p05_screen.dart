@@ -23,7 +23,7 @@ import 'pair_qr_screen.dart' show pairClaimDeviceLabel;
 /// falls back to the legacy pairing screen.
 const bool kEnableUxP05Pair = bool.fromEnvironment(
   'OSRA_UX_P05',
-  defaultValue: false,
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
 );
 
 final p05PairEnabledProvider = Provider<bool>((ref) => kEnableUxP05Pair);
