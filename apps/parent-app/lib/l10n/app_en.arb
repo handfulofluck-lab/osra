@@ -411,6 +411,18 @@
       }
     }
   },
+  "p04WhatWeCollect": "What we collect",
+  "p04GuardianConfirm": "I'm this child's parent or legal guardian.",
+  "p04GuardianRequired": "Tick the box to confirm you're this child's parent or guardian.",
+  "p04AgeLabel": "Age",
+  "p04AgeRange": "Enter an age from {min} to {max}.",
+  "@p04AgeRange": {
+    "placeholders": {
+      "min": { "type": "String" },
+      "max": { "type": "String" }
+    }
+  },
+  "p04AddTitle": "Add a child",
   "familyDone": "Done",
   "familyMembersTitle": "Family members",
   "familyParentsHeading": "Parents",
@@ -2686,5 +2698,9 @@
   "p01PreviewScreenTimeValue": "1 h 20 min left",
   "p01PreviewBedtimeValue": "21:30 → 07:00",
   "p01PreviewAppsValue": "2 blocked",
-  "p01PreviewLocationValue": "At school"
+  "p01PreviewLocationValue": "At school",
+  "appsFilterAllowed": "Allowed ({count})",
+  "appsLimitSheetTitle": "Daily limit for {app}",
+  "appsNoLimit": "No limit",
+  "appsIphoneNoAppList": "The iPhone doesn't send its app list yet."
 }

@@ -1,0 +1,3 @@
+### QA & Tests — pin `socialMonitoring` missing-key contract (#1024)
+- Pinned the current `socialMonitoring.<app>` missing-key contract without changing product defaults: API `DEFAULT_RULESET` / `defaultRuleSetRow` / `toApiRuleSet` store and serve `{}` while `stagingQaModel` deliberately requires explicit `true` in cross-app staging mode; Parent `RuleSet.fromJson` parses `{}` empty and displays missing keys as ON; Android child `RuleRepository.socialMonitoringEnabled` treats unsynced/missing keys as ON and explicit `false` as OFF.
+- Added the one-sentence `PT-06` note in `docs/QA/pre-test-checklist.md` explaining why staging still requires an explicit `true` (`stagingQaModel.ts:35-37`).

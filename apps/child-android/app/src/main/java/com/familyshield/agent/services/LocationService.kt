@@ -22,6 +22,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.R
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.data.db.FamilyShieldDatabase
 import com.familyshield.agent.data.db.PendingPingEntity
 import com.familyshield.agent.commands.CommandDispatcher
@@ -123,6 +124,8 @@ class LocationService : Service() {
             return START_NOT_STICKY
         }
         isServiceRunning = true
+        // #1151: a recreated foreground service must refresh rules immediately after process death.
+        WorkScheduler.syncNowAtStartup(this)
         startUpdates(STATIONARY_INTERVAL_MS)
         if (!flushLoopStarted) {
             flushLoopStarted = true

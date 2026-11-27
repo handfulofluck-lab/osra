@@ -89,6 +89,8 @@ class PackageReplacedReceiver : BroadcastReceiver() {
         }
 
         val childId = settings.childId() ?: return
+        // #1151: an in-place update can carry new rules; the unique durable worker also retries a failed save.
+        WorkScheduler.syncNowAtStartup(context)
         runCatching {
             api.postInternalAlert(
                 AlertDto(
