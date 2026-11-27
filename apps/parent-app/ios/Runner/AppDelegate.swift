@@ -17,6 +17,11 @@ import UIKit
        !mapsKey.isEmpty, mapsKey != "$(MAPS_API_KEY)" {
       GMSServices.provideAPIKey(mapsKey)
     }
+    // #558: plugins register later, in `didInitializeImplicitFlutterEngine`, so firebase_messaging
+    // misses its own launch hook and iOS was never asked for a device token. Without one FCM cannot
+    // mint a token and the parent never received a push. FlutterAppDelegate forwards the
+    // `didRegisterForRemoteNotificationsWithDeviceToken` callback to the plugin, which hands it to FCM.
+    application.registerForRemoteNotifications()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

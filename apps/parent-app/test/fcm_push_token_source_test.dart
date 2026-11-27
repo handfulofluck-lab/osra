@@ -35,4 +35,42 @@ void main() {
       expect(attempts, 1);
     });
   });
+
+  group('FcmPushTokenSource waiting for the APNs token on iOS (#558)', () {
+    test('gives up with no token when APNs never delivers one', () async {
+      var calls = 0;
+      final source = FcmPushTokenSource(
+        ensureInitialized: () async {},
+        waitForApns: true,
+        apnsAttempts: 3,
+        apnsRetryDelay: Duration.zero,
+        apnsToken: () async {
+          calls++;
+          return null;
+        },
+      );
+      expect(await source.token(), isNull);
+      // Mutant: drop the retry loop and this is 1.
+      expect(calls, 3);
+    });
+
+    test('keeps asking while APNs throws, and stops as soon as a token arrives', () async {
+      var calls = 0;
+      final source = FcmPushTokenSource(
+        ensureInitialized: () async {},
+        waitForApns: true,
+        apnsAttempts: 10,
+        apnsRetryDelay: Duration.zero,
+        apnsToken: () async {
+          calls++;
+          if (calls < 3) throw StateError('apns-token-not-set');
+          return 'apns';
+        },
+      );
+      // getToken() itself has no Firebase app in a unit test, so the source still returns null;
+      // what matters here is that it stopped waiting on the third call.
+      await source.token();
+      expect(calls, 3);
+    });
+  });
 }
