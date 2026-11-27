@@ -294,7 +294,9 @@ class _AlertDetailP15BodyState extends ConsumerState<AlertDetailP15Body> {
                       message: friendlyErrorText(
                         l10n,
                         eventsAsync.error ?? Exception('preview_unavailable'),
-                        () => l10n.alertsLoadFailed,
+                        // U91 (#650): the preview has its own failure line; borrowing the
+                        // alerts-list string told the parent the wrong thing failed.
+                        () => l10n.p15PreviewLoadFailed,
                       ),
                       onRetry: () => ref.invalidate(eventsProvider),
                     ),
