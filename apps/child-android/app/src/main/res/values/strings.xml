@@ -204,7 +204,7 @@
     <string name="setup_call_sms_invite">Optional: let OSRA check calls and texts for safety</string>
     <string name="setup_grant_call_sms">Allow calls and texts</string>
     <string name="setup_open_status">Open status</string>
-    <string name="setup_checklist_first_title">Finish protecting this device · أسرة</string>
+    <string name="setup_checklist_first_title">Finish protecting this device</string>
     <string name="setup_checklist_title">Protection checklist · أسرة</string>
     <string name="setup_checklist_button">Protection checklist</string>
     <string name="setup_checklist_intro">Each item below opens the one screen that grants it. Come back here after each one; the list re-checks itself.</string>

@@ -217,7 +217,8 @@
             android:taskAffinity=""
             android:resizeableActivity="false"
             android:supportsPictureInPicture="false"
-            android:turnScreenOn="true"/>
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
         <!-- Plan 1.7: the ring screen — over the lock screen, screen on, PIN to stop.
              Issue #734: this is the one overlay that keeps the application's task, deliberately. With an
              affinity of its own (the first draft of #671) the ring screen outlived Home in a hidden task

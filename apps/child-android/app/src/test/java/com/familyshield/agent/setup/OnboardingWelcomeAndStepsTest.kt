@@ -93,6 +93,34 @@ class OnboardingWelcomeAndStepsTest {
     }
 
     @Test
+    fun `U97 LockActivity declares NoActionBar theme in manifest`() {
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = false }
+            .newDocumentBuilder()
+            .parse(locate("src/main/AndroidManifest.xml"))
+        val activities = doc.getElementsByTagName("activity")
+        val lockEntry = (0 until activities.length)
+            .map { activities.item(it) as Element }
+            .firstOrNull { it.getAttribute("android:name").endsWith(".commands.LockActivity") }
+            ?: error("LockActivity missing from AndroidManifest.xml")
+        assertEquals("@android:style/Theme.Material.NoActionBar", lockEntry.getAttribute("android:theme"))
+    }
+
+    @Test
+    fun `U98 checklist first title drops brand tail and Arabic Bureau lock and Private DNS titles match`() {
+        val en = loadStrings("src/main/res/values/strings.xml")
+        val ar = loadStrings("src/main/res/values-ar/strings.xml")
+
+        assertEquals("Finish protecting this device", en["setup_checklist_first_title"])
+        assertFalse(en.getValue("setup_checklist_first_title").contains("أسرة"))
+        assertEquals("أكمل حماية هذا الجهاز", ar["setup_checklist_first_title"])
+
+        assertEquals("قفل أهلك هذا الجهاز", ar["lock_locked_title"])
+        assertEquals("أوقف أهلك هذا الجهاز مؤقتًا", ar["lock_paused_title"])
+        assertEquals("أوقف أهلك الإنترنت مؤقتًا", ar["lock_paused_internet_title"])
+        assertEquals("إعداد DNS الخاص", ar["c05_grant_private_dns_title"])
+    }
+
+    @Test
     fun `U88 recommended chip drops brackets and skip button uses plain copy in EN and AR`() {
         val en = loadStrings("src/main/res/values/strings.xml")
         val ar = loadStrings("src/main/res/values-ar/strings.xml")

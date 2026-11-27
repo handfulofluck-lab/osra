@@ -199,7 +199,7 @@
     <string name="c05_grant_location_title">الموقع</string>
     <string name="c05_grant_location_why">يتيح لأهلك معرفة مكان هذا الهاتف، حتى عندما يكون تطبيق أسرة مغلقًا.</string>
     <string name="c05_grant_location_button">السماح بالموقع طوال الوقت</string>
-    <string name="c05_grant_private_dns_title">DNS الخاص</string>
+    <string name="c05_grant_private_dns_title">إعداد DNS الخاص</string>
     <string name="c05_grant_private_dns_why">إذا ضُبط DNS الخاص على مزوّد محدد، يمكن تجاوز تصفية المواقع. لذا يلزم ضبطه على «تلقائي» أو «إيقاف».</string>
     <string name="c05_grant_private_dns_button">فتح إعدادات DNS الخاص</string>
     <string name="c05_grant_battery_title">البطارية</string>
@@ -332,11 +332,11 @@
          overlays, which its first sweep did not cover. The lock lines drop the «· أسرة» tail, like the titles. -->
     <string name="sos_button">استغاثة</string>
     <string name="sos_tile_label">الاستغاثة</string>
-    <string name="lock_locked_title">قفل والدك أو والدتك هذا الجهاز</string>
+    <string name="lock_locked_title">قفل أهلك هذا الجهاز</string>
     <string name="lock_locked_body">سيُفتح القفل عندما يسمح أهلك بذلك.</string>
-    <string name="lock_paused_title">أوقف والدك أو والدتك هذا الجهاز مؤقتًا</string>
+    <string name="lock_paused_title">أوقف أهلك هذا الجهاز مؤقتًا</string>
     <string name="lock_paused_body">سيعود إلى العمل عند انتهاء الإيقاف المؤقت.</string>
-    <string name="lock_paused_internet_title">أوقف والدك أو والدتك الإنترنت مؤقتًا</string>
+    <string name="lock_paused_internet_title">أوقف أهلك الإنترنت مؤقتًا</string>
     <string name="lock_paused_internet_body">تظل التطبيقات التعليمية تعمل.</string>
 
     <string name="qr_permission_denied">رُفض إذن الكاميرا، لذلك لا يمكن تشغيل ماسح رمز QR. أدخل عنوان الخادم ورمز الإقران أدناه، أو اسمح بالكاميرا من الإعدادات وامسح مرة أخرى.</string>
