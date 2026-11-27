@@ -38,6 +38,9 @@ class DashboardScreen extends ConsumerWidget {
     // provider, so this is absent rather than an error.
     final pendingResets = ref.watch(mfaResetPendingProvider).valueOrNull ?? const <MfaResetPendingRequest>[];
     final l10n = context.l10n;
+    // P-22: read once in build. Watching inside `itemBuilder` happens outside the build phase, which is why
+    // the flag-on menu still rendered the four old links.
+    final p22Settings = ref.watch(p22SettingsEnabledProvider);
     // Keep the live WS channel subscribed so the activity chips update (#29).
     ref.watch(wsProvider);
     return Scaffold(
@@ -74,7 +77,7 @@ class DashboardScreen extends ConsumerWidget {
             }),
             itemBuilder: (_) => [
               PopupMenuItem(value: 'family', child: Text(l10n.familyMembersMenu)),
-              if (ref.watch(p22SettingsEnabledProvider))
+              if (p22Settings)
                 PopupMenuItem(
                   key: const ValueKey('dashboardMenu-settings'),
                   value: 'settings',

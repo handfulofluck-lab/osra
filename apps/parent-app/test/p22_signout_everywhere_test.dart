@@ -31,10 +31,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The row is below the fold at 800x600, exactly as the shipped tests drive their buttons: call the handler.
   Future<void> confirmSignOutEverywhere(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey('settingsRow-signOutAll')));
+    tester.widget<ListTile>(find.byKey(const ValueKey('settingsRow-signOutAll'))).onTap!();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('settingsSignOutAllConfirm')));
+    tester.widget<TextButton>(find.byKey(const ValueKey('settingsSignOutAllConfirm'))).onPressed!();
     await tester.pumpAndSettle();
   }
 

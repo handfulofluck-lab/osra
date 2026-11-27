@@ -63,8 +63,11 @@ void main() {
     expect(find.byType(SettingsScreen), findsOneWidget,
         reason: 'flag on: the menu entry must actually reach /settings');
     // The four links it replaces are gone.
-    expect(find.text('Appearance'), findsNothing);
-    expect(find.text('Digest preferences'), findsNothing);
+    // Scoped to the popup: the dashboard underneath may carry the word elsewhere.
+    expect(
+        find.descendant(
+            of: find.byType(PopupMenuItem<String>), matching: find.text('Appearance')),
+        findsNothing);
   });
 
   testWidgets('with the flag off the four shipped links are unchanged', (tester) async {

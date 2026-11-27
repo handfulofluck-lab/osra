@@ -250,12 +250,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// first — after the revocation a removal is a 401 and the row survives on a signed-out phone, which
   /// means that phone keeps receiving the family notifications.
   Future<void> logoutEverywhere() async {
+    var pushRemoved = false;
     try {
       await _push?.unregister();
+      pushRemoved = true;
     } catch (_) {}
     // A failed revocation must NOT clear the phone: the parent still holds a live session and has to be
     // able to retry, so the exception is left to propagate and nothing is deleted here (Claude, 11:36).
-    await _api.raw.post('/v1/auth/logout-all');
+    // The push row was already retired, so it is put back before the failure is rethrown — otherwise a parent
+    // who could not sign out has also silently stopped receiving their family's alerts (osra-security#92).
+    try {
+      await _api.raw.post('/v1/auth/logout-all');
+    } catch (e) {
+      if (pushRemoved) {
+        try {
+          await _push?.register();
+        } catch (_) {}
+      }
+      rethrow;
+    }
     try {
       await _storage.delete(key: 'jwt');
       await _storage.delete(key: 'refresh');
