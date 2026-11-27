@@ -366,4 +366,47 @@ describe("#1237 overlapping rules saves are decided under one lock per device", 
     expect(store.map((r) => [r.status, r.payload.rulesVersion])).toEqual([["delivered", 4], ["pending", 5]]);
     expect(lastWord()).toMatchObject({ rulesVersion: 5, byName: "Mama Sara" });
   });
+
+  // Codex (#1237 round 3, comment 7206392584): a routine refresh (ruleSync, no adult, no revision of its own) must
+  // not erase the newest revision, or an older adult save that lands after it takes the actor back.
+  const routine = () => enqueueDeviceCommand("dev-1", "rules_updated", { reason: "geofence_routine" });
+
+  it("routine refresh while the newer save is pending: it keeps that revision, and the older save cannot take the actor", async () => {
+    seed("Dad", 3);
+    await save("Mama Sara", 5);
+    await routine();
+    expect(store).toHaveLength(1);
+    expect(store[0].payload).toEqual({ reason: "geofence_routine", rulesVersion: 5 });
+    await save("Baba", 4);
+    expect(store).toHaveLength(1);
+    expect(store[0].payload).toEqual({ reason: "geofence_routine", rulesVersion: 5 });
+    expect(lastWord().byName).toBeUndefined();
+  });
+
+  it("routine refresh after the newer save was delivered: it is queued at that revision, and the older save adds nothing", async () => {
+    seed("Dad", 3);
+    await save("Mama Sara", 5);
+    drain();
+    await routine();
+    expect(store.map((r) => [r.status, r.payload.rulesVersion, r.payload.byName])).toEqual([
+      ["delivered", 5, "Mama Sara"],
+      ["pending", 5, undefined],
+    ]);
+    await save("Baba", 4);
+    expect(store).toHaveLength(2);
+    expect(store.some((r) => r.payload.byName === "Baba")).toBe(false);
+    expect(queue.create).toHaveBeenCalledTimes(1); // the routine's row only
+  });
+
+  it("an older save overlapping a routine refresh still cannot take the actor (both start orders)", async () => {
+    for (const order of [["routine", "older"], ["older", "routine"]] as const) {
+      store = [];
+      seed("Dad", 3);
+      await save("Mama Sara", 5);
+      await Promise.all(order.map((step) => (step === "routine" ? routine() : save("Baba", 4))));
+      expect(store.filter((r) => r.status === "pending")).toHaveLength(1);
+      expect(lastWord().rulesVersion).toBe(5);
+      expect(store.some((r) => r.payload.byName === "Baba")).toBe(false);
+    }
+  });
 });

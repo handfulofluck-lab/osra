@@ -104,6 +104,20 @@ describeDatabase("coalesced rules commands on real Postgres (#1237)", () => {
     expect(payloadOf(all[0])).toMatchObject({ rulesVersion: 5, byName: "Mama Sara" });
   });
 
+  it("a routine refresh keeps the newest revision, pending or delivered, so an older save cannot take the actor", async () => {
+    for (const drainFirst of [false, true]) {
+      const d = await device();
+      await save(d.id, "Mama Sara", 5);
+      if (drainFirst) await claimPendingCommands(d.id);
+      await enqueueDeviceCommand(d.id, "rules_updated", { reason: "geofence_routine" });
+      await save(d.id, "Baba", 4);
+      const all = await rows(d.id);
+      expect(all.filter((r) => r.status === "pending")).toHaveLength(1);
+      expect(payloadOf(all[all.length - 1])).toMatchObject({ rulesVersion: 5 });
+      expect(all.some((r) => payloadOf(r).byName === "Baba")).toBe(false);
+    }
+  });
+
   it("drains racing saves: every newer revision reaches the phone and the last one claimed is the newest", async () => {
     const d = await device();
     const claimed: Array<{ rulesVersion?: number }> = [];

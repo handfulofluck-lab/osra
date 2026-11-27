@@ -118,25 +118,28 @@ async function coalesceInLock(
   tx: Prisma.TransactionClient,
   deviceId: string,
   type: string,
-  payload: Record<string, unknown>,
+  input: Record<string, unknown>,
   opts: EnqueueOptions,
 ): Promise<Row> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${coalesceLockKey(deviceId, type)}))`;
   const now = new Date();
   const ttl = opts.ttlSeconds ?? ttlFor(type);
-  const nextRevision = revisionOf(payload);
   const pending = await tx.deviceCommand.findFirst({
     where: { deviceId, type, status: "pending", expiresAt: { gt: now } },
     orderBy: { createdAt: "desc" },
   });
-  if (nextRevision !== null) {
-    const newest = await tx.deviceCommand.findFirst({
-      where: { deviceId, type, createdAt: { gt: new Date(now.getTime() - ttl * 1000) } },
-      orderBy: { createdAt: "desc" },
-    });
-    const newestRevision = revisionOf(newest?.payload);
-    if (newest && newestRevision !== null && nextRevision < newestRevision) return pending ?? newest;
-  }
+  const newest = await tx.deviceCommand.findFirst({
+    where: { deviceId, type, createdAt: { gt: new Date(now.getTime() - ttl * 1000) } },
+    orderBy: { createdAt: "desc" },
+  });
+  const known = [revisionOf(pending?.payload), revisionOf(newest?.payload)].filter((v): v is number => v !== null);
+  const greatest = known.length ? Math.max(...known) : null;
+  // Codex (#1237 round 3, ruleSync.ts:84): a change without a revision (a routine refresh) still stands for the
+  // newest committed rules, so it carries the greatest revision already queued. Otherwise it would erase the
+  // revision on the pending row and an older adult save could take the actor back.
+  const payload = revisionOf(input) === null && greatest !== null ? { ...input, rulesVersion: greatest } : input;
+  const nextRevision = revisionOf(payload);
+  if (nextRevision !== null && greatest !== null && nextRevision < greatest) return pending ?? (newest as Row);
   if (pending) {
     const prev = (pending.payload ?? {}) as Record<string, unknown>;
     const prevRevision = revisionOf(prev);
