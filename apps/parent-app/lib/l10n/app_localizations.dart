@@ -6016,6 +6016,54 @@ abstract class AppLocalizations {
   /// **'Keep {app} blocked'**
   String accessRequestKeepBlockedLabel(String app);
 
+  /// No description provided for @timeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked for {minutes} more minutes today'**
+  String timeRequestTitle(String child, int minutes);
+
+  /// No description provided for @timeRequestGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'+{minutes} min'**
+  String timeRequestGrant(String minutes);
+
+  /// No description provided for @timeRequestDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get timeRequestDecline;
+
+  /// No description provided for @timeRequestGrantedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already gave {minutes} minutes today'**
+  String timeRequestGrantedBy(String actor, int minutes);
+
+  /// No description provided for @timeRequestGrantedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already gave {minutes} minutes today'**
+  String timeRequestGrantedByYou(int minutes);
+
+  /// No description provided for @timeRequestDeclinedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already declined this request'**
+  String timeRequestDeclinedBy(String actor);
+
+  /// No description provided for @timeRequestDeclinedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already declined this request'**
+  String get timeRequestDeclinedByYou;
+
+  /// No description provided for @timeRequestDecidedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Decided {time}'**
+  String timeRequestDecidedAt(String time);
+
   /// No description provided for @p15CanBeWrong.
   ///
   /// In en, this message translates to:

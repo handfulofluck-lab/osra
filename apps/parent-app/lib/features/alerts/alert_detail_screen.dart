@@ -28,6 +28,7 @@ import '../social/social_vote_controls.dart';
 import 'access_request_actions.dart';
 import 'alert_detail_p15.dart';
 import 'app_alert_presentation.dart';
+import 'time_request_actions.dart';
 import 'sos_alert_actions.dart';
 
 /// Shared per-category localized body formatter used by both [AlertsScreen] and
@@ -782,6 +783,9 @@ class AppAlertLeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    if (alert.requestedScreenTimeMinutes != null) {
+      return Icon(Icons.more_time, size: 36, color: tokens.severityInfoText);
+    }
     final request = isAccessRequestAlert(alert);
     final statusColor =
         request ? tokens.severityInfoText : tokens.onSurfaceVariant;
@@ -843,13 +847,15 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
         ? overview?.devices.where((d) => d.id == alert.deviceId).firstOrNull
         : null;
     final isAppBlocked = alert.category == 'app_blocked';
-    final installed = isAppBlocked
+    final isTimeRequest = alert.requestedScreenTimeMinutes != null;
+    final installed = isAppBlocked && !isTimeRequest
         ? alertInstalledAppsReport(
             ref.watch(installedAppsByDeviceProvider(alert.childId)).valueOrNull,
             alert.deviceId,
           )
         : null;
-    final identity = resolveAppAlertIdentity(alert, installed, fallbackName: l10n.unknownApp);
+    final identity = resolveAppAlertIdentity(alert, installed,
+        fallbackName: l10n.unknownApp);
     final childName = child?.displayName ?? l10n.childFallback;
 
     final title = isAppBlocked
@@ -932,12 +938,18 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
         ],
         if (alert.createdAt != null) ...[
           Text(
-            formatAlertLocalTime(
-              alert.createdAt!,
-              l10n: l10n,
-              localeName: context.localeName,
-              now: nowProvider?.call(),
-            ),
+            isTimeRequest
+                ? l10n.alertDetailSent(l10n.alertAtTime(
+                    formatTimeRequestTimestamp(
+                      context, alert.createdAt!, now: nowProvider?.call(),
+                    ),
+                  ))
+                : formatAlertLocalTime(
+                    alert.createdAt!,
+                    l10n: l10n,
+                    localeName: context.localeName,
+                    now: nowProvider?.call(),
+                  ),
             key: const ValueKey('alertDetailTime'),
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: tokens.onSurfaceVariant),
@@ -958,6 +970,10 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
             identity: identity,
             nowProvider: nowProvider,
           ),
+          const SizedBox(height: AppSpace.lg),
+        ],
+        if (timeRequestActionsEnabled && isTimeRequest) ...[
+          TimeRequestActions(key: ValueKey(alert.id), alert: alert),
           const SizedBox(height: AppSpace.lg),
         ],
         if (alert.category == 'sos' && alert.location != null) ...[

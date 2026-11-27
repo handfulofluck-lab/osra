@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
@@ -10,6 +11,25 @@ bool isAccessRequestAlert(Alert alert) {
   final marker = alert.metadata['requestType'];
   if (marker != null) return marker == 'access';
   return alert.title == 'Access requested';
+}
+
+bool isParentDecisionAlert(Alert alert) =>
+    isAccessRequestAlert(alert) || alert.requestedScreenTimeMinutes != null;
+
+String formatTimeRequestTimestamp(
+  BuildContext context,
+  DateTime at, {
+  DateTime? now,
+}) {
+  final local = at.toLocal();
+  final material = MaterialLocalizations.of(context);
+  final time = material.formatTimeOfDay(
+    TimeOfDay.fromDateTime(local),
+    alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+  );
+  final sameDay = DateUtils.isSameDay(local, (now ?? DateTime.now()).toLocal());
+  final label = sameDay ? time : '${material.formatMediumDate(local)} · $time';
+  return firstStrongIsolate(normalizeDigits(label));
 }
 
 String appAlertPackageId(Alert alert) =>
@@ -77,8 +97,12 @@ String appAlertTitle({
   required String? childName,
   required AppAlertIdentity identity,
 }) {
-  final app = isolateAppAlertName(identity);
   final child = _childName(childName, l10n);
+  final minutes = alert.requestedScreenTimeMinutes;
+  if (minutes != null) {
+    return l10n.timeRequestTitle(child, minutes);
+  }
+  final app = isolateAppAlertName(identity);
   if (isAccessRequestAlert(alert)) return l10n.accessRequestTitle(child, app);
   final appName = alert.metadata['appName']?.toString().trim() ?? '';
   if (appAlertPackageId(alert).isEmpty && appName.isEmpty) {
@@ -92,6 +116,8 @@ String appAlertBody({
   required AppLocalizations l10n,
   required String? childName,
 }) {
+  if (alert.requestedScreenTimeMinutes != null)
+    return l10n.extraScreenTimeToday;
   final child = _childName(childName, l10n);
   return isAccessRequestAlert(alert)
       ? l10n.accessRequestBody(child)
