@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
-import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../widgets/field_question.dart';
 import '../../providers/auth_provider.dart';
@@ -18,10 +17,15 @@ import '../../providers/mfa_reset_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../providers/world_class_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../push/notification_permission_service.dart';
+import '../../widgets/alerts_off_banner.dart';
 import '../../widgets/error_retry_view.dart';
 import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
+import '../map/child_location_view.dart';
+import '../settings/settings_screen.dart' show p22SettingsEnabledProvider;
+import 'home_p07_screen.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -30,6 +34,9 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(p07HomeEnabledProvider)) {
+      return const HomeP07Screen();
+    }
     final family = ref.watch(familyProvider);
     final unread = ref.watch(alertsBadgeCountProvider);
     // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
@@ -37,6 +44,9 @@ class DashboardScreen extends ConsumerWidget {
     // provider, so this is absent rather than an error.
     final pendingResets = ref.watch(mfaResetPendingProvider).valueOrNull ?? const <MfaResetPendingRequest>[];
     final l10n = context.l10n;
+    // P-22: read once in build. Watching inside `itemBuilder` happens outside the build phase, which is why
+    // the flag-on menu still rendered the four old links.
+    final p22Settings = ref.watch(p22SettingsEnabledProvider);
     // Keep the live WS channel subscribed so the activity chips update (#29).
     ref.watch(wsProvider);
     return Scaffold(
@@ -61,19 +71,36 @@ class DashboardScreen extends ConsumerWidget {
             ),
           ),
           PopupMenuButton<String>(
+            // P-22: when the grouped Settings screen is on, one entry replaces the four links it now holds —
+            // otherwise the screen exists but nothing reaches it (Claude, 10:12 UAE: the flag gated nothing).
             onSelected: (v) => context.push(switch (v) {
               'family' => '/family',
+              'settings' => '/settings',
               'appearance' => '/settings/appearance',
               'mfa' => '/settings/mfa',
+              'privacy' => '/settings/privacy',
               'delete-account' => '/settings/delete-account',
               _ => '/settings/digests',
             }),
             itemBuilder: (_) => [
               PopupMenuItem(value: 'family', child: Text(l10n.familyMembersMenu)),
-              PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
-              PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
-              PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
-              PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
+              if (p22Settings)
+                PopupMenuItem(
+                  key: const ValueKey('dashboardMenu-settings'),
+                  value: 'settings',
+                  child: Text(l10n.settingsTitle),
+                )
+              else ...[
+                PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
+                PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
+                PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
+              ],
+              // P-22 replaces the links that now live inside Settings, and only those. "Privacy and data"
+              // arrived on main while this branch was open and has no row in P-22's approved list, so it
+              // stays reachable in both states rather than disappearing when the switch is on.
+              PopupMenuItem(value: 'privacy', child: Text(l10n.privacyMenu)),
+              if (!p22Settings)
+                PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
             ],
           ),
           IconButton(
@@ -93,8 +120,12 @@ class DashboardScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(familyProvider),
         ),
         data: (overview) {
+          final showAlertsOff = ref.watch(
+            notificationPermissionControllerProvider.select((s) => s.showAlertsOffBanner),
+          );
           final setupBanner = _finishSetupBanner(context, ref, overview);
           final banners = <Widget>[
+            if (showAlertsOff) const AlertsOffBanner(),
             if (pendingResets.isNotEmpty) _pendingApprovalBanner(context, pendingResets),
             if (setupBanner != null) setupBanner,
           ];
@@ -151,6 +182,7 @@ class DashboardScreen extends ConsumerWidget {
             onRefresh: () async {
               ref.invalidate(familyProvider);
               ref.invalidate(mfaResetPendingProvider);
+              ref.invalidate(wellbeingProvider);
             },
             child: banners.isEmpty
                 ? content
@@ -293,7 +325,7 @@ class ChildCard extends ConsumerWidget {
     final dailyLimit = rules?.screenTime.dailyLimitMinutes ?? 0;
     final progress = dailyLimit > 0 ? (child.screenTimeTodayMinutes / dailyLimit).clamp(0.0, 1.0) : 0.0;
     final live = ref.watch(liveActivityProvider)[child.id];
-    final wellbeing = ref.watch(wellbeingProvider(child.id)).valueOrNull;
+    final wellbeing = ref.watch(wellbeingProvider(child.id)).asData?.value;
 
     final tokens = context.tokens;
     return Card(
@@ -358,15 +390,18 @@ class ChildCard extends ConsumerWidget {
                       const Icon(Icons.location_on_outlined, size: 14),
                       const SizedBox(width: AppSpace.xs),
                       Expanded(
-                        child: Text(
-                          // #406: a refusal names the owner; "no location yet" would read as a normal state.
-                          locationRefused
-                              ? l10n.readPermissionRequired
-                              : location == null
-                                  ? l10n.noLocationYet
-                                  : ltrIsolate('${location.lat.toStringAsFixed(4)}, ${location.lng.toStringAsFixed(4)}'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        // #406: a refusal names the owner; "no location yet" would read as a normal state.
+                        // Karim 22 Nov: a place name and how fresh it is, never raw coordinates.
+                        child: locationRefused || location == null
+                            ? Text(
+                                locationRefused ? l10n.readPermissionRequired : l10n.noLocationYet,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              )
+                            : PlaceSummaryLine(
+                                ping: location,
+                                style: Theme.of(context).textTheme.bodySmall,
+                                onTap: () => context.push('/child/${child.id}?tab=location'),
+                              ),
                       ),
                     ],
                   ),

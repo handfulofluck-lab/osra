@@ -79,6 +79,21 @@
   "familyMembersMenu": "أفراد العائلة",
   "appearanceMenu": "المظهر",
   "digestPreferencesMenu": "تفضيلات الملخص",
+  "settingsTitle": "الإعدادات",
+  "settingsGroupLanguage": "اللغة والمظهر",
+  "settingsGroupSecurity": "الأمان",
+  "settingsGroupAccount": "الحساب",
+  "settingsSignOut": "تسجيل الخروج",
+  "settingsSignOutAll": "تسجيل الخروج من كل الأجهزة",
+  "settingsValueOn": "مفعّل",
+  "settingsValueOff": "غير مفعّل",
+  "settingsSignOutAllTitle": "تسجيل الخروج من كل الأجهزة؟",
+  "settingsSignOutAllBody": "سيلزم تسجيل الدخول من جديد على كل جهاز يستخدم حسابك، بما فيه هذا الجهاز.",
+  "settingsSignOutAllConfirm": "تسجيل الخروج من كل الأجهزة",
+  "settingsSecurityCardTitle": "إكمال تأمين حسابك",
+  "settingsSecurityCardLine": "التحقق بخطوتين غير مفعّل",
+  "settingsSecurityCardButton": "تفعيل",
+  "settingsTimeZone": "المنطقة الزمنية",
   "signOutTooltip": "تسجيل الخروج",
   "familyLoadFailed": "تعذّر تحميل بيانات عائلتك. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noChildrenYet": "لا يوجد أطفال بعد — اضغط «إضافة طفل»",
@@ -123,7 +138,7 @@
   "searchSafetyTooltip": "أمان البحث والويب",
   "editRules": "تعديل القواعد",
   "bornYear": "مواليد {year}",
-  "socialMonitoringTitle": "مراقبة وسائل التواصل الاجتماعي",
+  "socialMonitoringTitle": "مراقبة التواصل",
   "devices": "الأجهزة",
   "pairADevice": "إقران جهاز",
   "noDevicesRegistered": "لا توجد أجهزة مسجّلة",
@@ -154,15 +169,16 @@
   "commandErrorRateLimited": "لم يُرسل «{command}» إلى {device}: طلبات كثيرة الآن. حاول مرة أخرى بعد دقيقة.",
   "commandErrorConsentWithdrawn": "لم يُرسل «{command}» إلى {device}: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.",
   "commandErrorJurisdictionMismatch": "لم يُرسل «{command}» إلى {device}: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.",
-  "commandRefusedBackgroundLocation": "لم يُرسل «{command}» إلى {device}: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح OSRA ومنح الإذن.",
-  "commandRefusedLocationPermission": "لم يُرسل «{command}» إلى {device}: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح OSRA ومنح إذن الموقع.",
-  "commandRefusedLockScreen": "لا يمكن أن يثبت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق OSRA على ذلك الهاتف.",
-  "commandRefusedWebFilter": "لم يتم إعداد عامل تصفية الويب على هاتف طفلك، لذا لم يتم إيقاف الإنترنت.",
-  "commandRefusedWebFilterStart": "تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.",
-  "commandRefusedUnsupportedCommand": "يحتاج هذا الأمر إلى إصدار أحدث من OSRA على هاتف طفلك.",
+  "commandRefusedBackgroundLocation": "لم يُرسل «{command}» إلى {device}: لم يمنح الهاتف إذن الموقع «السماح دائمًا»، لذا لا يمكن لطلب تحديد الموقع وتنبيهات النطاقات الجغرافية الوصول إليه. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح الإذن.",
+  "commandRefusedLocationPermission": "لم يُرسل «{command}» إلى {device}: لا يوجد إذن موقع على الهاتف. اطلب من طفلك فتح تطبيق أسرة للأطفال ومنح إذن الموقع.",
+  "commandRefusedLockScreen": "لا يمكن تثبيت القفل على هاتف طفلك: فعّل خدمة إمكانية الوصول لتطبيق أسرة للأطفال على ذلك الهاتف.",
+  "commandRefusedWebFilter": "تصفية الويب غير مُعدّة على هاتف طفلك، لذا لم يتوقف الإنترنت.",
+  "commandRefusedWebFilterStart": "تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق أسرة للأطفال على ذلك الهاتف وحاول مجددًا.",
+  "commandRefusedUnsupportedCommand": "يحتاج هذا الأمر إلى إصدار أحدث من تطبيق أسرة للأطفال على هاتف طفلك.",
   "commandRefusedNotSupported": "«{command}» غير متاح على {device}: لا يستطيع هذا الهاتف أو إصدار التطبيق تنفيذه، لذلك لم يُرسل شيء.",
   "commandRefusedInvalidPayload": "رفض الهاتف إعدادات هذا الأمر.",
   "rulesBehindHint": "لم يستلم الهاتف هذا التغيير بعد.",
+  "rulesWaitingFirstApply": "بانتظار أن يطبّق الهاتف القواعد.",
   "rulesLoadFailed": "تعذّر تحميل القواعد. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noPerAppRules": "لا توجد قواعد لكل تطبيق",
   "appActionBlock": "حظر",
@@ -170,8 +186,8 @@
   "appActionAllow": "السماح",
   "locationLoadFailed": "تعذّر تحميل الموقع الجغرافي. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noLocationReported": "لم يُبلَّغ عن أي موقع بعد",
-  "accuracyLabel": "الدقة ±{meters} م · {time}",
-  "accuracyShort": "الدقة ±{meters} م",
+  "accuracyLabel": "الدقة ±{meters} م · {time}",
+  "accuracyShort": "الدقة ±{meters} م",
   "mapPreview": "معاينة الخريطة",
   "locationHistoryLoadFailed": "تعذّر تحميل سجل المواقع الجغرافية. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noLocationHistoryToday": "لا يوجد سجل مواقع لليوم",
@@ -226,8 +242,8 @@
   "familyMapGeofenceAdded": "أُضيف النطاق \"{name}\"",
   "familyMapChild": "الطفل",
   "familyMapLabelField": "الاسم (مثل: المدرسة)",
-  "familyMapRadius": "نصف القطر: {meters} م",
-  "familyMapMeters": "{meters} م",
+  "familyMapRadius": "نصف القطر: {meters} م",
+  "familyMapMeters": "{meters} م",
   "familyMapCreate": "إنشاء",
   "alertsLoadFailed": "تعذّر تحميل التنبيهات. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "noRecentAlerts": "لا توجد تنبيهات حديثة",
@@ -244,8 +260,14 @@
   "commandClearSos": "مسح نداء الاستغاثة",
   "commandPauseDevice": "إيقاف الجهاز",
   "commandResumeDevice": "استئناف الجهاز",
+  "commandPausingDevice": "جارٍ إيقاف الجهاز…",
+  "commandResumingDevice": "جارٍ استئناف الجهاز…",
   "commandPauseInternet": "إيقاف الإنترنت",
   "commandResumeInternet": "استئناف الإنترنت",
+  "scopeThisDevice": "هذا الجهاز",
+  "scopeAllDevices": "كل الأجهزة المقترنة",
+  "deviceControlPending": "بانتظار تأكيد هذا الجهاز",
+  "deviceControlFailed": "تعذّر على هذا الجهاز تطبيق التغيير",
   "commandBonusTime": "وقت إضافي",
   "commandWindDown": "الاسترخاء قبل النوم",
   "commandLocateNow": "تحديد الموقع الآن",
@@ -286,7 +308,7 @@
   "alertCategoryInstallRequest": "طلب تثبيت تطبيق",
   "alertCategoryUnknownContact": "جهة غير معروفة",
   "tabScreenTime": "وقت الشاشة",
-  "tabWebFilter": "تصفية الويب",
+  "tabWebFilter": "تصفية المواقع",
   "tabRoutines": "الروتين",
   "dailyLimit": "الحد اليومي: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
   "weekendLimit": "الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
@@ -324,8 +346,8 @@
   "allowedDomainsLabel": "النطاقات المسموح بها (مفصولة بفواصل)",
   "blockedDomainsLabel": "النطاقات المحظورة (مفصولة بفواصل)",
   "enforceSafeSearch": "فرض البحث الآمن",
-  "youtubeRestrictedMode": "الوضع المقيّد في يوتيوب",
-  "youtubeRestrictedDesc": "يزيل المحتوى غير المناسب المحتمل على يوتيوب عبر أجهزة الأطفال.",
+  "youtubeRestrictedMode": "الوضع المحظور في يوتيوب",
+  "youtubeRestrictedDesc": "يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب نفسها تفوّت بعضها، فللتأكد احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».",
   "strict": "صارم",
   "moderate": "متوسط",
   "off": "إيقاف",
@@ -375,6 +397,7 @@
   "totalAverage": "الإجمالي: {total, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{total} دقائق} many{{total} دقيقة} other{{total} دقيقة}} · المتوسط: {avg, plural, =1{دقيقة واحدة يوميًا} =2{دقيقتان يوميًا} few{{avg} دقائق يوميًا} many{{avg} دقيقة يوميًا} other{{avg} دقيقة يوميًا}}",
   "chartLegendRow": "{app}: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
   "noAppUsage": "لم يُسجَّل أي استخدام للتطبيقات",
+  "noPerAppBreakdown": "تفاصيل الاستخدام لكل تطبيق غير متاحة",
   "webSection": "الويب",
   "urlVisits": "{count, plural, =0{لا زيارات لمواقع} =1{زيارة واحدة لموقع} =2{زيارتان لموقعين} few{{count} زيارات لمواقع} many{{count} زيارة لموقع} other{{count} زيارة لموقع}}",
   "noBlockedDomains": "لا توجد نطاقات محظورة",
@@ -403,7 +426,7 @@
   "blocked": "محظور",
   "allowed": "مسموح",
   "dayTooltip": "{date}: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
-  "scanQr": "امسح رمز QR باستخدام تطبيق OSRA على جهاز الطفل.",
+  "scanQr": "امسح رمز QR باستخدام تطبيق أسرة للأطفال على جهاز الطفل.",
   "typeSixDigit": "إذا تعذّرت المسح بالكاميرا، فأدخل الرمز المكوّن من 6 أرقام أدناه على جهاز الطفل.",
   "codeExpired": "انتهت صلاحية الرمز",
   "generateNewCode": "أنشئ رمزًا جديدًا لمتابعة الإقران.",
@@ -423,15 +446,15 @@
   "pairClaimPaired": "تم إقران {device}.",
   "pairClaimDenied": "تم الرفض. أنشئ رمزًا جديدًا لإقران هاتف.",
   "pairClaimError": "لم يتم ذلك. حاول مرة أخرى.",
-  "pairClaimDataCleared": "تم مسح بيانات OSRA على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.",
+  "pairClaimDataCleared": "مُسحت بيانات تطبيق أسرة للأطفال على هذا الهاتف، لذلك فقد حمايته. اسمح به فقط إذا كنت تتوقع ذلك.",
   "appearanceTitle": "المظهر",
   "themeLabel": "نمط العرض",
-  "appearanceDesc": "يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق OSRA فقط.",
+  "appearanceDesc": "يتبع هذا الجهاز إعدادات النظام. يُطبَّق الوضع الفاتح أو الداكن على تطبيق أسرة فقط.",
   "followingDevice": "يتبع الجهاز (حاليًا {mode}).",
   "lightAlwaysOn": "المظهر الفاتح مفعّل دائمًا.",
   "darkAlwaysOn": "المظهر الداكن مفعّل دائمًا.",
   "languageLabel": "اللغة",
-  "languageDesc": "يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق OSRA فقط.",
+  "languageDesc": "يتبع هذا الجهاز إعدادات النظام. تُطبَّق اللغة الإنجليزية أو العربية على تطبيق أسرة فقط.",
   "followingLanguage": "تتبع الجهاز (حاليًا {language}).",
   "englishAlwaysOn": "اللغة الإنجليزية مفعّلة دائمًا.",
   "arabicAlwaysOn": "اللغة العربية مفعّلة دائمًا.",
@@ -441,6 +464,17 @@
   "saveFailedServer": "تعذّر حفظ التغييرات. ما زالت تغييراتك هنا، فحاول مرة أخرى.",
   "saveMonitoring": "حفظ المراقبة",
   "concerns": "المخاوف",
+  "flagVoteQuestion": "هل هذه الرسالة مقلقة فعلًا؟",
+  "flagVoteConcerning": "مقلقة",
+  "flagVoteNotConcerning": "غير مقلقة",
+  "flagVoteHelp": "إجابتك تساعد تطبيق أسرة للأطفال على فحص الرسائل بدقة أكبر.",
+  "flagVoteThanks": "شكرًا، سُجّلت إجابتك",
+  "flagVoteBy": "{name}: {vote}",
+  "flagVoteA11yConcerning": "اعتبار الرسالة مقلقة",
+  "flagVoteA11yNotConcerning": "اعتبار الرسالة غير مقلقة",
+  "flagVoteClear": "إلغاء إجابتي",
+  "flagVoteCleared": "أُلغيت إجابتك",
+  "flagVoteA11yClear": "إلغاء إجابتك عن هذه الرسالة",
   "vaultTrustCopy": "تنتقل المقتطفات عبر اتصال مشفّر، وتُخزَّن مشفّرة على خوادم تطبيق أسرة.",
   "noConcernsDetected": "لم تُكتشف أي مخاوف",
   "unknownContact": "جهة اتصال غير معروفة",
@@ -552,7 +586,7 @@
   "mfaRecoveryInvalid": "البريد الإلكتروني أو كلمة المرور أو رمز الاسترداد غير صحيح.",
   "mfaRecoveryNoToken": "لم يُرجع الخادم جلسة استرداد. حاول مجددًا.",
   "mfaFieldsRequired": "املأ البريد الإلكتروني وكلمة المرور ورمز الاسترداد.",
-  "onboardingWelcomeTitle": "مرحبًا بك في OSRA",
+  "onboardingWelcomeTitle": "مرحبًا بك في تطبيق أسرة",
   "onboardingWelcomeBody": "أعدّ الحماية لطفلك في ثلاث خطوات قصيرة. يستغرق الأمر نحو خمس دقائق.",
   "onboardingGetStarted": "ابدأ",
   "onboardingSignInTitle": "سجّل الدخول أو أنشئ حسابًا",
@@ -576,7 +610,7 @@
   "onboardingLeaveStay": "ابقَ",
   "onboardingLeaveConfirm": "تسجيل الخروج",
   "onboardingPairTitle": "إقران جهازه",
-  "onboardingPairIntro": "افتح OSRA على هاتف {childName} واختر الإقران برمز.",
+  "onboardingPairIntro": "افتح تطبيق أسرة للأطفال على هاتف {childName} واختر الإقران برمز.",
   "@onboardingPairIntro": {
     "placeholders": {
       "childName": {
@@ -923,6 +957,8 @@
   "digestPrefsSendHourLabel": "ساعة الإرسال",
   "alertTitleSos": "تم الضغط على زر الاستغاثة",
   "alertTitleBlockedSite": "تمت محاولة زيارة موقع محظور",
+  "blockedSiteDomainLine": "الموقع: {domain}",
+  "blockedSiteNamesNotCollected": "لا تُجمع أسماء المواقع حاليًا، لذا يظهر الحظر فقط.",
   "alertTitleDailyLimit": "تم بلوغ الحد اليومي",
   "alertTitleAppBlocked": "تم حظر تطبيق",
   "alertTitleGeofence": "تنبيه دخول أو مغادرة مكان",
@@ -932,8 +968,8 @@
   "alertTitleGrooming": "استدراج محتمل من شخص بالغ",
   "alertTitleTamper": "محاولة تعطيل الحماية",
   "alertTitleBlockBypass": "أحد التطبيقات تجاوز الحظر",
-  "alertCallBypassNote": "تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع OSRA إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.",
-  "alertTitleDataCleared": "تم مسح بيانات OSRA على هاتف",
+  "alertCallBypassNote": "تم حظر تطبيق المكالمات، لكن المكالمة استمرت خلف شاشة الحظر. لا يستطيع تطبيق أسرة للأطفال إنهاء مكالمة تطبيق آخر، لذا تبقى الشاشة محظورة حتى تنتهي المكالمة.",
+  "alertTitleDataCleared": "مُسحت بيانات تطبيق أسرة للأطفال على أحد الهواتف",
   "alertTitleVpnDetected": "تم اكتشاف شبكة VPN",
   "alertTitleInstallRequest": "طلب تثبيت تطبيق",
   "alertTitleUnknownContact": "تواصل من جهة غير معروفة",
@@ -1017,9 +1053,10 @@
   "riskViolence": "العنف",
   "riskHateSpeech": "خطاب الكراهية",
   "riskAiConcern": "محتوى مثير للقلق",
+  "riskLateNight": "في وقت متأخر ليلًا",
   "phoneSetupOtherSpaceClone": "هذا الهاتف يحتوي على مساحة أخرى مؤمنة، ربما تتيح هذه المساحة تشغيل أكثر من نسخة من نفس التطبيق، وقد لا يتمكن هذا التطبيق من مراقبتها طالما لم يتم إلغاء هذه الخاصية من قسم الإعدادات الخاصة بالهاتف.",
   "phoneSetupOtherSpaceWork": "في هذا الهاتف ملف عمل.",
-  "phoneSetupOtherSpaceOther": "في هذا الهاتف مساحة أخرى، وقد لا يصل OSRA إلى التطبيقات داخلها.",
+  "phoneSetupOtherSpaceOther": "في هذا الهاتف مساحة أخرى، وقد لا يصل تطبيق أسرة للأطفال إلى التطبيقات داخلها.",
   "phoneSetupTitle": "إعداد الهاتف",
   "phoneSetupNeverReported": "لم يبلّغ هذا الهاتف عن إمكاناته بعد.",
   "phoneSetupReported": "آخر تحديث {age}",
@@ -1045,7 +1082,7 @@
   "grantUsageAccess": "الوصول إلى بيانات الاستخدام",
   "grantOverlay": "العرض فوق التطبيقات الأخرى",
   "grantDeviceAdmin": "مسؤول الجهاز",
-  "grantWebFilter": "تصفية المواقع (موافقة VPN)",
+  "grantWebFilter": "تصفية المواقع",
   "grantLocation": "الموقع (السماح دائمًا)",
   "grantPrivateDns": "DNS الخاص",
   "grantBattery": "البطارية: بدون قيود",
@@ -1063,6 +1100,7 @@
   "appGroupsBlock": "حظر",
   "appGroupsSaveFailed": "تعذّر حفظ التغيير. حاول مرة أخرى.",
   "setupMonitoringTitle": "أي التطبيقات تريد أن يراقبها تطبيق أسرة؟",
+  "setupMonitoringAppBarTitle": "تطبيقات التواصل",
   "setupMonitoringIntro": "يفحص تطبيق أسرة الرسائل في هذه التطبيقات بحثًا عن علامات التنمّر أو الاستدراج أو إيذاء النفس، وينبّهك عند رصد ما يثير القلق. اختر التطبيقات التي تريد مراقبتها، ويمكنك تغيير اختيارك في أي وقت من «القواعد».",
   "setupMonitoringConsent": "يُحفظ المقتطف من الرسالة المثيرة للقلق لمدة 90 يومًا، ويُحفظ التنبيه لمدة 12 شهرًا. لا يُقرأ أي شيء من تطبيق لم تختره.",
   "setupMonitoringContinue": "متابعة",
@@ -1102,5 +1140,371 @@
   "socialAlertPreviewExpiredBody": "انتهت صلاحية المعاينة المشفّرة أو لم تُحفظ لهذا التنبيه. ما زالت تفاصيل التنبيه وإرشادات الحديث مع طفلك محفوظة هنا.",
   "socialAlertUnavailableTitle": "التنبيه غير متاح",
   "socialAlertUnavailableBody": "تعذّر العثور على هذا التنبيه. افتح «التنبيهات» لمراجعة النشاط الأخير.",
-  "socialAlertViewAll": "كل التنبيهات"
+  "socialAlertViewAll": "كل التنبيهات",
+  "locationUpdatedJustNow": "آخر تحديث: الآن",
+  "locationUpdatedMinutes": "{count, plural, =1{آخر تحديث قبل دقيقة} =2{آخر تحديث قبل دقيقتين} few{آخر تحديث قبل {count} دقائق} many{آخر تحديث قبل {count} دقيقة} other{آخر تحديث قبل {count} دقيقة}}",
+  "locationUpdatedHours": "{count, plural, =1{آخر تحديث قبل ساعة} =2{آخر تحديث قبل ساعتين} few{آخر تحديث قبل {count} ساعات} many{آخر تحديث قبل {count} ساعة} other{آخر تحديث قبل {count} ساعة}}",
+  "locationUpdatedDays": "{count, plural, =1{آخر تحديث قبل يوم} =2{آخر تحديث قبل يومين} few{آخر تحديث قبل {count} أيام} many{آخر تحديث قبل {count} يومًا} other{آخر تحديث قبل {count} يوم}}",
+  "locationUpdatedUnknown": "وقت التحديث غير معروف",
+  "locationFindingAddress": "جارٍ تحديد العنوان…",
+  "locationAddressUnavailable": "العنوان غير متوفر",
+  "locationMapSemantics": "خريطة تُظهر مكان {name}",
+  "locationRecentre": "توسيط الخريطة على آخر موقع",
+  "undo": "تراجع",
+  "hoursShort": "{hours, plural, =1{ساعة واحدة} =2{ساعتان} few{{hours} ساعات} many{{hours} ساعة} other{{hours} ساعة}}",
+  "appStateAllowed": "مسموح",
+  "appStateBlocked": "محظور",
+  "appStateLimit": "الحد اليومي: {limit}",
+  "appAllowedSnack": "تم السماح بـ{app}",
+  "appLimitSnack": "الحد اليومي لـ{app}: {limit}",
+  "appsFilterAll": "الكل ({count})",
+  "appsFilterBlocked": "المحظورة ({count})",
+  "appsFilterLimited": "الحدود الزمنية ({count})",
+  "appsNoMatch": "لا توجد تطبيقات مطابقة",
+  "appsSentToPhone": "أُرسلت إلى الهاتف",
+  "appsNotYetOnIphone": "غير متاح بعد على آيفون",
+  "appAboutThisApp": "عن هذا التطبيق",
+  "appBlockedNamedSnack": "تم حظر {app}",
+  "socialCheckMessagesIn": "فحص الرسائل في هذه التطبيقات",
+  "socialNotOnChildPhone": "غير مثبّتة على هاتف {child} ({count})",
+  "socialChecking": "الفحص مفعّل",
+  "socialOff": "الفحص متوقف",
+  "socialCommentsAndChats": "التعليقات والمحادثات",
+  "socialNewAppsBanner": "يمكنك الآن أيضًا اختيار YouTube وTelegram وReddit وMessenger.",
+  "socialPrivacyLine": "لا ينبّهك تطبيق أسرة للأطفال إلا إلى الرسائل التي تستدعي المراجعة، ولا يعرض لك كل المحادثات أبدًا.",
+  "selectAll": "تحديد الكل",
+  "socialAlertCountTitle": "{count, plural, =0{لا رسائل تستدعي المراجعة في {app}} =1{رسالة واحدة تستدعي المراجعة في {app}} =2{رسالتان تستدعيان المراجعة في {app}} few{{count} رسائل تستدعي المراجعة في {app}} many{{count} رسالة تستدعي المراجعة في {app}} other{{count} رسالة تستدعي المراجعة في {app}}}",
+  "socialAlertFromContactOnly": "من {contact}",
+  "socialAlertLatestAt": "آخر رسالة {time}",
+  "socialAlertUnknownContact": "جهة اتصال غير معروفة",
+  "socialAlertMorePush": "{count, plural, =0{لا رسائل أخرى تستدعي المراجعة لدى {child} في {app}} =1{رسالة أخرى تستدعي المراجعة لدى {child} في {app}} =2{رسالتان أخريان تستدعيان المراجعة لدى {child} في {app}} few{{count} رسائل أخرى تستدعي المراجعة لدى {child} في {app}} many{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}} other{{count} رسالة أخرى تستدعي المراجعة لدى {child} في {app}}}",
+  "socialAlertNewSince": "+{count} جديدة",
+  "phoneSetupStepsLeftThisPhone": "إعداد هذا الهاتف: {count, plural, =1{تبقى خطوة واحدة} =2{تبقى خطوتان} few{تبقى {count} خطوات} many{تبقى {count} خطوة} other{تبقى {count} خطوة}}",
+  "@phoneSetupStepsLeftThisPhone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneSetupProtected": "هذا الهاتف محمي.",
+  "phoneSetupStepsLeft": "إعداد هاتف {childName}: {count, plural, =1{تبقى خطوة واحدة} =2{تبقى خطوتان} few{تبقى {count} خطوات} many{تبقى {count} خطوة} other{تبقى {count} خطوة}}",
+  "@phoneSetupStepsLeft": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alertTitleSetupComplete": "الهاتف محمي",
+  "alertTitleSetupIncomplete": "إعداد الهاتف يحتاج إلى متابعة",
+  "alertBodySetupCompleted": "هاتف {childName} محمي.",
+  "@alertBodySetupCompleted": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "alertBodySetupIncomplete": "مرّت 30 دقيقة، وتبقى {count, plural, =1{خطوة واحدة} =2{خطوتان} few{{count} خطوات} many{{count} خطوة} other{{count} خطوة}} في إعداد هاتف {childName}{steps}",
+  "@alertBodySetupIncomplete": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "steps": {
+        "type": "String"
+      }
+    }
+  },
+  "alertBodySetupIncompleteGeneric": "مرّت 30 دقيقة، وإعداد هاتف {childName} ما زال غير مكتمل.",
+  "@alertBodySetupIncompleteGeneric": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "alertBodyDataCleared": "أُعيد تثبيت تطبيق أسرة للأطفال على {model}، وكانت الحماية متوقفة إلى أن أُعيد الإقران.",
+  "@alertBodyDataCleared": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "accessRequestTitle": "طلب من {child} لاستخدام {app}",
+  "accessRequestBlockedTitle": "حُظر {app} على هاتف {child}",
+  "accessRequestBody": "وصل طلب السماح من شاشة الحظر على هاتف {child}.",
+  "accessRequestBlockedBody": "جرت محاولة لفتحه على هاتف {child}. لا حاجة إلى أي إجراء منك.",
+  "accessRequestAllow": "السماح",
+  "accessRequestAllowing": "جارٍ الحفظ…",
+  "accessRequestKeepBlocked": "إبقاء الحظر",
+  "accessRequestDisclosure": "سيُسمح باستخدام {app} من الآن. وتبقى قواعد وقت النوم والساعات المدرسية والإيقاف المؤقت سارية.",
+  "accessRequestAllowFailed": "تعذّر السماح باستخدام {app}. تحقّق من اتصالك وحاول مجددًا.",
+  "accessRequestReadOnly": "لا يستطيع الرد على هذا الطلب إلا {owner}، من تطبيق أسرة.",
+  "accessRequestAllowedBy": "سُمح باستخدام {app} بقرار من {actor}{timeSuffix}",
+  "accessRequestKeptBlockedBy": "بقي {app} محظورًا بقرار من {actor}{timeSuffix}",
+  "accessRequestAllowedByYou": "سُمح باستخدام {app} بقرارك{timeSuffix}",
+  "accessRequestKeptBlockedByYou": "بقي {app} محظورًا بقرارك{timeSuffix}",
+  "accessRequestHandled": "تم التعامل مع هذا الطلب",
+  "accessRequestAllowedSnack": "سُمح باستخدام {app}",
+  "accessRequestKeptBlockedSnack": "بقي {app} محظورًا",
+  "accessRequestAllowLabel": "السماح باستخدام {app}",
+  "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
+  "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
+  "alertsOffTurnOnAction": "تفعيل التنبيهات",
+  "pairP05Title": "ربط هاتف {child}",
+  "@pairP05Title": { "placeholders": { "child": { "type": "String" } } },
+  "pairP05TitleGeneric": "ربط هاتف الطفل",
+  "pairP05Subtitle": "ثبّت تطبيق أسرة للأطفال على هاتف {child} ثم امسح هذا الرمز.",
+  "@pairP05Subtitle": { "placeholders": { "child": { "type": "String" } } },
+  "pairP05SubtitleGeneric": "ثبّت تطبيق أسرة للأطفال على هاتف الطفل ثم امسح هذا الرمز.",
+  "pairP05OrTypeCode": "أو أدخل هذا الرمز",
+  "pairP05ValidFor": "صالح لمدة {time}",
+  "@pairP05ValidFor": { "placeholders": { "time": { "type": "String" } } },
+  "pairP05CodeExpired": "انتهت صلاحية الرمز",
+  "pairP05NewCode": "رمز جديد",
+  "pairP05WaitingFor": "بانتظار هاتف {child}…",
+  "@pairP05WaitingFor": { "placeholders": { "child": { "type": "String" } } },
+  "pairP05WaitingGeneric": "بانتظار هاتف الطفل…",
+  "pairP05ConfirmDeviceTitle": "تأكيد هذا الجهاز؟",
+  "pairP05ConfirmDeviceBody": "يطلب {model} الاتصال. أكّد الربط للمتابعة.",
+  "@pairP05ConfirmDeviceBody": { "placeholders": { "model": { "type": "String" } } },
+  "pairP05ConfirmLink": "التأكيد والربط",
+  "pairP05Decline": "رفض",
+  "pairP05Connected": "تم ربط الهاتف.",
+  "pairP05SendInstallLink": "إرسال رابط التثبيت",
+  "pairP05InstallLinkCopied": "تم نسخ رابط التثبيت للمشاركة.",
+  "pairP05SkipForNow": "التخطي حاليًا",
+  "timeRequestTitle": "طلب من {child}: {minutes, plural, =1{دقيقة إضافية واحدة} =2{دقيقتان إضافيتان} few{{minutes} دقائق إضافية} many{{minutes} دقيقة إضافية} other{{minutes} دقيقة إضافية}} اليوم",
+  "timeRequestGrant": "+{minutes} دقيقة",
+  "timeRequestDecline": "ليس اليوم",
+  "timeRequestGrantedBy": "سبق منح وقت إضافي اليوم بقرار من {actor}: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
+  "timeRequestGrantedByYou": "سبق منح وقت إضافي اليوم بقرارك: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
+  "timeRequestDeclinedBy": "سبق رفض هذا الطلب بقرار من {actor}",
+  "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
+  "timeRequestDecidedAt": "وقت القرار: {time}",
+  "p15CanBeWrong": "مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.",
+  "p15ActionsHeader": "ما يمكنك فعله",
+  "p15TalkWithChild": "التحدث مع {child}",
+  "@p15TalkWithChild": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "p15HelpChildBlockContact": "مساعدة {child} على حظر {contact}",
+  "@p15HelpChildBlockContact": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "contact": {
+        "type": "String"
+      }
+    }
+  },
+  "p15HelpBlockGuideBody": "الجلوس مع {child} وفتح {app} معًا لحظر {contact} وكتم رسائله.",
+  "@p15HelpBlockGuideBody": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      },
+      "contact": {
+        "type": "String"
+      }
+    }
+  },
+  "p15AdjustLimits": "تعديل وقت الشاشة ووقت النوم",
+  "p15ReviewAppRules": "مراجعة قواعد التطبيقات",
+  "p15IphoneNotYet": "غير متاح بعد على آيفون",
+  "p14SegmentRequests": "الطلبات",
+  "p14LevelUrgent": "عاجل",
+  "p14LevelCheckSoon": "للمراجعة قريبًا",
+  "p14LevelInfo": "للعلم",
+  "p14FilterAll": "الكل",
+  "p14NoRequestsYet": "لا توجد طلبات بعد",
+  "p14GroupedCount": "{count, plural, =1{مرة واحدة · آخرها {time}} =2{مرتان · آخرها {time}} few{{count} مرات · آخرها {time}} many{{count} مرة · آخرها {time}} other{{count} مرة · آخرها {time}}}",
+  "p12NotBlockingYet": "لم يبدأ الحظر بعد",
+  "p12AllowSite": "السماح بالموقع",
+  "p12RecentlyBlocked": "المواقع المحظورة مؤخرًا",
+  "p12BlockSiteTitle": "حظر موقع",
+  "p12AllowSiteTitle": "السماح بموقع",
+  "privacyMenu": "الخصوصية والبيانات",
+  "privacyTitle": "الخصوصية والبيانات",
+  "privacyKeptHeader": "نحتفظ بها ثم تُحذف تلقائيًا",
+  "privacyFullDetails": "التفاصيل الكاملة (بالإنجليزية)",
+  "privacyRowExcerpts": "مقتطفات الرسائل التي أثارت تنبيهًا",
+  "privacyRowAlerts": "التنبيهات",
+  "privacyRowLocation": "سجل المواقع",
+  "privacyRowStoredIn": "مكان التخزين",
+  "privacyStorageFrankfurt": "الاتحاد الأوروبي (فرانكفورت، ألمانيا)",
+  "privacyStorageStockholm": "الاتحاد الأوروبي (ستوكهولم، السويد)",
+  "privacyStorageIreland": "الاتحاد الأوروبي (أيرلندا)",
+  "privacyDays": "{count, plural, =1{يوم واحد} =2{يومان} few{{count} أيام} many{{count} يومًا} other{{count} يوم}}",
+  "@privacyDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyMonths": "{count, plural, =1{شهر واحد} =2{شهران} few{{count} أشهر} many{{count} شهرًا} other{{count} شهر}}",
+  "@privacyMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyWhoCanSee": "من يمكنه رؤية البيانات",
+  "privacyWhoCanSeeDesc": "البالغون في العائلة وما يمكن لكل منهم رؤيته",
+  "privacyManage": "إدارة",
+  "privacyCopyTitle": "احصل على نسخة من بيانات عائلتك",
+  "privacyCopyDesc": "راسلنا من البريد الإلكتروني الذي تسجّل الدخول به، ونردّ خلال شهر.",
+  "privacyCopyAction": "مراسلة",
+  "privacyConsentTitle": "الموافقة لكل طفل",
+  "privacyConsentDesc": "راجِعها أو اسحبها لكل طفل على حدة",
+  "privacyOpen": "فتح",
+  "privacyChooseChild": "اختر طفلًا",
+  "privacyNoChildren": "لم تُضِف أي طفل بعد.",
+  "privacyDeleteFamilyTitle": "حذف حساب العائلة",
+  "privacyDeleteFamilyDesc": "يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. ويلزم إدخال كلمة المرور لذلك.",
+  "privacyDeleteSelfTitle": "حذف حسابي",
+  "privacyDeleteSelfDesc": "يحذف حسابك أنت فقط، وتبقى العائلة كما هي.",
+  "privacyDeleteAction": "حذف…",
+  "privacyLoadFailed": "تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "privacyLoadFailedServer": "تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.",
+  "privacyRetry": "إعادة المحاولة",
+  "p15PreviewLoadFailed": "تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.",
+  "homeTabHome": "الرئيسية",
+  "homeTabFamily": "العائلة",
+  "homeTabSettings": "الإعدادات",
+  "homeFilterAll": "الكل",
+  "homeNeedsYou": "يحتاج إليك",
+  "homeSafetyAlertsToReview": "{count, plural, =1{تنبيه سلامة واحد للمراجعة} =2{تنبيها سلامة للمراجعة} few{{count} تنبيهات سلامة للمراجعة} many{{count} تنبيه سلامة للمراجعة} other{{count} تنبيه سلامة للمراجعة}}",
+  "@homeSafetyAlertsToReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeDurationHoursMinutes": "{hours} و{minutes}",
+  "@homeDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "homeTimeLeft": "المتبقي {duration}",
+  "@homeTimeLeft": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeOfLimit": "من {limit}",
+  "@homeOfLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSeenJustNow": "آخر ظهور الآن",
+  "homeSeenAgo": "آخر ظهور قبل {duration}",
+  "@homeSeenAgo": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeOfflineFor": "غير متصل منذ {duration}",
+  "@homeOfflineFor": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeStateAtSchool": "في المدرسة",
+  "homeStateBedtime": "وقت النوم",
+  "homeStateFreeTime": "وقت حر",
+  "homeStateHomework": "الواجبات",
+  "homeStatePaused": "موقوف مؤقتًا",
+  "homeBatteryPct": "البطارية {pct}",
+  "@homeBatteryPct": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "homeBonusPlus15": "+15 دقيقة",
+  "homeBonusPlus30": "+30 دقيقة",
+  "homePauseInternet": "إيقاف الإنترنت مؤقتًا",
+  "homeResumeInternet": "استئناف الإنترنت",
+  "homeLockAllDevices": "قفل كل الأجهزة",
+  "homeUnlockAllDevices": "إلغاء القفل",
+  "homeNotYetAvailable": "غير متاح بعد",
+  "homeNotYetOnIphone": "غير متاح بعد على آيفون",
+  "homeKeepBlocked": "إبقاء الحظر",
+  "homeNotToday": "ليس اليوم",
+  "homeTimeRequestTitle": "{minutes, plural, =1{طلب من {child}: دقيقة إضافية من وقت الشاشة} =2{طلب من {child}: دقيقتان إضافيتان من وقت الشاشة} few{طلب من {child}: {minutes} دقائق إضافية من وقت الشاشة} many{طلب من {child}: {minutes} دقيقة إضافية من وقت الشاشة} other{طلب من {child}: {minutes} دقيقة إضافية من وقت الشاشة}}",
+  "@homeTimeRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "homeAccessRequestTitle": "طلب من {child}: السماح بتطبيق {app}",
+  "@homeAccessRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSentToPhone": "تم الإرسال إلى الهاتف",
+  "homeSendingBonusSnack": "إضافة {duration} لليوم",
+  "@homeSendingBonusSnack": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeExampleBadge": "مثال",
+  "p01WelcomeSubtitle": "صورة أوضح ليوم عائلتك الرقمي.",
+  "p01ExampleBadge": "مثال",
+  "p01NoAdsLine": "بلا إعلانات. لا تُباع بيانات عائلتك أبدًا.",
+  "p01PreviewScreenTimeValue": "المتبقي ساعة و20 دقيقة",
+  "p01PreviewBedtimeValue": "من 21:30 إلى 07:00",
+  "p01PreviewAppsValue": "تطبيقان محظوران",
+  "p01PreviewLocationValue": "في المدرسة"
 }

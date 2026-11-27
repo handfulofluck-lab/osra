@@ -127,6 +127,8 @@ void main() {
 
     applied = 7;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await flushFakeHttp(tester);
     await tester.pumpAndSettle();
@@ -201,7 +203,11 @@ void main() {
 
   Future<void> pumpSocialApi(WidgetTester tester, FakeApiClient api) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api)],
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        // P-17 (#1179) ships behind `OSRA_UX_P17`; this file exercises the new row.
+        p17SocialEnabledProvider.overrideWithValue(true),
+      ],
       child: localizedTestApp(const SocialScreen(childId: 'child-1')),
     ));
     await tester.pumpAndSettle();
@@ -218,9 +224,16 @@ void main() {
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
 
     childJson['rulesVersion'] = 8;
-    await tester.tap(find.widgetWithText(SwitchListTile, 'WhatsApp'));
+    await tester.tap(find.textContaining('Not on '));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save monitoring'));
+    // P-17 (`#1179`): the row states the phone's word and opens the on/off choice, so there is no switch to
+    // reach into; the save path behind it is unchanged. Both are driven directly because the row sits below the
+    // fold in this test's 800x600 view, exactly as the old switch was.
+    tester.widget<ListTile>(find.byKey(const ValueKey('socialAppRow-whatsapp'))).onTap!();
+    await tester.pumpAndSettle();
+    tester.widget<ListTile>(find.byKey(const ValueKey('socialAppOff-whatsapp'))).onTap!();
+    await tester.pumpAndSettle();
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save monitoring')).onPressed!();
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);

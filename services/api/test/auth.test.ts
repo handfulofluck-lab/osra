@@ -4,11 +4,14 @@ import type { FastifyInstance } from "fastify";
 import argon2 from "argon2";
 import { Prisma } from "@prisma/client";
 import { authRoutes } from "../src/routes/auth.js";
+import { meRoutes } from "../src/routes/me.js";
 import { decryptSecret, encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
+import { notifyParentsOfAlert, setPushProviders } from "../src/lib/push/notify.js";
+import type { PushMessage, PushProvider, PushResult } from "../src/lib/push/types.js";
 import { getRedis } from "../src/redis.js";
-import { MockRedis, SIGNUP_CONSENTS, authHeader, buildApp, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, SIGNUP_CONSENTS, authHeader, buildApp, evalSessionVersionScript, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -77,8 +80,11 @@ function wireRedisStore() {
     }
     return "OK";
   });
-  // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL).
-  redis.eval.mockImplementation(async (_script: string, _n: number, key: string) => {
+  // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL), plus the
+  // session-version floor/cleanup scripts from `lib/sessions.ts`.
+  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string, allowCreateArg?: string) => {
+    const sv = evalSessionVersionScript(redis, script, key, floorArg, allowCreateArg);
+    if (sv !== undefined) return sv;
     const v = live(key);
     if (v !== null) {
       store.delete(key);
@@ -163,7 +169,7 @@ describe("auth routes", () => {
     // defaults so an implementation from one test cannot leak into the next.
     const redis = getRedis() as unknown as MockRedis;
     redis.get.mockImplementation(async () => null);
-    redis.eval.mockImplementation(async () => null);
+    redis.eval.mockImplementation(async (...args: unknown[]) => evalSessionVersionScript(redis, args[0], args[2], args[3], args[4]) ?? null);
     redis.set.mockImplementation(async () => "OK");
     redis.del.mockImplementation(async () => 0);
     redis.incrby.mockImplementation(async () => 1);
@@ -1172,5 +1178,859 @@ describe("auth routes", () => {
   it("#608: the demo fixture email is demo@osratech.com (no familyshield in the demo account)", () => {
     expect(registerBody.email).toBe("demo@osratech.com");
     expect(registerBody.email).not.toMatch(/familyshield/i);
+  });
+
+  it("commits durable session revocation and push-token retirement atomically, rolls back on DB write failure so retry succeeds, and reconciles cache + socket signal on Redis write failure", async () => {
+    // Mutant A: run `parent.update` and `parentPushToken.deleteMany` outside a single `$transaction` ->
+    // a failed `deleteMany` leaves `sessionVersion` incremented, invalidating the caller's retry while
+    // `notifyParentsOfAlert` still delivers to surviving push rows.
+    // Mutant B: drop `redis.del(sessionVersionKey)` or skip `publishFamilyEvent` when Redis fails after
+    // the durable transaction has already committed -> stale cache marker or open sockets survive a committed revocation.
+    const app = await buildApp(async (a) => {
+      await a.register(authRoutes, { prefix: "/v1/auth" });
+      await a.register(meRoutes, { prefix: "/v1/me" });
+    });
+    const { store } = wireRedisStore();
+    const redis = getRedis() as unknown as MockRedis;
+    const sentTokens: string[] = [];
+    const provider: PushProvider = {
+      platform: "android",
+      async send(token: string, _message: PushMessage): Promise<PushResult> {
+        sentTokens.push(token);
+        return { ok: true };
+      },
+    };
+    const iosProvider: PushProvider = {
+      platform: "ios",
+      async send(token: string, _message: PushMessage): Promise<PushResult> {
+        sentTokens.push(token);
+        return { ok: true };
+      },
+    };
+    setPushProviders([provider, iosProvider]);
+
+    try {
+      const passwordHash = await argon2.hash(PASSWORD);
+      let p1SessionVersion = 0;
+      type PushRow = { id: string; parentId: string; token: string; platform: string; appVersion?: string; sessionVersion: number; createdAt: Date; lastSeenAt: Date };
+      let pushRows = new Map<string, PushRow>();
+      let rowSeq = 0;
+      let failNextDeleteMany = false;
+      const txClientOps: string[] = [];
+
+      const makeParentReader = (versionReader: () => number) =>
+        async ({ where }: { where: { id?: string; email?: string } }) => {
+          if (where.email === registerBody.email || where.id === "parent-1") {
+            return {
+              id: "parent-1",
+              familyId: "fam-1",
+              email: registerBody.email,
+              displayName: "Demo Parent",
+              role: "owner",
+              permissions: [],
+              passwordHash,
+              mfaEnabled: false,
+              mfaSecret: null,
+              sessionVersion: versionReader(),
+            };
+          }
+          if (where.id === "parent-2") {
+            return {
+              id: "parent-2",
+              familyId: "fam-1",
+              email: "coparent@osratech.com",
+              displayName: "Co Parent",
+              role: "co-parent",
+              permissions: [],
+              passwordHash,
+              mfaEnabled: false,
+              mfaSecret: null,
+              sessionVersion: 0,
+            };
+          }
+          return null;
+        };
+
+      prismaMock.parent.findUnique.mockImplementation(makeParentReader(() => p1SessionVersion));
+      prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }, { id: "parent-2" }]);
+      prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+      prismaMock.parentPushToken.findMany.mockImplementation(async ({ where }: { where: { parentId: string | { in: string[] } } }) => {
+        const ids = typeof where.parentId === "string" ? [where.parentId] : where.parentId.in;
+        return [...pushRows.values()].filter((r) => ids.includes(r.parentId));
+      });
+
+      // Transactional mock: stages mutations inside `tx` and commits them to durable state only if `fn(tx)` resolves.
+      // Distinct `tx` methods also prove production code uses `tx` rather than the global `prisma` client.
+      prismaMock.$transaction.mockImplementation(async (arg: unknown) => {
+        if (typeof arg !== "function") return Promise.all(arg as Promise<unknown>[]);
+        let stagedVersion = p1SessionVersion;
+        const stagedPushRows = new Map(pushRows);
+        const tx = {
+          ...prismaMock,
+          $queryRaw: vi.fn(async () => {
+            txClientOps.push("lock_parent");
+            return [{ "?column?": 1 }];
+          }),
+          revokedToken: {
+            ...prismaMock.revokedToken,
+            findUnique: vi.fn(async () => null),
+          },
+          parent: {
+            findMany: prismaMock.parent.findMany,
+            findUnique: vi.fn(makeParentReader(() => stagedVersion)),
+            update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+              if (where.id === "parent-1" && data.sessionVersion !== undefined) {
+                stagedVersion += 1;
+                txClientOps.push("tx_increment_session_version");
+              }
+              return { id: where.id, familyId: "fam-1", sessionVersion: stagedVersion };
+            }),
+          },
+          parentPushToken: {
+            findMany: prismaMock.parentPushToken.findMany,
+            upsert: vi.fn(async ({ where, create, update }: {
+              where: { token: string };
+              create: { parentId: string; token: string; platform: string; appVersion?: string; sessionVersion: number };
+              update: { parentId: string; platform: string; appVersion?: string; sessionVersion: number; lastSeenAt: Date };
+            }) => {
+              txClientOps.push(`tx_upsert_push_token:${create.parentId}`);
+              const existing = stagedPushRows.get(where.token);
+              if (existing) {
+                const next: PushRow = {
+                  ...existing,
+                  parentId: update.parentId,
+                  platform: update.platform,
+                  appVersion: update.appVersion,
+                  sessionVersion: update.sessionVersion,
+                  lastSeenAt: update.lastSeenAt,
+                };
+                stagedPushRows.set(where.token, next);
+                return next;
+              }
+              const createdAt = new Date("2026-11-27T05:00:00Z");
+              const created: PushRow = {
+                id: `pt-${++rowSeq}`,
+                parentId: create.parentId,
+                token: create.token,
+                platform: create.platform,
+                appVersion: create.appVersion,
+                sessionVersion: create.sessionVersion,
+                createdAt,
+                lastSeenAt: createdAt,
+              };
+              stagedPushRows.set(where.token, created);
+              return created;
+            }),
+            deleteMany: vi.fn(async ({ where }: { where: { parentId?: string; token?: string; sessionVersion?: { lt: number } } }) => {
+              txClientOps.push(`tx_delete_push_tokens:${where.parentId ?? ""}:${where.sessionVersion?.lt ?? "all"}`);
+              if (failNextDeleteMany) {
+                failNextDeleteMany = false;
+                throw new Error("db write failed");
+              }
+              let removed = 0;
+              for (const [tok, row] of [...stagedPushRows.entries()]) {
+                if (where.parentId !== undefined && row.parentId !== where.parentId) continue;
+                if (where.token !== undefined && row.token !== where.token) continue;
+                if (where.sessionVersion?.lt !== undefined && row.sessionVersion >= where.sessionVersion.lt) continue;
+                stagedPushRows.delete(tok);
+                removed += 1;
+              }
+              return { count: removed };
+            }),
+          },
+        };
+        const result = await (arg as (client: unknown) => Promise<unknown>)(tx);
+        p1SessionVersion = stagedVersion;
+        pushRows = stagedPushRows;
+        return result;
+      });
+
+      const loginA = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+      const loginB = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+      expect(loginA.statusCode).toBe(200);
+      expect(loginB.statusCode).toBe(200);
+      const tokenA = loginA.json().token as string;
+      const tokenB = loginB.json().token as string;
+      const refreshB = loginB.json().refreshToken as string;
+
+      expect((await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenA}` },
+        payload: { token: "a".repeat(32), platform: "android" },
+      })).statusCode).toBe(201);
+      expect((await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenB}` },
+        payload: { token: "b".repeat(32), platform: "ios" },
+      })).statusCode).toBe(201);
+      const coJwt = app.jwt.sign({ sub: "parent-2", familyId: "fam-1", role: "parent", sv: 0 });
+      expect((await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${coJwt}` },
+        payload: { token: "c".repeat(32), platform: "android" },
+      })).statusCode).toBe(201);
+      expect(pushRows.size).toBe(3);
+
+      // Single-session `/logout` leaves sibling push registrations untouched.
+      const singleLogout = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout",
+        payload: { refreshToken: refreshB },
+      });
+      expect(singleLogout.statusCode).toBe(200);
+      expect([...pushRows.values()].filter((r) => r.parentId === "parent-1")).toHaveLength(2);
+
+      // Case 1: DB write failure on `parentPushToken.deleteMany` rolls back `Parent.sessionVersion` with it,
+      // skips premature `session_revoked` socket publish, and leaves `tokenA` valid so the caller's retry completes cleanup.
+      prismaMock.parent.update.mockClear();
+      prismaMock.parentPushToken.deleteMany.mockClear();
+      redis.publish.mockClear();
+      txClientOps.length = 0;
+      failNextDeleteMany = true;
+
+      const failedLogoutAll = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(failedLogoutAll.statusCode).toBe(500);
+      expect(p1SessionVersion).toBe(0);
+      expect(store.get("auth:session-version:parent-1")).toBe("0");
+      expect([...pushRows.values()].filter((r) => r.parentId === "parent-1")).toHaveLength(2);
+      expect(redis.publish).not.toHaveBeenCalled();
+      // Neither write bypassed the transaction client.
+      expect(prismaMock.parent.update).not.toHaveBeenCalled();
+      expect(prismaMock.parentPushToken.deleteMany).not.toHaveBeenCalled();
+
+      // Normal retry with the same bearer token `tokenA` succeeds and retires all `parent-1` push rows atomically.
+      txClientOps.length = 0;
+      const retriedLogoutAll = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(retriedLogoutAll.statusCode).toBe(200);
+      expect(retriedLogoutAll.json()).toEqual({ ok: true });
+      expect(txClientOps).toEqual(["lock_parent", "tx_increment_session_version", "tx_delete_push_tokens:parent-1:1"]);
+      expect(p1SessionVersion).toBe(1);
+      expect(store.get("auth:session-version:parent-1")).toBe("1");
+      expect([...pushRows.values()].filter((r) => r.parentId === "parent-1")).toHaveLength(0);
+      expect([...pushRows.values()].filter((r) => r.parentId === "parent-2")).toHaveLength(1);
+      expect(redis.publish).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(redis.publish.mock.calls[0][1] as string)).toMatchObject({
+        type: "session_revoked",
+        payload: { parentId: "parent-1" },
+      });
+
+      // Push delivery after atomic retirement sends only to `parent-2`, never to `parent-1`'s retired installations.
+      sentTokens.length = 0;
+      const alertRow = { id: "alert-92", childId: "child-1", severity: "critical", category: "sos", title: "SOS", body: "Help" };
+      const pushAfterRetry = await notifyParentsOfAlert("fam-1", alertRow, "Alex");
+      expect(pushAfterRetry).toEqual({ recipients: 1, delivered: 1, pruned: 0, skipped: null });
+      expect(sentTokens).toEqual(["c".repeat(32)]);
+
+      // Case 2: Redis cache write failure (`incrby` OOM) AFTER the durable transaction commits keeps both
+      // `sessionVersion` and push-row retirement committed, drops the stale cache marker, still emits the
+      // `session_revoked` socket signal, and leaves zero push delivery eligibility for `parent-1`.
+      pushRows.clear();
+      const loginC = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+      expect(loginC.statusCode).toBe(200);
+      const tokenC = loginC.json().token as string;
+      expect((await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenC}` },
+        payload: { token: "d".repeat(32), platform: "android" },
+      })).statusCode).toBe(201);
+      expect(pushRows.size).toBe(1);
+
+      redis.publish.mockClear();
+      redis.incrby.mockRejectedValueOnce(new Error("OOM command not allowed when used memory > 'maxmemory'"));
+      const cacheFailLogout = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${tokenC}` },
+      });
+      expect(cacheFailLogout.statusCode).toBe(500);
+      expect(p1SessionVersion).toBe(2);
+      expect([...pushRows.values()]).toHaveLength(0);
+      expect(store.get("auth:session-version:parent-1")).toBeUndefined();
+      expect(redis.publish).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(redis.publish.mock.calls[0][1] as string)).toMatchObject({
+        type: "session_revoked",
+        payload: { parentId: "parent-1" },
+      });
+
+      sentTokens.length = 0;
+      const pushAfterCacheFail = await notifyParentsOfAlert("fam-1", alertRow, "Alex");
+      expect(pushAfterCacheFail).toEqual({ recipients: 0, delivered: 0, pruned: 0, skipped: "no_tokens" });
+      expect(sentTokens).toEqual([]);
+
+      // Next request with `tokenC` (`sv=1`) rebuilds the cache from `p1SessionVersion=2` and is refused with 401.
+      const staleUse = await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenC}` },
+        payload: { token: "e".repeat(32), platform: "android" },
+      });
+      expect(staleUse.statusCode).toBe(401);
+      expect(staleUse.json()).toEqual({ error: "session_revoked" });
+      expect(store.get("auth:session-version:parent-1")).toBe("2");
+    } finally {
+      setPushProviders([]);
+      await app.close();
+    }
+  });
+
+  it("serializes push-token registration with durable sessionVersion: rejects stale requests before upsert and preserves fresh-session registrations across the revocation cutoff", async () => {
+    // Mutant A: validate `isParentSessionLive` after `upsert` (or delete by shared wall-clock `lastSeenAt`) ->
+    // `upsert` is called for a stale pre-revocation request (`upsertedTokens` contains the stale token), and
+    // concurrent writes at the same wall-clock timestamp collide.
+    // Mutant B: run `parent.update` and `parentPushToken.deleteMany` with a gap outside the serialized lock ->
+    // a fresh `sv=1` registration completing across the cutoff gets wiped by `deleteMany`.
+    const app = await buildApp(async (a) => {
+      await a.register(authRoutes, { prefix: "/v1/auth" });
+      await a.register(meRoutes, { prefix: "/v1/me" });
+    });
+    wireRedisStore();
+    const sentTokens: string[] = [];
+    setPushProviders([{
+      platform: "android",
+      async send(token: string): Promise<PushResult> {
+        sentTokens.push(token);
+        return { ok: true };
+      },
+    }]);
+
+    try {
+      const passwordHash = await argon2.hash(PASSWORD);
+      let p1SessionVersion = 0;
+      const fixedClock = new Date("2026-11-27T05:30:00.000Z");
+      type PushRow = { id: string; parentId: string; token: string; platform: string; appVersion?: string; sessionVersion: number; createdAt: Date; lastSeenAt: Date };
+      const pushRows = new Map<string, PushRow>();
+      const upsertedTokens: string[] = [];
+      let rowSeq = 0;
+
+      let onEnterDeleteMany: (() => Promise<void>) | null = null;
+      let onEnterUpsert: (() => Promise<void>) | null = null;
+
+      prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id?: string; email?: string } }) => {
+        if (where.email === registerBody.email || where.id === "parent-1") {
+          return {
+            id: "parent-1",
+            familyId: "fam-1",
+            email: registerBody.email,
+            displayName: "Demo Parent",
+            role: "owner",
+            permissions: [],
+            passwordHash,
+            mfaEnabled: false,
+            mfaSecret: null,
+            sessionVersion: p1SessionVersion,
+          };
+        }
+        return null;
+      });
+      prismaMock.parent.findMany.mockResolvedValue([{ id: "parent-1" }]);
+      prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+      prismaMock.parent.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        if (where.id === "parent-1" && data.sessionVersion !== undefined) {
+          p1SessionVersion += 1;
+        }
+        return { id: where.id, familyId: "fam-1", sessionVersion: p1SessionVersion };
+      });
+      prismaMock.parentPushToken.upsert.mockImplementation(async ({ where, create, update }: {
+        where: { token: string };
+        create: { parentId: string; token: string; platform: string; appVersion?: string; sessionVersion: number };
+        update: { parentId: string; platform: string; appVersion?: string; sessionVersion: number; lastSeenAt: Date };
+      }) => {
+        upsertedTokens.push(where.token);
+        if (onEnterUpsert) {
+          const hook = onEnterUpsert;
+          onEnterUpsert = null;
+          await hook();
+        }
+        const existing = pushRows.get(where.token);
+        if (existing) {
+          const next: PushRow = {
+            ...existing,
+            parentId: update.parentId,
+            platform: update.platform,
+            appVersion: update.appVersion,
+            sessionVersion: update.sessionVersion,
+            lastSeenAt: fixedClock,
+          };
+          pushRows.set(where.token, next);
+          return next;
+        }
+        const created: PushRow = {
+          id: `pt-${++rowSeq}`,
+          parentId: create.parentId,
+          token: create.token,
+          platform: create.platform,
+          appVersion: create.appVersion,
+          sessionVersion: create.sessionVersion,
+          createdAt: fixedClock,
+          lastSeenAt: fixedClock,
+        };
+        pushRows.set(where.token, created);
+        return created;
+      });
+      prismaMock.parentPushToken.deleteMany.mockImplementation(async ({ where }: { where: { parentId?: string; token?: string } }) => {
+        if (onEnterDeleteMany) {
+          const hook = onEnterDeleteMany;
+          onEnterDeleteMany = null;
+          await hook();
+        }
+        let removed = 0;
+        for (const [tok, row] of [...pushRows.entries()]) {
+          if (where.parentId !== undefined && row.parentId !== where.parentId) continue;
+          if (where.token !== undefined && row.token !== where.token) continue;
+          pushRows.delete(tok);
+          removed += 1;
+        }
+        return { count: removed };
+      });
+      prismaMock.parentPushToken.findMany.mockImplementation(async ({ where }: { where: { parentId: string | { in: string[] } } }) => {
+        const ids = typeof where.parentId === "string" ? [where.parentId] : where.parentId.in;
+        return [...pushRows.values()].filter((r) => ids.includes(r.parentId));
+      });
+
+      const login0 = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+      expect(login0.statusCode).toBe(200);
+      const tokenSv0 = login0.json().token as string;
+
+      expect((await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenSv0}` },
+        payload: { token: "1".repeat(32), platform: "android" },
+      })).statusCode).toBe(201);
+
+      // Subcase 1: `logout-all` holds the `Parent` serialization lock across `sessionVersion` 0->1 + `deleteMany`.
+      // Both an already-authenticated stale `sv=0` registration and a `sv=1` registration queue behind that cutoff.
+      let markDeleteEntered!: () => void;
+      const deleteEntered = new Promise<void>((resolve) => { markDeleteEntered = resolve; });
+      let releaseDelete!: () => void;
+      const deleteGate = new Promise<void>((resolve) => { releaseDelete = resolve; });
+      onEnterDeleteMany = async () => {
+        markDeleteEntered();
+        await deleteGate;
+      };
+
+      const logoutInFlight = app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${tokenSv0}` },
+      });
+      await deleteEntered;
+
+      // Redis `auth:session-version:parent-1` is still "0" while the DB transaction is in flight, so both
+      // `tokenSv0` (sv=0) and `tokenSv1` (sv=1) pass `requireParent` and queue on `withParentSessionLock("parent-1")`.
+      const tokenSv1 = app.jwt.sign(
+        { sub: "parent-1", familyId: "fam-1", role: "parent", familyRole: "owner", jti: "jti-fresh-sv1", sv: 1 },
+        { expiresIn: "7d" },
+      );
+      upsertedTokens.length = 0;
+
+      const staleRegInFlight = app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenSv0}` },
+        payload: { token: "2".repeat(32), platform: "android" },
+      });
+      const freshRegInFlight = app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenSv1}` },
+        payload: { token: "3".repeat(32), platform: "android" },
+      });
+
+      // Yield microtasks so both requests pass `requireParent` and line up at the serialized parent boundary.
+      await Promise.resolve();
+      await Promise.resolve();
+      releaseDelete();
+
+      const [logoutRes, staleRes, freshRes] = await Promise.all([logoutInFlight, staleRegInFlight, freshRegInFlight]);
+      expect(logoutRes.statusCode).toBe(200);
+      expect(staleRes.statusCode).toBe(401);
+      expect(staleRes.json()).toEqual({ error: "session_revoked" });
+      expect(freshRes.statusCode).toBe(201);
+
+      // Stale `sv=0` registration was rejected BEFORE `upsert`; fresh `sv=1` registration was preserved!
+      expect(upsertedTokens).toEqual(["3".repeat(32)]);
+      expect([...pushRows.keys()]).toEqual(["3".repeat(32)]);
+
+      const listed = await app.inject({
+        method: "GET",
+        url: "/v1/me/push-tokens",
+        headers: { authorization: `Bearer ${tokenSv1}` },
+      });
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json().tokens).toHaveLength(1);
+
+      sentTokens.length = 0;
+      const alertRow = { id: "alert-92b", childId: "child-1", severity: "critical", category: "sos", title: "SOS", body: "Help" };
+      expect(await notifyParentsOfAlert("fam-1", alertRow, "Alex")).toEqual({
+        recipients: 1,
+        delivered: 1,
+        pruned: 0,
+        skipped: null,
+      });
+      expect(sentTokens).toEqual(["3".repeat(32)]);
+
+      // Subcase 2: a current-session registration that enters its locked transaction BEFORE `logout-all`
+      // completes first, and `logout-all` then retires it atomically as `sessionVersion` advances 1->2.
+      let markUpsertEntered!: () => void;
+      const upsertEntered = new Promise<void>((resolve) => { markUpsertEntered = resolve; });
+      let releaseUpsert!: () => void;
+      const upsertGate = new Promise<void>((resolve) => { releaseUpsert = resolve; });
+      onEnterUpsert = async () => {
+        markUpsertEntered();
+        await upsertGate;
+      };
+
+      const regBeforeRevoke = app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${tokenSv1}` },
+        payload: { token: "4".repeat(32), platform: "android" },
+      });
+      await upsertEntered;
+
+      const logoutQueuedBehindReg = app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${tokenSv1}` },
+      });
+      await Promise.resolve();
+      releaseUpsert();
+
+      const [regDone, logoutDone] = await Promise.all([regBeforeRevoke, logoutQueuedBehindReg]);
+      expect(regDone.statusCode).toBe(201);
+      expect(logoutDone.statusCode).toBe(200);
+      expect(p1SessionVersion).toBe(2);
+      expect(pushRows.size).toBe(0);
+    } finally {
+      setPushProviders([]);
+      await app.close();
+    }
+  });
+
+  it("returns MFA recovery codes on /mfa/verify even if push-row cleanup fails, while generation fencing blocks push delivery to pre-MFA registrations", async () => {
+    // Mutant A: let `parentPushToken.deleteMany` failure abort `/v1/auth/mfa/verify` -> 500 loses the one-time plaintext recovery codes.
+    // Mutant B: omit `sessionVersion` filtering in `notifyParentsOfAlert` -> surviving pre-MFA push rows still receive alert pushes after cleanup fails.
+    const app = await buildApp(async (a) => {
+      await a.register(authRoutes, { prefix: "/v1/auth" });
+      await a.register(meRoutes, { prefix: "/v1/me" });
+    });
+    wireRedisStore();
+    const sentTokens: string[] = [];
+    setPushProviders([{
+      platform: "android",
+      async send(token: string): Promise<PushResult> {
+        sentTokens.push(token);
+        return { ok: true };
+      },
+    }]);
+
+    try {
+      const passwordHash = await argon2.hash(PASSWORD);
+      let p1SessionVersion = 0;
+      let p1MfaEnabled = false;
+      let p1MfaSecret: string | null = null;
+      type PushRow = { id: string; parentId: string; token: string; platform: string; sessionVersion: number; createdAt: Date; lastSeenAt: Date };
+      const pushRows = new Map<string, PushRow>();
+
+      prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id?: string; email?: string } }) => {
+        if (where.email === registerBody.email || where.id === "parent-1") {
+          return {
+            id: "parent-1",
+            familyId: "fam-1",
+            email: registerBody.email,
+            displayName: "Demo Parent",
+            role: "owner",
+            permissions: [],
+            passwordHash,
+            mfaEnabled: p1MfaEnabled,
+            mfaSecret: p1MfaSecret,
+            sessionVersion: p1SessionVersion,
+          };
+        }
+        return null;
+      });
+      prismaMock.parent.findMany.mockImplementation(async () => [{ id: "parent-1", sessionVersion: p1SessionVersion }]);
+      prismaMock.digestPrefs.findUnique.mockResolvedValue(null);
+      prismaMock.parent.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        if (typeof data.mfaEnabled === "boolean") p1MfaEnabled = data.mfaEnabled;
+        if ("mfaSecret" in data) p1MfaSecret = (data.mfaSecret as string | null) ?? null;
+        if (data.sessionVersion !== undefined) p1SessionVersion += 1;
+        return { id: "parent-1", familyId: "fam-1", mfaEnabled: p1MfaEnabled, mfaSecret: p1MfaSecret, sessionVersion: p1SessionVersion };
+      });
+      prismaMock.parentMfaRecoveryCode.count.mockResolvedValue(0);
+      prismaMock.parentMfaRecoveryCode.deleteMany.mockResolvedValue({ count: 0 });
+      prismaMock.parentMfaRecoveryCode.createMany.mockResolvedValue({ count: 10 });
+      prismaMock.parentPushToken.upsert.mockImplementation(async ({ where, create, update }: {
+        where: { token: string };
+        create: { parentId: string; token: string; platform: string; sessionVersion: number };
+        update: { parentId: string; platform: string; sessionVersion: number; lastSeenAt: Date };
+      }) => {
+        const now = new Date("2026-11-27T06:00:00Z");
+        const row: PushRow = {
+          id: "pt-mfa-1",
+          parentId: create.parentId,
+          token: where.token,
+          platform: update.platform,
+          sessionVersion: create.sessionVersion,
+          createdAt: now,
+          lastSeenAt: now,
+        };
+        pushRows.set(where.token, row);
+        return row;
+      });
+      prismaMock.parentPushToken.findMany.mockImplementation(async () => [...pushRows.values()]);
+
+      const loginRes = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+      expect(loginRes.statusCode).toBe(200);
+      const token0 = loginRes.json().token as string;
+
+      expect((await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${token0}` },
+        payload: { token: "m".repeat(32), platform: "android" },
+      })).statusCode).toBe(201);
+      expect(pushRows.get("m".repeat(32))?.sessionVersion).toBe(0);
+
+      const enrollRes = await app.inject({
+        method: "POST",
+        url: "/v1/auth/mfa/enroll",
+        headers: { authorization: `Bearer ${token0}` },
+        payload: {},
+      });
+      expect(enrollRes.statusCode).toBe(200);
+      const totpSecret = enrollRes.json().secret as string;
+      const counterNow = Math.floor(Date.now() / 1000 / 30);
+
+      // Pre-commit failure path: if the MFA + recovery-hash + `sessionVersion` transaction fails before commit,
+      // `/mfa/verify` returns 5xx, `sessionVersion` and `mfaEnabled` stay rolled back, and neither push cleanup
+      // nor refresh-index sweep runs.
+      const redis = getRedis() as unknown as MockRedis;
+      const refresh0 = loginRes.json().refreshToken as string;
+      prismaMock.parent.update.mockClear();
+      prismaMock.parentPushToken.deleteMany.mockClear();
+      redis.publish.mockClear();
+      prismaMock.parentMfaRecoveryCode.createMany.mockRejectedValueOnce(new Error("db recovery insert failed"));
+      const preCommitFail = await app.inject({
+        method: "POST",
+        url: "/v1/auth/mfa/verify",
+        headers: { authorization: `Bearer ${token0}` },
+        payload: { code: totpAtCounter(totpSecret, counterNow - 1) },
+      });
+      expect(preCommitFail.statusCode).toBe(500);
+      // Roll back the staged `parent.update` from the mocked failure so durable state reflects transaction rollback:
+      p1MfaEnabled = false;
+      p1SessionVersion = 0;
+      expect(prismaMock.parentPushToken.deleteMany).not.toHaveBeenCalled();
+      expect(redis.publish).not.toHaveBeenCalled();
+      // Pre-MFA refresh token was NOT swept because no durable cutoff committed:
+      const preCommitRefreshCheck = await app.inject({
+        method: "POST",
+        url: "/v1/auth/token/refresh",
+        payload: { refreshToken: refresh0 },
+      });
+      expect(preCommitRefreshCheck.statusCode).toBe(200);
+      const token0Rotated = preCommitRefreshCheck.json().token as string;
+
+      // Post-commit failure path: once the MFA + recovery-hash + `sessionVersion` transaction commits, even if
+      // both `parentPushToken.deleteMany` AND Redis reconciliation (`incrby`) fail, `/mfa/verify` returns 200 + all 10 codes,
+      // drops the stale cache marker via `DEL`, and fences pre-MFA push rows.
+      const totpCode = totpAtCounter(totpSecret, counterNow);
+      prismaMock.parentPushToken.deleteMany.mockRejectedValueOnce(new Error("transient push cleanup failure"));
+      redis.incrby.mockRejectedValueOnce(new Error("OOM command not allowed"));
+      const verifyRes = await app.inject({
+        method: "POST",
+        url: "/v1/auth/mfa/verify",
+        headers: { authorization: `Bearer ${token0Rotated}` },
+        payload: { code: totpCode },
+      });
+      expect(verifyRes.statusCode).toBe(200);
+      expect(verifyRes.json().mfaEnabled).toBe(true);
+      expect(verifyRes.json().recoveryCodes).toHaveLength(10);
+      expect(p1SessionVersion).toBe(1);
+      expect(await getRedis().get("auth:session-version:parent-1")).toBeNull();
+      // The row is still in `pushRows` because `deleteMany` failed once...
+      expect(pushRows.size).toBe(1);
+
+      // Conditional cleanup in `notifyParentsOfAlert`: if a new `sv=1` registration updates `pt-mfa-1` in place
+      // right before `deleteMany` executes, `sessionVersion: { lt: 1 }` preserves the upgraded row!
+      prismaMock.parentPushToken.deleteMany.mockImplementationOnce(async ({ where }: {
+        where: { OR?: Array<{ id: string; parentId: string; sessionVersion: { lt: number } }> };
+      }) => {
+        expect(where.OR).toEqual([{ id: "pt-mfa-1", parentId: "parent-1", sessionVersion: { lt: 1 } }]);
+        // Simulate concurrent in-place `upsert` upgrading `pt-mfa-1` to `sessionVersion = 1` before `deleteMany` lands:
+        const current = pushRows.get("m".repeat(32))!;
+        pushRows.set("m".repeat(32), { ...current, sessionVersion: 1 });
+        let removed = 0;
+        for (const [tok, row] of [...pushRows.entries()]) {
+          const matched = (where.OR ?? []).some(
+            (clause) => row.id === clause.id && row.parentId === clause.parentId && row.sessionVersion < clause.sessionVersion.lt,
+          );
+          if (matched) {
+            pushRows.delete(tok);
+            removed += 1;
+          }
+        }
+        return { count: removed };
+      });
+      const alertRow = { id: "alert-mfa", childId: "child-1", severity: "critical", category: "sos", title: "SOS", body: "Help" };
+      const outcome = await notifyParentsOfAlert("fam-1", alertRow, "Alex");
+      expect(outcome).toEqual({ recipients: 0, delivered: 0, pruned: 0, skipped: "no_tokens" });
+      expect(sentTokens).toEqual([]);
+      // Upgraded `sessionVersion=1` row survived the stale snapshot's conditional cleanup and delivers on the next alert!
+      expect(pushRows.get("m".repeat(32))?.sessionVersion).toBe(1);
+      // Any row belonging to a parent missing from the eligible snapshot (e.g. ineligible guardian) is excluded, never defaulted to version 0:
+      pushRows.set("g".repeat(32), {
+        id: "pt-ineligible-guardian",
+        parentId: "guardian-no-alerts",
+        token: "g".repeat(32),
+        platform: "android",
+        sessionVersion: 0,
+        createdAt: new Date("2026-11-27T06:00:00Z"),
+        lastSeenAt: new Date("2026-11-27T06:00:00Z"),
+      });
+      const nextOutcome = await notifyParentsOfAlert("fam-1", alertRow, "Alex");
+      expect(nextOutcome).toEqual({ recipients: 1, delivered: 1, pruned: 0, skipped: null });
+      expect(sentTokens).toEqual(["m".repeat(32)]);
+    } finally {
+      setPushProviders([]);
+      await app.close();
+    }
+  });
+
+  it("preserves current-generation sign-in and refresh across retireRefreshIndex cleanup and rejects sv-less push registrations", async () => {
+    // Mutant A: sweep `refresh:index:<parentId>` unconditionally without checking `rec.sv < cutoffVersion` ->
+    // a current-generation login created after the `Parent.sessionVersion` bump loses its refresh token (`401`).
+    // Mutant B: admit `sv`-less JWT claims on `POST /v1/me/push-token` via Redis-only timestamp fallback ->
+    // a claim without durable `sv` stamps a row at `durableVersion`.
+    const app = await buildApp(async (a) => {
+      await a.register(authRoutes, { prefix: "/v1/auth" });
+      await a.register(meRoutes, { prefix: "/v1/me" });
+    });
+    wireRedisStore();
+    const redis = getRedis() as unknown as MockRedis;
+
+    try {
+      const passwordHash = await argon2.hash(PASSWORD);
+      let p1SessionVersion = 0;
+      const upserts: unknown[] = [];
+
+      prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id?: string; email?: string } }) => {
+        if (where.email === registerBody.email || where.id === "parent-1") {
+          return {
+            id: "parent-1",
+            familyId: "fam-1",
+            email: registerBody.email,
+            displayName: "Demo Parent",
+            role: "owner",
+            permissions: [],
+            passwordHash,
+            mfaEnabled: false,
+            mfaSecret: null,
+            sessionVersion: p1SessionVersion,
+          };
+        }
+        return null;
+      });
+      prismaMock.parent.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        if (data.sessionVersion !== undefined) p1SessionVersion += 1;
+        return { id: "parent-1", familyId: "fam-1", sessionVersion: p1SessionVersion };
+      });
+      prismaMock.parentPushToken.upsert.mockImplementation(async (args: unknown) => {
+        upserts.push(args);
+        return { id: "pt-1", platform: "android", createdAt: new Date("2026-11-27T06:00:00Z") };
+      });
+
+      // 1. Legacy `sv`-less claim is accepted ONLY while `Parent.sessionVersion === 0` (stamping `sessionVersion: 0`),
+      // and is durably refused once `Parent.sessionVersion > 0` even if Redis `invalid-before` is absent!
+      const legacyNoSv = app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", jti: "legacy-jti" }, { expiresIn: "7d" });
+      const legacyAtZero = await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${legacyNoSv}` },
+        payload: { token: "z".repeat(32), platform: "android" },
+      });
+      expect(legacyAtZero.statusCode).toBe(201);
+      expect(upserts).toHaveLength(1);
+
+      // 2. Old session signs in (`sv=0`), then `logout-all` bumps `sessionVersion` to 1. Before `retireRefreshIndex`
+      // reads `smembers("refresh:index:parent-1")`, a fresh current-generation `POST /v1/auth/login` (`sv=1`) completes!
+      const loginOld = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+      expect(loginOld.statusCode).toBe(200);
+      const tokenOld = loginOld.json().token as string;
+      const refreshOld = loginOld.json().refreshToken as string;
+
+      const baseSmembers = redis.smembers.getMockImplementation()!;
+      let freshRefreshDuringSweep = "";
+      let interceptOnce = true;
+      redis.smembers.mockImplementation(async (key: string) => {
+        if (interceptOnce && key === "refresh:index:parent-1") {
+          interceptOnce = false;
+          const loginFresh = await app.inject({
+            method: "POST",
+            url: "/v1/auth/login",
+            payload: { email: registerBody.email, password: PASSWORD },
+          });
+          expect(loginFresh.statusCode).toBe(200);
+          freshRefreshDuringSweep = loginFresh.json().refreshToken as string;
+        }
+        return baseSmembers(key);
+      });
+
+      const logoutRes = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${tokenOld}` },
+      });
+      expect(logoutRes.statusCode).toBe(200);
+      expect(freshRefreshDuringSweep).toBeTruthy();
+
+      // Clear Redis `invalid-before` to simulate eviction: with `p1SessionVersion === 1`, the `sv`-less claim is
+      // durably refused at registration without touching `upsert` (never stamped with `durableVersion = 1`)!
+      await redis.del("auth:invalid-before:parent-1");
+      upserts.length = 0;
+      const legacyAfterBump = await app.inject({
+        method: "POST",
+        url: "/v1/me/push-token",
+        headers: { authorization: `Bearer ${legacyNoSv}` },
+        payload: { token: "l".repeat(32), platform: "android" },
+      });
+      expect(legacyAfterBump.statusCode).toBe(401);
+      expect(legacyAfterBump.json()).toEqual({ error: "session_revoked" });
+      expect(upserts).toHaveLength(0);
+
+      // Old `sv=0` refresh token was retired by the sweep (`refresh_token_reused`), while the fresh `sv=1`
+      // refresh token survived the sweep and rotates cleanly (`200`)!
+      const oldRefreshAttempt = await app.inject({
+        method: "POST",
+        url: "/v1/auth/token/refresh",
+        payload: { refreshToken: refreshOld },
+      });
+      expect(oldRefreshAttempt.statusCode).toBe(401);
+
+      const freshRefreshAttempt = await app.inject({
+        method: "POST",
+        url: "/v1/auth/token/refresh",
+        payload: { refreshToken: freshRefreshDuringSweep },
+      });
+      expect(freshRefreshAttempt.statusCode).toBe(200);
+      expect(freshRefreshAttempt.json().token).toBeTruthy();
+      expect(freshRefreshAttempt.json().refreshToken).toBeTruthy();
+    } finally {
+      await app.close();
+    }
   });
 });

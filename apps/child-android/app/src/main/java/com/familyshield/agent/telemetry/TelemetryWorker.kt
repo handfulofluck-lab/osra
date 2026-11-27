@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.familyshield.agent.di.WorkerEntryPoint
+import com.familyshield.agent.recovery.ServiceRecovery
 import dagger.hilt.android.EntryPointAccessors
 
 /** Every-15-min job: aggregates usage events and uploads the telemetry delta. */
@@ -15,6 +16,10 @@ class TelemetryWorker(
     /** Aggregates + uploads; retries on network failure. */
     override suspend fun doWork(): Result {
         return try {
+            // Issue #1085: WorkManager is the one thing that still starts us after the OS killed the process,
+            // so this tick is where the tunnel, the location service and the lock get re-established.
+            // Cheap when everything is already up: a few in-process reads and an empty plan.
+            ServiceRecovery.run(applicationContext)
             val entryPoint = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
             entryPoint.usageReporter().aggregateAndUpload()
             // Roadmap 3.4: piggyback on the same tick; the reporter uploads only when the list changed.

@@ -31,43 +31,55 @@ void main() {
     int? others,
     List<String> kinds = const [],
     bool withSetup = true,
+    DateTime? setupCompletedAt,
+    bool includeSetupCompletedAt = true,
+    String platform = 'android',
   }) =>
       Device.fromJson({
         'id': 'dev-1',
         'childId': 'child-1',
-        'platform': 'android',
+        'platform': platform,
         'model': 'Pixel 7a',
         'osVersion': '15',
         'status': 'online',
         'batteryPct': 80,
+        if (includeSetupCompletedAt)
+          'setupCompletedAt': setupCompletedAt?.toIso8601String(),
         if (withSetup)
           'setup': {
             'reportedAt': '2026-11-10T09:15:00.000Z',
             'stale': stale,
             'features': features ?? <String, String>{},
             'missing': missing,
-            'profiles': others == null ? null : {'others': others, 'kinds': kinds},
+            'profiles':
+                others == null ? null : {'others': others, 'kinds': kinds},
           },
       });
 
-  Future<void> pump(WidgetTester tester, Device d, {Locale locale = const Locale('en')}) async {
+  Future<void> pump(WidgetTester tester, Device d,
+      {Locale locale = const Locale('en')}) async {
     await tester.pumpWidget(MaterialApp(
       locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(body: SingleChildScrollView(child: PhoneSetupSection(device: d))),
+      home: Scaffold(
+          body: SingleChildScrollView(child: PhoneSetupSection(device: d))),
     ));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a phone that never reported says so, and shows no failures', (tester) async {
+  testWidgets('a phone that never reported says so, and shows no failures',
+      (tester) async {
     await pump(tester, device(withSetup: false));
-    expect(find.text('This phone has not reported what it can do yet.'), findsOneWidget);
+    expect(find.text('This phone has not reported what it can do yet.'),
+        findsOneWidget);
     expect(find.byKey(const ValueKey('phoneSetupSection')), findsNothing);
     expect(find.text('Ready'), findsNothing);
   });
 
-  testWidgets('the four states read as the product says, and an absent key renders nothing', (tester) async {
+  testWidgets(
+      'the four states read as the product says, and an absent key renders nothing',
+      (tester) async {
     await pump(
       tester,
       device(features: {
@@ -81,29 +93,62 @@ void main() {
     expect(find.text('Web filter · Limited'), findsOneWidget);
     expect(find.text('Pause internet · Not available'), findsOneWidget);
     // The server's word, not a fault of the phone: the Play artefact cannot do it at all.
-    expect(find.text('Notification scan · Not in this version'), findsOneWidget);
+    expect(
+        find.text('Notification scan · Not in this version'), findsOneWidget);
     // `call_sms_log` was never reported: no chip, and certainly not "Not available".
     expect(find.textContaining('Calls and texts'), findsNothing);
   });
 
-  testWidgets('the fix list names the grants a parent can act on', (tester) async {
+  testWidgets('the fix list names the grants a parent can act on',
+      (tester) async {
     await pump(
       tester,
       device(missing: ['accessibility', 'location']),
     );
-    expect(find.text('What to fix on the phone'), findsOneWidget);
+    expect(find.text('Setting up this phone: 2 steps left'), findsOneWidget);
+    expect(find.text('What to fix on the phone'), findsNothing);
     expect(find.text('• Accessibility service'), findsOneWidget);
     expect(find.text('• Location (allow all the time)'), findsOneWidget);
-    expect(find.text('Every permission this phone needs is in place.'), findsNothing);
+    expect(find.text('Every permission this phone needs is in place.'),
+        findsNothing);
   });
 
-  testWidgets('nothing missing is said plainly, not left blank', (tester) async {
+  testWidgets(
+      'an incomplete setup names its remaining step count and keeps the grant labels',
+      (tester) async {
+    await pump(tester, device(missing: ['accessibility', 'location']));
+    expect(find.text('Setting up this phone: 2 steps left'), findsOneWidget);
+    expect(find.text('What to fix on the phone'), findsNothing);
+    expect(find.text('• Accessibility service'), findsOneWidget);
+    expect(find.text('• Location (allow all the time)'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a completed setup is protected, while a later missing grant still needs repair',
+      (tester) async {
+    final completed = DateTime.parse('2026-11-26T01:00:00.000Z');
+    await pump(tester, device(setupCompletedAt: completed));
+    expect(find.text('This phone is protected.'), findsOneWidget);
+    expect(find.text('Every permission this phone needs is in place.'),
+        findsNothing);
+
+    await pump(
+        tester, device(setupCompletedAt: completed, missing: ['overlay']));
+    expect(find.text('What to fix on the phone'), findsOneWidget);
+    expect(find.textContaining('steps left'), findsNothing);
+    expect(find.text('• Display over other apps'), findsOneWidget);
+  });
+
+  testWidgets('nothing missing is said plainly, not left blank',
+      (tester) async {
     await pump(tester, device(features: {'lock_screen': 'ready'}));
-    expect(find.text('Every permission this phone needs is in place.'), findsOneWidget);
+    expect(find.text('Every permission this phone needs is in place.'),
+        findsOneWidget);
     expect(find.text('What to fix on the phone'), findsNothing);
   });
 
-  testWidgets('a second space is named, and zero spaces says nothing at all', (tester) async {
+  testWidgets('a second space is named, and zero spaces says nothing at all',
+      (tester) async {
     await pump(tester, device(others: 1, kinds: ['clone']));
     expect(find.textContaining('cloned apps'), findsOneWidget);
 
@@ -117,7 +162,9 @@ void main() {
     expect(find.textContaining('may not have caught up'), findsOneWidget);
   });
 
-  testWidgets('the Arabic copy renders, so the block is not English-only on an Arabic phone', (tester) async {
+  testWidgets(
+      'the Arabic copy renders, so the block is not English-only on an Arabic phone',
+      (tester) async {
     await pump(
       tester,
       device(features: {'lock_screen': 'ready'}, missing: ['accessibility']),
@@ -128,31 +175,97 @@ void main() {
     expect(find.text('• خدمة إمكانية الوصول'), findsOneWidget);
   });
 
-  testWidgets('all thirteen grant keys get a human label, and the list matches the shared vocabulary', (tester) async {
+  testWidgets('Arabic setup counts use the right plural forms', (tester) async {
+    final cases = <int, List<String>>{
+      1: ['accessibility'],
+      2: ['accessibility', 'location'],
+      3: ['accessibility', 'location', 'overlay'],
+      11: [
+        'accessibility',
+        'location',
+        'overlay',
+        'battery',
+        'usb_debugging',
+        'notification_listener',
+        'web_filter',
+        'private_dns',
+        'device_admin',
+        'usage_access',
+        'family_controls'
+      ],
+    };
+    final expected = <int, String>{
+      1: 'إعداد هذا الهاتف: تبقى خطوة واحدة',
+      2: 'إعداد هذا الهاتف: تبقى خطوتان',
+      3: 'إعداد هذا الهاتف: تبقى 3 خطوات',
+      11: 'إعداد هذا الهاتف: تبقى 11 خطوة',
+    };
+    for (final entry in cases.entries) {
+      await pump(tester, device(missing: entry.value),
+          locale: const Locale('ar'));
+      expect(find.text(expected[entry.key]!), findsOneWidget,
+          reason: 'Arabic count ${entry.key}');
+    }
+  });
+
+  testWidgets(
+      'all thirteen grant keys get a human label, and the list matches the shared vocabulary',
+      (tester) async {
     // #552 review, point 1: three keys (full_screen_intent, family_controls, background_refresh) reached the
     // screen as raw wire names. Looping the whole vocabulary is what makes a *future* grant fail here instead.
     final source = _readShared('packages/shared-types/src/capabilities.ts');
-    final block = RegExp(r'export const GRANT_KEYS = \[([^\]]*)\]', dotAll: true).firstMatch(source)!.group(1)!;
-    final shared = RegExp("\"([a-z_]+)\"").allMatches(block).map((m) => m.group(1)!).toList();
-    expect(shared.length, 13, reason: 'the vocabulary grew or shrank; update the widget and this row together');
+    final block =
+        RegExp(r'export const GRANT_KEYS = \[([^\]]*)\]', dotAll: true)
+            .firstMatch(source)!
+            .group(1)!;
+    final shared = RegExp("\"([a-z_]+)\"")
+        .allMatches(block)
+        .map((m) => m.group(1)!)
+        .toList();
+    expect(shared.length, 13,
+        reason:
+            'the vocabulary grew or shrank; update the widget and this row together');
     expect(PhoneSetupSection.grantKeys, shared,
-        reason: 'the widget must carry the same order and the same keys as the server');
+        reason:
+            'the widget must carry the same order and the same keys as the server');
 
     await pump(tester, device(missing: PhoneSetupSection.grantKeys));
     for (final key in PhoneSetupSection.grantKeys) {
-      expect(find.text('• $key'), findsNothing, reason: '$key has no human label');
+      expect(find.text('• $key'), findsNothing,
+          reason: '$key has no human label');
     }
     // And each one is present as *something* meant for a parent, not silently dropped.
     expect(find.textContaining('• '), findsNWidgets(13));
   });
 
-  testWidgets('another space with no named kind still says there is one', (tester) async {
+  testWidgets('another space with no named kind still says there is one',
+      (tester) async {
     // #552 review, point 2: `others: 1` with empty or unknown kinds showed nothing at all.
     await pump(tester, device(others: 1, kinds: const []));
     expect(find.textContaining('another space'), findsOneWidget);
 
-    await pump(tester, device(others: 2, kinds: const ['a_kind_from_the_future']));
+    await pump(
+        tester, device(others: 2, kinds: const ['a_kind_from_the_future']));
     expect(find.textContaining('another space'), findsOneWidget);
   });
 
+  testWidgets(
+      'a reported iOS device keeps repair copy instead of first-setup counts',
+      (tester) async {
+    await pump(tester, device(platform: 'ios', missing: ['family_controls']));
+    expect(find.text('What to fix on the phone'), findsOneWidget);
+    expect(find.textContaining('steps left'), findsNothing);
+  });
+
+  testWidgets(
+      'a legacy Android response without the completion field keeps repair copy',
+      (tester) async {
+    await pump(
+        tester,
+        device(
+            includeSetupCompletedAt: false,
+            missing: ['accessibility', 'location']));
+    expect(find.text('What to fix on the phone'), findsOneWidget);
+    expect(find.textContaining('steps left'), findsNothing);
+  });
 }

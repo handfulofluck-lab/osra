@@ -22,15 +22,16 @@ class LockScreenPolicyTest {
 
     private val intentModes = listOf("locked", "unlock", "dismiss")
 
-    /** The 4 stored × 3 intent table the reviewer asked for, row by row. */
+    /** The 4 stored × 3 intent table (retired paused_internet behaves like none after #1240 B2). */
     @Test
     fun `the full stored-mode by intent-mode table`() {
         for (stored in storedModes) {
             for (intent in intentModes) {
+                val activeLock = stored == "locked" || stored == "paused"
                 val expected = when {
-                    stored == LockState.MODE_NONE && intent == "unlock" -> LockScreenPolicy.Decision.DismissKeyguard
-                    stored == LockState.MODE_NONE -> LockScreenPolicy.Decision.Finish
-                    else -> LockScreenPolicy.Decision.Show(stored)
+                    activeLock -> LockScreenPolicy.Decision.Show(stored)
+                    intent == "unlock" -> LockScreenPolicy.Decision.DismissKeyguard
+                    else -> LockScreenPolicy.Decision.Finish
                 }
 
                 assertEquals(
@@ -60,7 +61,7 @@ class LockScreenPolicyTest {
     }
 
     @Test
-    fun `a stored pause draws paused whatever the intent says`() {
+    fun `a stored pause draws paused whatever the intent says, while retired paused_internet finishes`() {
         for (intent in intentModes) {
             assertEquals(
                 "intent=$intent",
@@ -69,7 +70,15 @@ class LockScreenPolicyTest {
             )
         }
         assertEquals(
-            LockScreenPolicy.Decision.Show("paused_internet"),
+            LockScreenPolicy.Decision.Finish,
+            LockScreenPolicy.resolve("paused_internet", "locked"),
+        )
+        assertEquals(
+            LockScreenPolicy.Decision.Finish,
+            LockScreenPolicy.resolve("paused_internet", "dismiss"),
+        )
+        assertEquals(
+            LockScreenPolicy.Decision.DismissKeyguard,
             LockScreenPolicy.resolve("paused_internet", "unlock"),
         )
     }
