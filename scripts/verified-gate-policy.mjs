@@ -11,8 +11,8 @@
  *     convention before 13 Nov) or is one of the five LEGACY_UNPREFIXED branches open on 14 Nov; otherwise the gate fails closed (Fable's note on #788: an `antigravity-fix/` or
  *     `gemini/` branch must not pass as Kimi's). Kimi-authored non-merge commits (commit email) add Kimi as a
  *     co-author whatever the prefix.
- *   - Model families: anthropic = Claude, Fable, Ahmed (his tool is Claude Code); moonshot = Kimi Code, Kimi-Mac;
- *     deepseek = K31, K31-Mac (maintainer ruling 2026-11-26 22:50 UAE, #617); google-carbon = Antigravity (Gemini 4 Carbon); google-hydrogen = Hydrogen (Gemini 4
+ *   - Model families: anthropic = Claude, Fable, Ahmed (his tool is Claude Code); moonshot = Kimi Code;
+ *     deepseek = K31, K31-Mac, Kimi-Mac (Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE); google-carbon = Antigravity (Gemini 4 Carbon); google-hydrogen = Hydrogen (Gemini 4
  *     Hydrogen). The maintainer ruled 2026-11-14 17:58Z that Carbon and Hydrogen are different models, so they may
  *     sign each other's work (allowed, not preferred: Team collaboration sync picks another family first).
  *     Neon is a Gemini contributor and shares a review family with each of them (board #50, 7043472688
@@ -48,11 +48,12 @@ export const FAMILY = {
   Claude: 'anthropic',
   Fable: 'anthropic',
   Ahmed: 'anthropic',
-  // Maintainer ruling (2026-11-26 22:50 UAE, #617): Kimi Code & Kimi-Mac = moonshot; K31 & K31-Mac = deepseek.
+  // Maintainer rulings: moonshot = Kimi Code; deepseek = K31, K31-Mac, Kimi-Mac
+  // (Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE).
   'Kimi Code': 'moonshot',
-  'Kimi-Mac': 'moonshot',
   K31: 'deepseek',
   'K31-Mac': 'deepseek',
+  'Kimi-Mac': 'deepseek',
   // Two Google models, two families (maintainer 2026-11-14 17:58Z): cross-signing allowed, not preferred.
   Antigravity: 'google-carbon',
   Hydrogen: 'google-hydrogen',
@@ -401,11 +402,13 @@ function selftest() {
     ['neon/ R3 signed by Hydrogen and Ahmed (no separate cross-family verifier)', { headRef: 'neon/x', files: ['infra/terraform/main.tf'], signatures: v('Hydrogen', 'Ahmed') }, false],
     ['Neon is not a security key: K31 R3 Codex + Neon', { headRef: 'k31/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Neon') }, false],
     ['near-miss prefix neon-fix/ is unknown', { headRef: 'neon-fix/x', files: ['a/b.ts'], signatures: v('Codex') }, false],
-    // Kimi-Mac seat (maintainer 2026-11-26, #617): same Moonshot family as Kimi Code, ordinary signer (not a security key).
+    // Kimi-Mac seat (maintainer 2026-11-26, #617; Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE): same DeepSeek family as K31/K31-Mac, ordinary signer (not a security key).
     ['Kimi-Mac signs a Neon PR (cross-family)', { headRef: 'neon/x', files: ['a/b.ts'], signatures: v('Kimi-Mac') }, true],
-    ['Kimi-Mac signs a kimi/ PR (same family, moonshot)', { headRef: 'kimi/x', files: ['a/b.ts'], signatures: v('Kimi-Mac') }, false],
-    ['Kimi signs a kimimac/ PR (same family, moonshot)', { headRef: 'kimimac/x', files: ['a/b.ts'], signatures: v('Kimi Code') }, false],
-    ['K31 signs a kimimac/ PR (cross-family, deepseek vs moonshot)', { headRef: 'kimimac/x', files: ['a/b.ts'], signatures: v('K31') }, true],
+    ['Kimi-Mac signs a kimi/ PR (cross-family, deepseek vs moonshot)', { headRef: 'kimi/x', files: ['a/b.ts'], signatures: v('Kimi-Mac') }, true],
+    ['Kimi signs a kimimac/ PR (cross-family, moonshot vs deepseek)', { headRef: 'kimimac/x', files: ['a/b.ts'], signatures: v('Kimi Code') }, true],
+    ['K31 signs a kimimac/ PR (same family, deepseek)', { headRef: 'kimimac/x', files: ['a/b.ts'], signatures: v('K31') }, false],
+    ['K31-Mac signs a kimimac/ PR (same family, deepseek)', { headRef: 'kimimac/x', files: ['a/b.ts'], signatures: v('K31-Mac') }, false],
+    ['Kimi-Mac signs a k31/ PR (same family, deepseek)', { headRef: 'k31/x', files: ['a/b.ts'], signatures: v('Kimi-Mac') }, false],
     ['kimimac/ prefix recognized as Kimi-Mac: cannot self-sign', { headRef: 'kimimac/x', files: ['a/b.ts'], signatures: v('Kimi-Mac') }, false],
     ['kimi-mac/ prefix recognized as Kimi-Mac: cannot self-sign', { headRef: 'kimi-mac/x', files: ['a/b.ts'], signatures: v('Kimi-Mac') }, false],
     ['Kimi-Mac is not a security key: K31 R3 Codex + Kimi-Mac', { headRef: 'k31/x', files: ['infra/terraform/main.tf'], signatures: v('Codex', 'Kimi-Mac') }, false],

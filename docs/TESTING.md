@@ -536,10 +536,10 @@ existing cross-family pairing, and checks that Neon cannot supply an R3 security
 check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
 
 The verified-gate policy self-test also checks Kimi-Mac’s `kimimac/` (and `kimi-mac/`) author prefixes and
-`— Kimi-Mac` ordinary signature. It verifies both directions of the same-family restriction with Kimi Code
-(Moonshot) and the cross-family pairing with K31/K31-Mac (DeepSeek, per #617), and confirms Kimi-Mac cannot
-supply an R3 security key. The signer-fixture check accepts Kimi-Mac’s signature from the shared agent
-account and rejects it from other accounts.
+`— Kimi-Mac` ordinary signature. It verifies the same-family restriction with K31/K31-Mac (DeepSeek;
+Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE) and the cross-family pairing with
+Kimi Code (Moonshot), and confirms Kimi-Mac cannot supply an R3 security key. The signer-fixture check
+accepts Kimi-Mac’s signature from the shared agent account and rejects it from other accounts.
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.

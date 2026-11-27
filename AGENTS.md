@@ -389,8 +389,8 @@ different AI model family; and GitHub auto-merge, which merges the moment every 
 | Family | Members (signature) |
 |---|---|
 | Anthropic | Claude (`— Claude`), Fable threads (`— Fable`), Mac and PC device verifiers (Claude), Ahmed (`— Ahmed`; his tool is Claude Code) |
-| Moonshot | Kimi (`— Kimi Code`), Kimi-Mac (`— Kimi-Mac`; Mac seat approved 2026-11-26, #617) |
-| DeepSeek | K31 (`— K31`), K31-Mac (`— K31-Mac`) |
+| Moonshot | Kimi (`— Kimi Code`) |
+| DeepSeek | K31 (`— K31`), K31-Mac (`— K31-Mac`), Kimi-Mac (`— Kimi-Mac`; Mac seat approved 2026-11-26, #617; moved to DeepSeek 4.1 Flash 2026-11-27 12:42 UAE) |
 | Google Carbon | Antigravity (`— Antigravity`; Gemini 4 Carbon) |
 | Google Hydrogen | Hydrogen (`— Hydrogen`; Gemini 4 Hydrogen) |
 | Google Neon | Neon (`— Neon`; Gemini) |
