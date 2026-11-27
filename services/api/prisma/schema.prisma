@@ -222,6 +222,8 @@ model ParentPushToken {
   token      String   @unique
   platform   String
   appVersion String?
+  /// Parent `sessionVersion` at registration time; delivery skips rows below `Parent.sessionVersion`.
+  sessionVersion Int  @default(0)
   /// ADR-0034 A3: the build a parent's own requests report. A parent's header must never land on the
   /// child's Device row, so it goes here, on the row that belongs to that parent's install.
   clientApp     String?
@@ -625,7 +627,18 @@ model Alert {
   heldDuringSetup Boolean @default(false)
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])
+  timeRequestResolution TimeRequestResolution?
   @@index([childId, createdAt])
+}
+
+/// G4: an alert-keyed decision written with the bonus grant and alert acknowledgement.
+model TimeRequestResolution {
+  alertId    String   @id
+  action     String
+  minutes    Int?
+  actorName  String
+  resolvedAt DateTime @default(now()) @db.Timestamptz(3)
+  alert      Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
 }
 
 /// ADR-0043 D2 / #846 part A step 2: one append-only row per consent act by an account holder.

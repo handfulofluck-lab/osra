@@ -7,15 +7,16 @@ import '../../core/digits.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../widgets/field_question.dart';
+import '../children/add_child_p04_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'onboarding_messages.dart';
 
-/// Wizard step 2: add the child (name + birth year + the consent the API
-/// requires). If the account already has children, the step lists them and
-/// continues instead of asking for a duplicate.
+/// Wizard step 2: add the child with the consent the API requires. The legacy
+/// form uses name + birth year; P-04 uses the shared name + age form. Existing
+/// children are listed for pairing instead of asking for a duplicate.
 class SetupChildScreen extends ConsumerStatefulWidget {
   const SetupChildScreen({super.key});
 
@@ -172,9 +173,18 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
               message: l10n.onboardingNoNetwork,
               onRetry: () => ref.invalidate(familyProvider),
             ),
-            data: (overview) => overview.children.isEmpty
-                ? _buildForm(context, l10n)
-                : _buildExisting(context, l10n, overview.children),
+            data: (overview) {
+              if (overview.children.isNotEmpty) {
+                return _buildExisting(context, l10n, overview.children);
+              }
+              if (ref.watch(p04AddChildEnabledProvider)) {
+                return AddChildP04Form(
+                  jurisdiction: overview.family.region,
+                  onCreated: _continueWithExisting,
+                );
+              }
+              return _buildForm(context, l10n);
+            },
           ),
         ),
       ),

@@ -12,15 +12,10 @@ import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'fake_api_client.dart';
 import 'test_app.dart';
 
-/// Issue #475 follow-up, Claude's ruling on `alerts_screen`: the feed is family-wide and carries no line, but
-/// the **detail dialog** is scoped to one alert's child, so that is where a parent who opens an alert later
-/// learns whether their last change landed.
+/// #1128 supersedes the earlier #475 alert-dialog banner rule: an alert is not a rule change, so
+/// `RulesBehindBanner` must never appear inside an alert dialog, even when the child's phone is behind.
 ///
-/// This is the alerts screen's first widget test, and the third row is the one that matters: with two
-/// children where only one is behind, a banner keyed to the wrong child would still pass rows 1 and 2.
-///
-/// Mutants: remove the banner and rows 1 and 3 go red; key it to `children.first` instead of `alert.childId`
-/// and row 3 alone goes red.
+/// Mutant: re-adding `RulesBehindBanner` inside `AlertsScreen._showDetail` fails rows 1 and 3 below.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -86,7 +81,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the dialog of a child whose phone is behind shows the line', (tester) async {
+  testWidgets('the dialog of a child whose phone is behind never shows the rules-sync banner (#1128)', (tester) async {
     await pumpAlerts(
       tester,
       children: [child('child-1', rules: 7, applied: 5)],
@@ -96,8 +91,8 @@ void main() {
     await tester.tap(find.text('Meet was blocked'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
-    expect(find.textContaining("hasn't picked this change up yet"), findsOneWidget);
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
+    expect(find.textContaining("hasn't picked this change up yet"), findsNothing);
   });
 
   testWidgets('the dialog of a child whose phone is current shows nothing', (tester) async {
@@ -113,9 +108,7 @@ void main() {
     expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
   });
 
-  testWidgets('with two children, the line follows the alert\'s own child', (tester) async {
-    // Only Sam's phone is behind. Alex's alert must stay clean, or a banner keyed to the wrong child
-    // would be telling a parent the wrong phone is out of date.
+  testWidgets('with two children, neither alert dialog shows the rules-sync banner (#1128)', (tester) async {
     await pumpAlerts(
       tester,
       children: [
@@ -137,7 +130,7 @@ void main() {
 
     await tester.tap(find.text('Sam: Meet was blocked'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('rules-behind-banner')), findsOneWidget);
+    expect(find.byKey(const ValueKey('rules-behind-banner')), findsNothing);
   });
 
   testWidgets('Arabic alert detail and day headers use Western digits', (tester) async {

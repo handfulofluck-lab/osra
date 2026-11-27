@@ -18,6 +18,8 @@ Do not attach message text, contact names, credentials, or other private family 
 | 4 | **Each parent can receive an alert and stop a ring** | Deliver one test alert to every participating parent app, then issue Ring and Stop from that parent app. Record delivery and stop acknowledgements, and confirm no ring remains active. |
 | 5 | **Alarm levels in effect are known per language** | Record the active rule/model version, cut-offs, effective date, and language coverage. The evidence must describe the configuration actually serving the test, not only a configuration file in a branch. |
 | 6 | **The child is online, setup is complete, and Pause works** | Confirm the child reports Online with setup complete, then issue Pause and verify it takes effect on that device. Resume immediately after the check and record the restored state. |
+| 7 | **Notification access is ON and both closed-chat and open-chat WhatsApp captures alert** | On every child phone running the Full build, confirm OSRA's notification listener is enabled (read back `enabled_notification_listeners`), and verify that one incoming WhatsApp test message with the chat **closed** and one with the chat **open** each raise a parent alert (`osra-security#78`). Record non-sensitive event/alert IDs only. |
+| 8 | **Build receipt, lab signer, and upgrade-over-paired gate** | Before build links go out, verify each APK's `versionCode` is strictly higher than the installed build (Child Full `>= 90`, above cable build `89`; Parent `> 1406`), lab signer matches `2ecc2def…`, APK SHA-256 is recorded, and `testOnly=false` (plus `aps-environment` match for any iOS build). If an upgrade fails, keep the installed build and never uninstall. |
 
 ## Why this gate exists
 

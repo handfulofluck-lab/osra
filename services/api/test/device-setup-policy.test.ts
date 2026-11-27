@@ -13,9 +13,9 @@ const START = new Date("2026-11-26T01:00:00.000Z");
 const BEFORE_EXPIRY = new Date(START.getTime() + SETUP_WINDOW_MS - 1);
 const AT_EXPIRY = new Date(START.getTime() + SETUP_WINDOW_MS);
 
-function android(grants: Capabilities["grants"]): Capabilities {
+function android(grants: Capabilities["grants"], flavour: "full" | "play" = "full"): Capabilities {
   return {
-    client: { app: "child-android", version: "0.2.0", build: 42, flavour: "full" },
+    client: { app: "child-android", version: "0.2.0", build: 42, flavour },
     grants,
     features: {},
   };
@@ -30,6 +30,8 @@ const ALL_REQUIRED = {
   location: "granted",
   private_dns: "granted",
 } as const;
+// osra-security#82: the Full build also requires notification access; Play keeps the seven above.
+const FULL_REQUIRED = { ...ALL_REQUIRED, notification_listener: "granted" } as const;
 
 function device(overrides: Record<string, unknown> = {}) {
   return {
@@ -42,17 +44,24 @@ function device(overrides: Record<string, unknown> = {}) {
 }
 
 describe("server-owned setup policy (#1127)", () => {
-  it("requires all seven Android grants but not recommended grants", () => {
+  it("requires the eight Full grants (seven plus notification access) but not recommended grants", () => {
     expect(requiredMissingGrants(android({
-      ...ALL_REQUIRED,
+      ...FULL_REQUIRED,
       battery: "missing",
       usb_debugging: "missing",
-      notification_listener: "missing",
     }))).toEqual([]);
-    expect(requiredMissingGrants(android({ ...ALL_REQUIRED, overlay: "missing" }))).toEqual(["overlay"]);
-    expect(requiredMissingGrants(android({ ...ALL_REQUIRED, location: "not_applicable" }))).toEqual(["location"]);
-    const { web_filter: _omitted, ...withoutWebFilter } = ALL_REQUIRED;
+    expect(requiredMissingGrants(android({ ...FULL_REQUIRED, overlay: "missing" }))).toEqual(["overlay"]);
+    expect(requiredMissingGrants(android({ ...FULL_REQUIRED, location: "not_applicable" }))).toEqual(["location"]);
+    const { web_filter: _omitted, ...withoutWebFilter } = FULL_REQUIRED;
     expect(requiredMissingGrants(android(withoutWebFilter))).toEqual(["web_filter"]);
+  });
+
+  it("osra-security#82: Full waits for notification access, Play keeps its seven", () => {
+    expect(requiredMissingGrants(android({ ...ALL_REQUIRED, notification_listener: "missing" }))).toEqual(["notification_listener"]);
+    expect(requiredMissingGrants(android(ALL_REQUIRED))).toEqual(["notification_listener"]);
+    expect(requiredMissingGrants(android({ ...ALL_REQUIRED, notification_listener: "missing" }, "play"))).toEqual([]);
+    expect(requiredMissingGrants(android(ALL_REQUIRED, "play"))).toEqual([]);
+    expect(requiredMissingGrants(android({ ...ALL_REQUIRED, overlay: "missing" }, "play"))).toEqual(["overlay"]);
   });
 
   it("does not treat an unknown report or another platform as complete", () => {
@@ -117,8 +126,9 @@ describe("server-owned setup policy (#1127)", () => {
     expect(setupIncompleteDue(device({ setupCompletedAt: AT_EXPIRY }), AT_EXPIRY)).toBe(false);
     expect(setupIncompleteDue(device({ pairedAt: null }), AT_EXPIRY)).toBe(false);
     expect(completionDedupeKey("dev-1", START)).toBe(completionDedupeKey("dev-1", START));
-    expect(incompleteDedupeKey("dev-1", START)).toBe(incompleteDedupeKey("dev-1", START));
-    expect(completionDedupeKey("dev-1", START)).not.toBe(incompleteDedupeKey("dev-1", START));
+    expect(incompleteDedupeKey("dev-1")).toBe("setup_incomplete:dev-1");
+    expect(incompleteDedupeKey("dev-1")).not.toBe(incompleteDedupeKey("dev-2"));
+    expect(completionDedupeKey("dev-1", START)).not.toBe(incompleteDedupeKey("dev-1"));
     expect(completionDedupeKey("dev-1", START)).not.toBe(completionDedupeKey("dev-2", START));
   });
 });
