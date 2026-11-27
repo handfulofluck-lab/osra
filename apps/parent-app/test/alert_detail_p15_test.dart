@@ -154,6 +154,36 @@ void main() {
     expect(find.text('Not yet available on iPhone'), findsOneWidget);
   });
 
+  // U91 (#650): the preview's fallback is its own sentence. A network error
+  // legitimately says "no connection"; an unrecognised failure must not borrow
+  // the alerts-list string and tell the parent the wrong thing failed.
+  // Mutant: passing `l10n.alertsLoadFailed` as the fallback fails this test.
+  testWidgets('U91: an unrecognised preview failure falls back to the preview line, not the alerts list one',
+      (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(
+        familyMe: {
+          ...familyMeTwoChildren(),
+          'children': [
+            {'id': 'child-1', 'familyId': 'fam-1', 'displayName': 'Alex', 'birthYear': 2014},
+          ],
+          'devices': [
+            {'id': 'dev-1', 'childId': 'child-1', 'platform': 'android', 'model': 'Galaxy S23', 'status': 'online'},
+          ],
+        },
+      ),
+      'GET /v1/social/events': (_) => throw StateError('preview_unavailable'),
+    });
+    await tester.pumpWidget(_harness(api: api, p15Enabled: true));
+    await tester.pumpAndSettle();
+
+    final en = lookupAppLocalizations(const Locale('en'));
+    final card = find.byType(PreviewRetryCard);
+    expect(card, findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text(en.p15PreviewLoadFailed)), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text(en.alertsLoadFailed)), findsNothing);
+  });
+
   // Mutant: removing PreviewRetryCard branch in AlertDetailP15Body fails `PreviewRetryCard` & retry recovery.
   testWidgets('P-15 ON shows PreviewRetryCard on transient error and recovers on Retry (K31 note 3)',
       (tester) async {

@@ -293,7 +293,7 @@
   "alertCategoryInstallRequest": "طلب تثبيت تطبيق",
   "alertCategoryUnknownContact": "جهة غير معروفة",
   "tabScreenTime": "وقت الشاشة",
-  "tabWebFilter": "تصفية الويب",
+  "tabWebFilter": "تصفية المواقع",
   "tabRoutines": "الروتين",
   "dailyLimit": "الحد اليومي: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
   "weekendLimit": "الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
@@ -1067,7 +1067,7 @@
   "grantUsageAccess": "الوصول إلى بيانات الاستخدام",
   "grantOverlay": "العرض فوق التطبيقات الأخرى",
   "grantDeviceAdmin": "مسؤول الجهاز",
-  "grantWebFilter": "تصفية المواقع (موافقة VPN)",
+  "grantWebFilter": "تصفية المواقع",
   "grantLocation": "الموقع (السماح دائمًا)",
   "grantPrivateDns": "DNS الخاص",
   "grantBattery": "البطارية: بدون قيود",
@@ -1276,5 +1276,6 @@
   "privacyDeleteAction": "حذف…",
   "privacyLoadFailed": "تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
   "privacyLoadFailedServer": "تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.",
-  "privacyRetry": "إعادة المحاولة"
+  "privacyRetry": "إعادة المحاولة",
+  "p15PreviewLoadFailed": "تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى."
 }
