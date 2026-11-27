@@ -5,7 +5,7 @@ import { registerRawBodyParser, authenticateInternalRequest } from "../lib/inter
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
 import { raiseAlertOnce, type RaiseAlertInput } from "../lib/alerts.js";
 import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
-import { raisePhoneSetupNotice } from "../lib/deviceSetupTransitions.js";
+import { AWAIT_REPORT, raisePhoneSetupNotice } from "../lib/deviceSetupTransitions.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { resolveTimeRequest, timeDecisionSchema, timeRequestMinutes } from "../lib/timeRequests.js";
@@ -223,6 +223,9 @@ export async function alertsRoutes(app: FastifyInstance) {
       // with every required grant is a stale retry and writes nothing. Publish and push run after commit.
       const pairedAt = (setupNoticeDevice as unknown as SetupDevice).pairedAt;
       const outcome = await raisePhoneSetupNotice(setupNoticeDevice.id, pairedAt, { ...input, attemptCount: undefined });
+      // Codex (osra-security#82 7204850059 point 1): the report explaining this notice may not be stored yet. A non-2xx
+      // answer keeps the phone's notice queued (its worker retries), where a 200 drop would mark it posted.
+      if (outcome === AWAIT_REPORT) return reply.code(409).header("Retry-After", "30").send({ retry: "awaiting_report" });
       if (!outcome) return reply.code(200).send({ dropped: "setup_complete" });
       return reply.code(outcome.deduplicated ? 200 : 201).send({ alert: outcome.alert });
     }
