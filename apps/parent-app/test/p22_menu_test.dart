@@ -59,15 +59,28 @@ void main() {
         matching: find.text(label),
       );
 
-  /// Exactly the four links this menu shipped with, in the order the flag-off menu must keep them.
-  const shipped = ['Appearance', 'Digest preferences', 'Two-step verification', 'Delete account'];
+  /// Exactly the links this menu shipped with, in the order the flag-off menu must keep them. "Privacy and
+  /// data" arrived on main (#1188) while this branch was open; it has no row in P-22, so the switch keeps it.
+  const shipped = [
+    'Appearance',
+    'Digest preferences',
+    'Two-step verification',
+    'Privacy and data',
+    'Delete account',
+  ];
 
-  testWidgets('with the flag on the menu offers one Settings entry and none of the four', (tester) async {
+  /// The ones P-22 moves inside Settings; only these disappear when the switch is on.
+  const replaced = ['Appearance', 'Digest preferences', 'Two-step verification', 'Delete account'];
+
+  testWidgets('with the flag on the menu offers one Settings entry and none of the four it replaces',
+      (tester) async {
     await pump(tester, uxP22: true);
     await openMenu(tester);
 
     expect(inMenu('Settings'), findsOneWidget);
-    for (final label in shipped) {
+    expect(inMenu('Privacy and data'), findsOneWidget,
+        reason: 'flag on: "Privacy and data" has no row in P-22, so it must not disappear');
+    for (final label in replaced) {
       expect(inMenu(label), findsNothing, reason: 'flag on: "$label" is replaced by Settings');
     }
     await tester.tap(find.byKey(const ValueKey('dashboardMenu-settings')));
@@ -76,7 +89,7 @@ void main() {
         reason: 'flag on: the menu entry must actually reach /settings');
   });
 
-  testWidgets('with the flag off the four shipped links are unchanged', (tester) async {
+  testWidgets('with the flag off the shipped links are unchanged', (tester) async {
     await pump(tester, uxP22: false);
     await openMenu(tester);
 

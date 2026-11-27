@@ -2054,5 +2054,54 @@
   "p12BlockSiteTitle": "Block a site",
   "@p12BlockSiteTitle": {"description": "P-12: dialog title when adding a site to always block."},
   "p12AllowSiteTitle": "Allow a site",
-  "@p12AllowSiteTitle": {"description": "P-12: dialog title when adding a site to always allow, including from Allow site."}
+  "@p12AllowSiteTitle": {"description": "P-12: dialog title when adding a site to always allow, including from Allow site."},
+  "privacyMenu": "Privacy and data",
+  "privacyTitle": "Privacy and data",
+  "privacyKeptHeader": "Kept, then deleted automatically",
+  "privacyFullDetails": "Full details",
+  "privacyRowExcerpts": "Flagged message parts",
+  "privacyRowAlerts": "Alerts",
+  "privacyRowLocation": "Location history",
+  "privacyRowStoredIn": "Stored in",
+  "privacyStorageFrankfurt": "European Union (Frankfurt, Germany)",
+  "privacyStorageStockholm": "European Union (Stockholm, Sweden)",
+  "privacyStorageIreland": "European Union (Ireland)",
+  "privacyDays": "{count, plural, =1{1 day} other{{count} days}}",
+  "@privacyDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyMonths": "{count, plural, =1{1 month} other{{count} months}}",
+  "@privacyMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyWhoCanSee": "Who can see data",
+  "privacyWhoCanSeeDesc": "Adults in the family and what each can see",
+  "privacyManage": "Manage",
+  "privacyCopyTitle": "Get a copy of your family data",
+  "privacyCopyDesc": "Email us from the address you sign in with. We answer within one month.",
+  "privacyCopyAction": "Email",
+  "privacyConsentTitle": "Consent for each child",
+  "privacyConsentDesc": "Review or withdraw, child by child",
+  "privacyOpen": "Open",
+  "privacyChooseChild": "Choose a child",
+  "privacyNoChildren": "No children added yet.",
+  "privacyDeleteFamilyTitle": "Delete family account",
+  "privacyDeleteFamilyDesc": "Deletes the whole family, including the data of every child, at once. Asks for your password.",
+  "privacyDeleteSelfTitle": "Delete my account",
+  "privacyDeleteSelfDesc": "Deletes only your own account. The family carries on.",
+  "privacyDeleteAction": "Delete…",
+  "privacyLoadFailed": "Could not load what is kept. Check your connection and try again.",
+  "privacyLoadFailedServer": "Couldn't load this right now. Try again in a moment.",
+  "@privacyLoadFailedServer": {
+    "description": "P-23: the retention summary failed on the server side (not the parent's connection)."
+  },
+  "privacyRetry": "Try again"
 }

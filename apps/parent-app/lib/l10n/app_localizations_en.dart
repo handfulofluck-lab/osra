@@ -3894,4 +3894,122 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p12AllowSiteTitle => 'Allow a site';
+
+  @override
+  String get privacyMenu => 'Privacy and data';
+
+  @override
+  String get privacyTitle => 'Privacy and data';
+
+  @override
+  String get privacyKeptHeader => 'Kept, then deleted automatically';
+
+  @override
+  String get privacyFullDetails => 'Full details';
+
+  @override
+  String get privacyRowExcerpts => 'Flagged message parts';
+
+  @override
+  String get privacyRowAlerts => 'Alerts';
+
+  @override
+  String get privacyRowLocation => 'Location history';
+
+  @override
+  String get privacyRowStoredIn => 'Stored in';
+
+  @override
+  String get privacyStorageFrankfurt => 'European Union (Frankfurt, Germany)';
+
+  @override
+  String get privacyStorageStockholm => 'European Union (Stockholm, Sweden)';
+
+  @override
+  String get privacyStorageIreland => 'European Union (Ireland)';
+
+  @override
+  String privacyDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String privacyMonths(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count months',
+      one: '1 month',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get privacyWhoCanSee => 'Who can see data';
+
+  @override
+  String get privacyWhoCanSeeDesc =>
+      'Adults in the family and what each can see';
+
+  @override
+  String get privacyManage => 'Manage';
+
+  @override
+  String get privacyCopyTitle => 'Get a copy of your family data';
+
+  @override
+  String get privacyCopyDesc =>
+      'Email us from the address you sign in with. We answer within one month.';
+
+  @override
+  String get privacyCopyAction => 'Email';
+
+  @override
+  String get privacyConsentTitle => 'Consent for each child';
+
+  @override
+  String get privacyConsentDesc => 'Review or withdraw, child by child';
+
+  @override
+  String get privacyOpen => 'Open';
+
+  @override
+  String get privacyChooseChild => 'Choose a child';
+
+  @override
+  String get privacyNoChildren => 'No children added yet.';
+
+  @override
+  String get privacyDeleteFamilyTitle => 'Delete family account';
+
+  @override
+  String get privacyDeleteFamilyDesc =>
+      'Deletes the whole family, including the data of every child, at once. Asks for your password.';
+
+  @override
+  String get privacyDeleteSelfTitle => 'Delete my account';
+
+  @override
+  String get privacyDeleteSelfDesc =>
+      'Deletes only your own account. The family carries on.';
+
+  @override
+  String get privacyDeleteAction => 'Delete…';
+
+  @override
+  String get privacyLoadFailed =>
+      'Could not load what is kept. Check your connection and try again.';
+
+  @override
+  String get privacyLoadFailedServer =>
+      'Couldn\'t load this right now. Try again in a moment.';
+
+  @override
+  String get privacyRetry => 'Try again';
 }

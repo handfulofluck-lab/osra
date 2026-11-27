@@ -74,6 +74,7 @@ class DashboardScreen extends ConsumerWidget {
               'settings' => '/settings',
               'appearance' => '/settings/appearance',
               'mfa' => '/settings/mfa',
+              'privacy' => '/settings/privacy',
               'delete-account' => '/settings/delete-account',
               _ => '/settings/digests',
             }),
@@ -89,8 +90,13 @@ class DashboardScreen extends ConsumerWidget {
                 PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
                 PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
                 PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
-                PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
               ],
+              // P-22 replaces the links that now live inside Settings, and only those. "Privacy and data"
+              // arrived on main while this branch was open and has no row in P-22's approved list, so it
+              // stays reachable in both states rather than disappearing when the switch is on.
+              PopupMenuItem(value: 'privacy', child: Text(l10n.privacyMenu)),
+              if (!p22Settings)
+                PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
             ],
           ),
           IconButton(
