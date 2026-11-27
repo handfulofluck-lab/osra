@@ -3961,6 +3961,12 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get alertsOffBannerBody => 'التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.';
+
+  @override
+  String get alertsOffTurnOnAction => 'تفعيل التنبيهات';
+
+  @override
   String timeRequestTitle(String child, int minutes) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,

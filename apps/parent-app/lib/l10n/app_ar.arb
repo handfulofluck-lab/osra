@@ -1196,6 +1196,8 @@
   "accessRequestKeptBlockedSnack": "بقي {app} محظورًا",
   "accessRequestAllowLabel": "السماح باستخدام {app}",
   "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
+  "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
+  "alertsOffTurnOnAction": "تفعيل التنبيهات",
   "timeRequestTitle": "طلب من {child}: {minutes, plural, =1{دقيقة إضافية واحدة} =2{دقيقتان إضافيتان} few{{minutes} دقائق إضافية} many{{minutes} دقيقة إضافية} other{{minutes} دقيقة إضافية}} اليوم",
   "timeRequestGrant": "+{minutes} دقيقة",
   "timeRequestDecline": "ليس اليوم",
