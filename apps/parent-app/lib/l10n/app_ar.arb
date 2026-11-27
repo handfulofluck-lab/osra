@@ -1468,5 +1468,132 @@
   "p01PreviewScreenTimeValue": "المتبقي ساعة و20 دقيقة",
   "p01PreviewBedtimeValue": "من 21:30 إلى 07:00",
   "p01PreviewAppsValue": "تطبيقان محظوران",
-  "p01PreviewLocationValue": "في المدرسة"
+  "p01PreviewLocationValue": "في المدرسة",
+  "childOverviewAppliedOnAt": "طُبّقت القواعد على {device} الساعة {time}",
+  "@childOverviewAppliedOnAt": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "childOverviewSentToPhone": "أُرسلت إلى الهاتف",
+  "childOverviewSwitchDevice": "تبديل الجهاز",
+  "childOverviewTimeLeft": "المتبقي {duration}",
+  "@childOverviewTimeLeft": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "childOverviewOfLimit": "الحد: {limit}",
+  "@childOverviewOfLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+  "childOverviewBatteryPct": "البطارية {pct}%",
+  "@childOverviewBatteryPct": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "childOverviewDailyLimitTitle": "الحد اليومي",
+  "childOverviewNoLimit": "بلا حد",
+  "childOverviewWeekendsLimit": "عطلة نهاية الأسبوع {duration}",
+  "@childOverviewWeekendsLimit": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "childOverviewSchoolNights": "ليالي الدراسة",
+  "childOverviewAppsBlockedCount": "{count, plural, =0{لا تطبيقات محظورة} =1{تطبيق واحد محظور} =2{تطبيقان محظوران} few{{count} تطبيقات محظورة} many{{count} تطبيقًا محظورًا} other{{count} تطبيق محظور}}",
+  "@childOverviewAppsBlockedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "childOverviewAppsWithLimits": "{count, plural, =0{لا حدود للتطبيقات} =1{تطبيق واحد بحد زمني} =2{تطبيقان بحد زمني} few{{count} تطبيقات بحد زمني} many{{count} تطبيقًا بحد زمني} other{{count} تطبيق بحد زمني}}",
+  "@childOverviewAppsWithLimits": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "childOverviewWebFilterOn": "مفعّلة",
+  "childOverviewWebFilterOff": "غير مفعّلة",
+  "childOverviewSafeSearchOn": "البحث الآمن مفعّل",
+  "childOverviewCategoriesBlocked": "{count, plural, =0{لا فئات محظورة} =1{فئة واحدة محظورة} =2{فئتان محظورتان} few{{count} فئات محظورة} many{{count} فئة محظورة} other{{count} فئة محظورة}}",
+  "@childOverviewCategoriesBlocked": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "childOverviewPlacesSaved": "{count, plural, =0{لا أماكن محفوظة} =1{مكان واحد محفوظ} =2{مكانان محفوظان} few{{count} أماكن محفوظة} many{{count} مكانًا محفوظًا} other{{count} مكان محفوظ}}",
+  "@childOverviewPlacesSaved": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "childOverviewPlacesEmptySubtitle": "إضافة أماكن آمنة",
+  "childOverviewSocialAppsCount": "{count, plural, =0{غير مفعّل} =1{تطبيق واحد} =2{تطبيقان} few{{count} تطبيقات} many{{count} تطبيقًا} other{{count} تطبيق}}",
+  "@childOverviewSocialAppsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "childOverviewCheckingMessages": "فحص الرسائل مفعّل",
+  "childOverviewNotYetAvailableIphone": "غير متاح بعد على آيفون",
+  "childOverviewThisWeekTitle": "هذا الأسبوع",
+  "childOverviewUsageHistorySubtitle": "الاستخدام والسجل",
+  "childOverviewQuickActions": "إجراءات سريعة",
+  "childOverviewPlus30Min": "+30 دقيقة",
+  "childOverviewTodayUsed": "المستخدم اليوم",
+  "childOverviewTimeUp": "انتهى الوقت",
+  "childOverviewDurationHours": "{count, plural, =1{ساعة} =2{ساعتان} few{{count} ساعات} many{{count} ساعة} other{{count} ساعة}}",
+  "@childOverviewDurationHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "childOverviewDurationMinutes": "{count, plural, =1{دقيقة} =2{دقيقتان} few{{count} دقائق} many{{count} دقيقة} other{{count} دقيقة}}",
+  "@childOverviewDurationMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "childOverviewDurationHoursMinutes": "{hours} و{minutes}",
+  "@childOverviewDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  }
 }
