@@ -222,6 +222,8 @@ model ParentPushToken {
   token      String   @unique
   platform   String
   appVersion String?
+  /// Parent `sessionVersion` at registration time; delivery skips rows below `Parent.sessionVersion`.
+  sessionVersion Int  @default(0)
   /// ADR-0034 A3: the build a parent's own requests report. A parent's header must never land on the
   /// child's Device row, so it goes here, on the row that belongs to that parent's install.
   clientApp     String?

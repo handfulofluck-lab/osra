@@ -8,9 +8,11 @@ import java.time.ZonedDateTime
 
 /**
  * Pure rule evaluation (no Android classes — runs on the JVM). Applies, in order:
- * always-allowed exemptions, the pause-internet flag, routine windows, per-app rules,
+ * always-allowed exemptions, routine windows, per-app rules,
  * default VPN app protection and the category blocklist, the global screen-time limit (plus any
  * bonus minutes granted today), the bedtime window, then the school-hours window.
+ * Issue #1183: pause-the-internet is enforced at the network layer (VPN sinkhole) only and does
+ * not block offline app launches here.
  * Days are encoded 1=Monday .. 7=Sunday. Window bounds are "HH:mm" local
  * times and may wrap midnight (e.g. bedtime 21:00–07:00).
  */
@@ -66,13 +68,14 @@ class RuleEngine {
         val day = local.dayOfWeek.value
 
         // 0. Always-allowed apps (Feature #9/#11): parent-mandated exemptions win over
-        // routines, per-app rules, the blocklist, the global limit, bedtime, school and pause.
+        // routines, per-app rules, the blocklist, the global limit, bedtime and school.
         if (packageId in ruleSet.alwaysAllowedApps) return Verdict(RuleRepository.Decision.ALLOW)
 
-        // 1. Pause-the-internet (Feature #11): everything not always-allowed is blocked.
-        // NOTE: the test build enforces pause via app blocking here; production routes all
-        // traffic through a VpnService sinkhole (see CommandDispatcher.pauseInternet).
-        if (pausedInternet) return Verdict(RuleRepository.Decision.BLOCK) // a pause is not a window
+        // Issue #1183: pause-the-internet is network-only (FilterVpnService MODE_SINKHOLE_ALL), so
+        // `pausedInternet` deliberately does not block app launches here — offline apps stay open
+        // while normal routine, per-app, blocklist, limit, bedtime and school rules still apply.
+        @Suppress("UNUSED_EXPRESSION")
+        pausedInternet
 
         // 2. Routine windows: blockedApps / allowedApps restricted by day-of-week + time.
         // Issue #473: the loop lives in [routineWindow] so the reason it returns and the decision it

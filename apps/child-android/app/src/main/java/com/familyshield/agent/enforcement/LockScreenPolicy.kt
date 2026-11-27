@@ -14,9 +14,10 @@ package com.familyshield.agent.enforcement
  * mode, so a stale intent cannot cancel a live lock.
  *
  * Stored state crossed with intent:
- * - stored **locked/paused/paused_internet** → [Decision.Show] that mode, whatever the intent says
+ * - stored **locked/paused** → [Decision.Show] that mode, whatever the intent says
  *   (a lock, pause or dismiss intent may be the wake-up, the stored mode is what is enforced);
- * - stored **none** (or anything not a locking mode) → nothing of ours belongs on screen:
+ * - stored **none** (or anything not a locking mode, including retired `paused_internet` #1183/#1240) →
+ *   nothing of ours belongs on screen:
  *   [Decision.DismissKeyguard] when the intent was `unlock` (so the keyguard our own `lockNow()`
  *   raised can be dismissed), [Decision.Finish] otherwise.
  *

@@ -178,7 +178,7 @@ class MultiWindowCoverageTest {
         )
         assertTrue(LockEnforcementPolicy.shouldReraise("locked", split, own, facts))
         assertTrue(LockEnforcementPolicy.shouldReraise("paused", pip, own, facts))
-        assertTrue(LockEnforcementPolicy.shouldReraise("paused_internet", pip, own, facts))
+        assertFalse(LockEnforcementPolicy.shouldReraise("paused_internet", pip, own, facts))
     }
 
     @Test

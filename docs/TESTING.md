@@ -20,6 +20,15 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 
 For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
 
+For the P-20 daily-limit request, run `flutter test --dart-define=OSRA_UX_P20=true
+test/time_request_actions_test.dart test/time_request_frames_test.dart` from `apps/parent-app`.
+Run the same tests without the define to check the fallback. An opt-in `OSRA_FRAME_DIR`
+captures the card and detail at 390 px and 320 px with 200% text in English and Arabic.
+The fixture checks title wrapping, the Screen time label, both clock settings, localized
+clock direction, and 48 dp tap targets. For device evidence, send an Android daily-limit request
+in a paired test family, approve it once, and confirm the child receives the grant. A
+separate decline should close the request with no new bonus.
+
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
 both an explicit target-app crash and a simulator launch error or runner stall is ambiguous
@@ -535,6 +544,12 @@ The verified-gate policy self-test checks Neon’s `neon/` author prefix and `�
 It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
 existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
 check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
+
+The verified-gate policy self-test also checks Kimi-Mac’s `kimimac/` (and `kimi-mac/`) author prefixes and
+`— Kimi-Mac` ordinary signature. It verifies the same-family restriction with K31/K31-Mac (DeepSeek;
+Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE) and the cross-family pairing with
+Kimi Code (Moonshot), and confirms Kimi-Mac cannot supply an R3 security key. The signer-fixture check
+accepts Kimi-Mac’s signature from the shared agent account and rejects it from other accounts.
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
@@ -1149,7 +1164,8 @@ adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNA
 adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
 adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
 adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
-# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+# pause-internet (#1183/#1240): POST /v1/devices/:id/command {"command":"pause_internet"} → network-only
+#   (non-blocking notification, no full-screen overlay; offline apps stay open) AND
 adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
 adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
 # resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"
@@ -1160,6 +1176,12 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the SafeSearch row (#1226), use the approved paired test family and keep the supported
+browser open while the parent changes SafeSearch. Use a neutral query and check that the browser's
+SafeSearch settings report the requested state. With SafeSearch on, the `FilterVpn` diagnostic
+should record the search host and the `REWRITE` decision. Check that the diagnostic omits the
+query text and full URL. Record the exact Child build and restore the test family's prior setting.
 
 For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
 each request. The existing `paused` field reports the requested setting. Its optional
@@ -1314,6 +1336,16 @@ itself could not be aimed at the monitor; the run verified install, the rational
 camera-ready state and the denial fallback, and the typed path was paired end-to-end against the live
 API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
 the open 3.2 hardware row.
+
+## CI staging Parent APK (synthetic CI proof, private real build)
+
+`scripts/build-parent-staging-apk.sh` is the single command for both proofs of the staging Parent APK. It requires `API_BASE=https://api.staging.osratech.com` and a positive `BUILD_NUMBER`, then checks the Firebase release task, package/versionCode, `INTERNET`, `POST_NOTIFICATIONS`, and the APK signature. `scripts/check-parent-staging-build.mjs --selftest` proves the contract checker itself; the normal invocation fails if the workflow stops being synthetic-only, gains a public APK artifact, or loses one of those assertions.
+
+- **Public CI proof:** `.github/workflows/parent-app.yml` writes a synthetic, non-secret Firebase config and runs the helper with `CI_SYNTHETIC=1`. No APK is uploaded as an Actions artifact. The existing AAB artifact is unchanged. Synthetic values must not look like credentials: gitleaks scans the entire PR history, so an API-key-shaped fixture cannot be removed by a later commit alone.
+- **Local synthetic proof:** prepare the same synthetic config shown in that workflow step, then run `CI_SYNTHETIC=1 API_BASE=https://api.staging.osratech.com BUILD_NUMBER=99 bash scripts/build-parent-staging-apk.sh`. This is a build fixture, not a release.
+- **Private real build:** place the real gitignored Firebase config and lab signing inputs on the approved private builder, set `OSRA_EXPECTED_SIGNER_SHA256` to the Lab Parent certificate digest, and run the same helper without `CI_SYNTHETIC`. The helper refuses any other signer. Publish only through the approved private release channel and compare the old/new certificate digests before installation. No real APK or real Firebase config belongs in the public workflow or repository.
+
+The Firebase JSON, keystore and passwords remain gitignored. Flutter's console can hide the underlying `:app:processReleaseGoogleServices` task name, so the helper proves the plugin ran by requiring `google_app_id` and `project_id` in the generated release `values.xml`; a package that compiles without those resources has no working push registration. Required inputs are validated before building, and the cleanup trap preserves the original non-zero status on older Bash instead of allowing a false success.
 
 ## 5j. Push wake on hardware (roadmap 1.5)
 
@@ -1877,3 +1909,16 @@ that the old matcher missed (#310).
 ### Staging analyzer task size (#962)
 
 For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
+
+### Parent Home P-07 + P-07-RTL (#1179)
+
+Run from `apps/parent-app`:
+
+```bash
+flutter test --dart-define=OSRA_UX_P07=true test/p07_home_screen_test.dart
+flutter test test/p07_home_screen_test.dart
+```
+
+- **Shared G4 / P-20 time-request actions:** Home `Needs you` renders `TimeRequestActions` on Android daily-limit requests (`POST /v1/alerts/:id/time-decision`, including `409` winning caregiver receipts), while child-card quick `+15 min` / `+30 min` buttons keep the 5-second local Undo hold over `POST /v1/controls/children/:id/bonus`.
+- **G5 daily time-left window:** `deviceCommandHistoryProvider` reads `limit=100` (matching the server `listDeviceCommands` cap). If more than 100 commands are sent to one device in a single day so an earlier same-day `acked` grant ages out of that slice, `computeHomeTimeSummary` conservatively drops the aged-out grant and clamps `remainingMinutes` at `0` rather than reading stale `ruleSet.bonusMinutesToday`.
+- **A10 live-arrival pairing claims:** while Home watches an unexpired pairing code in `status: waiting`, `activePairingClaimProvider` re-polls every 2 seconds until a claim arrives, `404` is returned, the code expires, or Home unmounts.
