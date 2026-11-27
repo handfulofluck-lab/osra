@@ -315,20 +315,20 @@
     <string name="c02_send_sos_row">إرسال استغاثة إلى أهلي</string>
     <string name="c02_emergency_note">مكالمات الطوارئ تعمل دائمًا</string>
     <plurals name="c02_hours">
-        <item quantity="zero">%1$d ساعة</item>
+        <item quantity="zero">%1$s ساعة</item>
         <item quantity="one">ساعة</item>
         <item quantity="two">ساعتان</item>
-        <item quantity="few">%1$d ساعات</item>
-        <item quantity="many">%1$d ساعة</item>
-        <item quantity="other">%1$d ساعة</item>
+        <item quantity="few">%1$s ساعات</item>
+        <item quantity="many">%1$s ساعة</item>
+        <item quantity="other">%1$s ساعة</item>
     </plurals>
     <plurals name="c02_minutes">
-        <item quantity="zero">%1$d دقيقة</item>
+        <item quantity="zero">%1$s دقيقة</item>
         <item quantity="one">دقيقة</item>
         <item quantity="two">دقيقتان</item>
-        <item quantity="few">%1$d دقائق</item>
-        <item quantity="many">%1$d دقيقة</item>
-        <item quantity="other">%1$d دقيقة</item>
+        <item quantity="few">%1$s دقائق</item>
+        <item quantity="many">%1$s دقيقة</item>
+        <item quantity="other">%1$s دقيقة</item>
     </plurals>
     <string name="c02_hours_and_minutes">%1$s و%2$s</string>
     <string name="c02_rules_sheet_title">قواعدي</string>

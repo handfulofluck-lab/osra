@@ -430,14 +430,16 @@ class BlockActivity : ComponentActivity() {
         val safe = totalMinutes.coerceAtLeast(0)
         val hours = safe / 60
         val mins = safe % 60
+        val hoursText = String.format(java.util.Locale.US, "%d", hours)
+        val minsText = String.format(java.util.Locale.US, "%d", mins)
         return when {
             hours > 0 && mins > 0 -> getString(
                 R.string.c02_hours_and_minutes,
-                resources.getQuantityString(R.plurals.c02_hours, hours, hours),
-                resources.getQuantityString(R.plurals.c02_minutes, mins, mins),
+                resources.getQuantityString(R.plurals.c02_hours, hours, hoursText),
+                resources.getQuantityString(R.plurals.c02_minutes, mins, minsText),
             )
-            hours > 0 -> resources.getQuantityString(R.plurals.c02_hours, hours, hours)
-            else -> resources.getQuantityString(R.plurals.c02_minutes, mins, mins)
+            hours > 0 -> resources.getQuantityString(R.plurals.c02_hours, hours, hoursText)
+            else -> resources.getQuantityString(R.plurals.c02_minutes, mins, minsText)
         }
     }
 

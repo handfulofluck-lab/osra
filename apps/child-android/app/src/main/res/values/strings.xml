@@ -315,12 +315,12 @@
     <string name="c02_send_sos_row">Send SOS to my parents</string>
     <string name="c02_emergency_note">Emergency calls always work</string>
     <plurals name="c02_hours">
-        <item quantity="one">%1$d hour</item>
-        <item quantity="other">%1$d hours</item>
+        <item quantity="one">%1$s hour</item>
+        <item quantity="other">%1$s hours</item>
     </plurals>
     <plurals name="c02_minutes">
-        <item quantity="one">%1$d minute</item>
-        <item quantity="other">%1$d minutes</item>
+        <item quantity="one">%1$s minute</item>
+        <item quantity="other">%1$s minutes</item>
     </plurals>
     <string name="c02_hours_and_minutes">%1$s %2$s</string>
     <string name="c02_rules_sheet_title">Your rules</string>
