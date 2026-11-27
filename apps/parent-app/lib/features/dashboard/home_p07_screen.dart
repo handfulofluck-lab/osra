@@ -2084,7 +2084,7 @@ class _P07BottomNavigationBar extends StatelessWidget {
           isLabelVisible: true,
           largeSize: 16,
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+          textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
           label: Text(ltrIsolate('$badgeCount')),
           child: iconWidget,
         ),
