@@ -6130,6 +6130,114 @@ abstract class AppLocalizations {
   /// **'Turn on alerts'**
   String get alertsOffTurnOnAction;
 
+  /// No description provided for @pairP05Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect {child}\'s phone'**
+  String pairP05Title(String child);
+
+  /// No description provided for @pairP05TitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect your child\'s phone'**
+  String get pairP05TitleGeneric;
+
+  /// No description provided for @pairP05Subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'On {child}\'s phone, install OSRA Kids, then scan this.'**
+  String pairP05Subtitle(String child);
+
+  /// No description provided for @pairP05SubtitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Install OSRA Kids on the child\'s phone, then scan this.'**
+  String get pairP05SubtitleGeneric;
+
+  /// No description provided for @pairP05OrTypeCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Or type this code'**
+  String get pairP05OrTypeCode;
+
+  /// No description provided for @pairP05ValidFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid for {time}'**
+  String pairP05ValidFor(String time);
+
+  /// No description provided for @pairP05CodeExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Code expired'**
+  String get pairP05CodeExpired;
+
+  /// No description provided for @pairP05NewCode.
+  ///
+  /// In en, this message translates to:
+  /// **'New code'**
+  String get pairP05NewCode;
+
+  /// No description provided for @pairP05WaitingFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for {child}\'s phone…'**
+  String pairP05WaitingFor(String child);
+
+  /// No description provided for @pairP05WaitingGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the child\'s phone…'**
+  String get pairP05WaitingGeneric;
+
+  /// No description provided for @pairP05ConfirmDeviceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm this device?'**
+  String get pairP05ConfirmDeviceTitle;
+
+  /// No description provided for @pairP05ConfirmDeviceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{model} wants to connect. Confirm to link it.'**
+  String pairP05ConfirmDeviceBody(String model);
+
+  /// No description provided for @pairP05ConfirmLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm and link'**
+  String get pairP05ConfirmLink;
+
+  /// No description provided for @pairP05Decline.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get pairP05Decline;
+
+  /// No description provided for @pairP05Connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone connected.'**
+  String get pairP05Connected;
+
+  /// No description provided for @pairP05SendInstallLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Send install link'**
+  String get pairP05SendInstallLink;
+
+  /// No description provided for @pairP05InstallLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Install link copied to share.'**
+  String get pairP05InstallLinkCopied;
+
+  /// No description provided for @pairP05SkipForNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip for now'**
+  String get pairP05SkipForNow;
+
   /// No description provided for @timeRequestTitle.
   ///
   /// In en, this message translates to:
