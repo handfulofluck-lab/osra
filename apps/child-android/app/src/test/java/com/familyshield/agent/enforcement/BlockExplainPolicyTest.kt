@@ -125,6 +125,44 @@ class BlockExplainPolicyTest {
     }
 
     @Test
+    fun `explicitly allowed app held by a routine returns at routine end even with the daily limit used up`() {
+        val rules = RuleSetDto(
+            screenTime = ScreenTimeRuleDto(
+                dailyLimitMinutes = 60,
+                bedtimeStart = "21:00",
+                bedtimeEnd = "07:00",
+            ),
+            appRules = listOf(AppRuleDto(packageId = minecraft, action = "allow")),
+            routines = listOf(
+                RoutineDto(
+                    id = "r1",
+                    name = "Morning Study",
+                    startTime = "09:00",
+                    endTime = "12:30",
+                    days = listOf(3),
+                    blockedApps = listOf(minecraft),
+                ),
+            ),
+        )
+        val exp = BlockExplainPolicy.explain(
+            ruleSet = rules,
+            packageId = minecraft,
+            now = wedMorning,
+            minutesUsedToday = mapOf(minecraft to 90),
+            blocklist = emptyMap(),
+            pausedInternet = false,
+            bonusMinutes = 0,
+            fallbackReason = BlockActivity.REASON_BLOCKED,
+            fallbackWindow = WindowReason(WindowKind.ROUTINE, "Morning Study", "12:30"),
+        )
+
+        assertEquals(BlockCause.ROUTINE, exp.cause)
+        assertEquals("RuleEngine exempts an explicit allow from the daily limit", "12:30", exp.backAtTime)
+        assertFalse(exp.backAtTomorrow)
+        assertFalse(exp.canAskForMoreTime)
+    }
+
+    @Test
     fun `overlapping routine and school hours picks the LATER return time`() {
         val rules = RuleSetDto(
             screenTime = ScreenTimeRuleDto(
