@@ -946,6 +946,23 @@ void main() {
                 greaterThanOrEqualTo(tester.getRect(b1).bottom - 0.5),
               );
               expect(drainExceptions(tester), isEmpty);
+              // U86 (#650): at 320px and 200% text, the bottom bar stays one row
+              // (all four tabs share the same top Y and total bar height <= 80).
+              // Mutant: restoring `twoRows = scale > 1.35 || width < 340` puts
+              // `p07Tab-family` on a second row and fails these assertions.
+              final homeRect = tester.getRect(find.byKey(const ValueKey('p07Tab-home')));
+              for (final tabKey in const [
+                ValueKey('p07Tab-alerts'),
+                ValueKey('p07Tab-family'),
+                ValueKey('p07Tab-settings'),
+              ]) {
+                final r = tester.getRect(find.byKey(tabKey));
+                expect((r.top - homeRect.top).abs(), lessThanOrEqualTo(1.0));
+              }
+              expect(
+                tester.getRect(find.byKey(const ValueKey('p07BottomNav'))).height,
+                lessThanOrEqualTo(80.0),
+              );
               if (framesDir != null && framesDir.isNotEmpty) {
                 final boundary = tester.renderObject<RenderRepaintBoundary>(
                   find.byKey(frameBoundaryKey),
