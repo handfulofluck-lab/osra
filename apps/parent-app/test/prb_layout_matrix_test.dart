@@ -1528,12 +1528,12 @@ void main() {
 
       testWidgets('B1 SetupChild leave & RulesEditor disable-recommended confirm dialogs [${_caseLabel(matrix)}]', (tester) async {
         final l10n = lookupAppLocalizations(matrix.locale);
-        // SetupChild leave confirm dialog.
+        // SetupChild leave confirm dialog (empty family: #1170 UI/UX Bureau parity).
         await pumpMatrix(
           tester,
           const SetupChildScreen(),
           matrix: matrix,
-          api: bureauApi(locale: matrix.locale),
+          api: bureauApi(locale: matrix.locale, childCount: 0),
         );
         await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();

@@ -33,7 +33,12 @@ class SetupPairScreen extends ConsumerWidget {
     final l10n = context.l10n;
     final family = ref.watch(setupFamilyProvider);
     final preferredId = ref.watch(onboardingProvider).childId;
-    return family.when(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _backToChild(ref, context);
+      },
+      child: family.when(
       loading: () => Scaffold(
         appBar: AppBar(
           title: Text(l10n.onboardingPairTitle),
@@ -102,6 +107,7 @@ class SetupPairScreen extends ConsumerWidget {
           },
         );
       },
+      ),
     );
   }
 

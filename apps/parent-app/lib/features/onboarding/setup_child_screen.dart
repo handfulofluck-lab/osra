@@ -32,6 +32,7 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
   String _method = _methods.first;
   late String _jurisdiction;
   bool _busy = false;
+  bool _backInFlight = false;
   String? _error;
 
   @override
@@ -113,34 +114,78 @@ class _SetupChildScreenState extends ConsumerState<SetupChildScreen> {
     if (mounted) context.go('/sign-in');
   }
 
+  /// #1169: Android system Back and AppBar Back on `/setup/child` share one path:
+  /// - In-flight guard prevents repeated presses during a pending lookup from stacking dialogs.
+  /// - Known non-empty family → complete onboarding and return to Home (`/`).
+  /// - Pending family lookup → await `familyProvider.future` before deciding, so a
+  ///   slow lookup never misclassifies an existing family as empty (#1170 review).
+  /// - Failed lookup → keep the retry screen visible (never sign out or close app).
+  /// - Known empty family → open the existing `_leaveSetup()` confirmation dialog.
+  Future<void> _handleSystemBack() async {
+    if (_backInFlight) return;
+    _backInFlight = true;
+    try {
+      final current = ref.read(familyProvider);
+      if (current.hasError) return;
+      FamilyOverview overview;
+      if (current.hasValue) {
+        overview = current.requireValue;
+      } else {
+        try {
+          overview = await ref.read(familyProvider.future);
+        } catch (_) {
+          return;
+        }
+        if (!mounted) return;
+      }
+      if (overview.children.isNotEmpty) {
+        await ref.read(onboardingProvider.notifier).completeSetup();
+        if (mounted) context.go('/');
+        return;
+      }
+      await _leaveSetup();
+    } finally {
+      _backInFlight = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final family = ref.watch(familyProvider);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.onboardingChildTitle),
-        leading: BackButton(onPressed: _busy ? null : _leaveSetup),
-      ),
-      body: SafeArea(
-        child: family.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) => _LoadFailed(
-            message: l10n.onboardingNoNetwork,
-            onRetry: () => ref.invalidate(familyProvider),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _busy) return;
+        _handleSystemBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(l10n.onboardingChildTitle),
+          leading: BackButton(
+            onPressed: _busy ? null : _handleSystemBack,
           ),
-          data: (overview) {
-            if (overview.children.isNotEmpty) {
-              return _buildExisting(context, l10n, overview.children);
-            }
-            if (ref.watch(p04AddChildEnabledProvider)) {
-              return AddChildP04Form(
-                jurisdiction: overview.family.region,
-                onCreated: _continueWithExisting,
-              );
-            }
-            return _buildForm(context, l10n);
-          },
+        ),
+        body: SafeArea(
+          child: family.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, __) => _LoadFailed(
+              message: l10n.onboardingNoNetwork,
+              onRetry: () => ref.invalidate(familyProvider),
+            ),
+            data: (overview) {
+              if (overview.children.isNotEmpty) {
+                return _buildExisting(context, l10n, overview.children);
+              }
+              if (ref.watch(p04AddChildEnabledProvider)) {
+                return AddChildP04Form(
+                  jurisdiction: overview.family.region,
+                  onCreated: _continueWithExisting,
+                );
+              }
+              return _buildForm(context, l10n);
+            },
+          ),
         ),
       ),
     );
