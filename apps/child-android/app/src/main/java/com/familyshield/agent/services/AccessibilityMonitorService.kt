@@ -17,6 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
@@ -411,6 +414,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             // #460 review: consent withdrawn inside the fallback window must not still show a block
             // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
             cancelDeferredRaise()
+            social.onMonitoringPaused()
             return
         }
         if (enforceFilterRecovery(snapshot, foreground)) {
@@ -1091,9 +1095,19 @@ class AccessibilityMonitorService : AccessibilityService() {
          * launch rule and re-raises the overlay, whereas `Settings.Secure` only says the user enabled
          * it. Same-process state, so it describes the process that is about to dispatch the command.
          */
-        @Volatile
-        var isRunning: Boolean = false
-            internal set
+        private val _runningState = MutableStateFlow(false)
+
+        /**
+         * Live state of [isRunning] so foreground onboarding screens waiting for the OS to finish
+         * binding after the parent returns from Settings advance immediately (#1131 review).
+         */
+        val runningState: StateFlow<Boolean> = _runningState.asStateFlow()
+
+        var isRunning: Boolean
+            get() = _runningState.value
+            internal set(value) {
+                _runningState.value = value
+            }
 
         /**
          * Issue #132: [ensureLocationServiceRunning]'s decision, pure so the JVM suite holds it in
