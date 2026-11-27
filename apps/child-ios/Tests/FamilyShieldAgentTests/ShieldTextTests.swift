@@ -252,4 +252,69 @@ final class ShieldTextTests: XCTestCase {
             XCTAssertTrue(value.unicodeScalars.allSatisfy { $0.isASCII }, "not Latin digits: \(value)")
         }
     }
+
+    // MARK: - U105, Codex's two runtime findings
+
+    private func setBedtime(_ start: String, _ end: String) {
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        defaults?.set(start, forKey: "rules.bedtimeStart")
+        defaults?.set(end, forKey: "rules.bedtimeEnd")
+    }
+
+    private func clearBedtime() {
+        let defaults = UserDefaults(suiteName: AgentIdentityStore.suiteName)
+        defaults?.removeObject(forKey: "rules.bedtimeStart")
+        defaults?.removeObject(forKey: "rules.bedtimeEnd")
+    }
+
+    /// Codex's first finding: Bedtime overlapping an exhausted daily limit. The screen says Bedtime, so the tap
+    /// must send the **access** request — never a time request. One resolver decides both, so they cannot diverge.
+    func testBedtimeOverExhaustedLimitNamesTheWindowAndSendsTheAccessRequest() {
+        setBedtime("21:00", "07:00")
+        defer { clearBedtime() }
+        let resets = monday(0, 0, in: utc)
+        // 23:00 is inside 21:00–07:00, with the limit spent as well: both conditions true.
+        let situation = ShieldText.resolve(bundleIdentifier: "com.example.game",
+                                           now: monday(23, 0, in: utc), timeZone: utc,
+                                           dailyLimitResetsAt: resets)
+        XCTAssertEqual(situation, .window(.bedtime(endsAt: "07:00")),
+                       "the window is what the screen names when both are true")
+        XCTAssertTrue(ShieldText.sendsAccessRequest(situation),
+                      "a Bedtime shield must ask for access, not for more time")
+        let text = ShieldText.make(situation: situation, language: "en", timeZone: utc)
+        XCTAssertEqual(text.title, "This app is blocked by your parent")
+        XCTAssertEqual(text.primaryButton, "Request access")
+        XCTAssertTrue(text.subtitle?.contains("Bedtime") == true)
+    }
+
+    /// Codex's second finding: an accepted ask for **this** reset makes the next configuration the confirmation.
+    /// This goes through the resolver, not by building `.dailyLimitRequestSent` directly.
+    func testAnAcceptedRequestForThisResetReachesTheConfirmationThroughTheResolver() {
+        let resets = monday(0, 0, in: utc)
+        DailyLimitRequestStore.record(resetsAt: resets)
+        defer { DailyLimitRequestStore.clear() }
+        let sent = DailyLimitRequestStore.recordedResetsAt(matching: resets)
+        XCTAssertNotNil(sent, "the record belongs to this reset")
+        let situation = ShieldText.resolve(bundleIdentifier: nil, now: monday(12, 0, in: utc), timeZone: utc,
+                                           dailyLimitResetsAt: resets, requestSentResetsAt: sent)
+        XCTAssertEqual(situation, .dailyLimitRequestSent(resetsAt: resets))
+        XCTAssertFalse(ShieldText.sendsAccessRequest(situation))
+        let text = ShieldText.make(situation: situation, language: "en", timeZone: utc)
+        XCTAssertTrue(text.subtitle?.contains("Asked your parent") == true,
+                      "the confirmation is body text above the reset line")
+        XCTAssertEqual(text.primaryButton, "Ask for more time")
+    }
+
+    /// Yesterday's record must not show today's confirmation.
+    func testAStaleRequestRecordDoesNotReachTheConfirmation() {
+        let yesterday = monday(0, 0, in: utc)
+        let today = yesterday.addingTimeInterval(24 * 60 * 60)
+        DailyLimitRequestStore.record(resetsAt: yesterday)
+        defer { DailyLimitRequestStore.clear() }
+        let sent = DailyLimitRequestStore.recordedResetsAt(matching: today)
+        XCTAssertNil(sent, "yesterday's ask does not belong to today's reset")
+        let situation = ShieldText.resolve(bundleIdentifier: nil, now: monday(12, 0, in: utc), timeZone: utc,
+                                           dailyLimitResetsAt: today, requestSentResetsAt: sent)
+        XCTAssertEqual(situation, .dailyLimit(resetsAt: today))
+    }
 }

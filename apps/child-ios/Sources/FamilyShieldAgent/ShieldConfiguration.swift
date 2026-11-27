@@ -18,24 +18,35 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
 
     /// Shield configuration shown when an application is blocked.
     public override func configuration(shielding application: Application) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier,
-                                                  dailyLimitResetsAt: Self.dailyLimitResetsAt()))
+        Self.makeConfiguration(Self.textAndRecord(bundleIdentifier: application.bundleIdentifier))
     }
 
     /// Shield configuration shown when a website is blocked. The web filter is not a window, so no line.
     public override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil, dailyLimitResetsAt: Self.dailyLimitResetsAt()))
+        Self.makeConfiguration(Self.textAndRecord(bundleIdentifier: nil))
     }
 
     /// ADR-0037: an app shielded through a blocked group's category gets the same OSRA shield.
     public override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier,
-                                                  dailyLimitResetsAt: Self.dailyLimitResetsAt()))
+        Self.makeConfiguration(Self.textAndRecord(bundleIdentifier: application.bundleIdentifier))
     }
 
     /// ADR-0037: a website shielded through a blocked group's category.
     public override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil, dailyLimitResetsAt: Self.dailyLimitResetsAt()))
+        Self.makeConfiguration(Self.textAndRecord(bundleIdentifier: nil))
+    }
+
+    /// U105, Codex's first finding: resolve the cause **once**, record it for the tap, and render the text from the
+    /// same answer — so a shield reading "Blocked by Bedtime" can never send a time request.
+    private static func textAndRecord(bundleIdentifier: String?) -> ShieldText {
+        DailyLimitRequestStore.clearIfStale()
+        let resetsAt = dailyLimitResetsAt()
+        let sent = resetsAt.flatMap { DailyLimitRequestStore.recordedResetsAt(matching: $0) }
+        let situation = ShieldText.resolve(bundleIdentifier: bundleIdentifier,
+                                           dailyLimitResetsAt: resetsAt,
+                                           requestSentResetsAt: sent)
+        ShieldCauseStore.record(situation)
+        return ShieldText.make(situation: situation, language: ShieldText.resolvedLanguage())
     }
 
     /// U105: how many minutes the shield asks for. The iOS shield has one button and no picker, so this is a fixed
@@ -134,9 +145,12 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
            ShieldTapPolicy.shouldSendRequest(target: target, defaults: UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
             // U105: when the daily limit is what holds the shield, the tap asks for time the way Android does, so
             // the parent's time-request card renders it rather than a generic access alert.
-            if FamilyShieldConfigurationDataSource.dailyLimitResetsAt() != nil {
-                reporter.reportTimeRequest(minutes: FamilyShieldConfigurationDataSource.dailyLimitRequestMinutes,
+            // U105, Codex's findings: the tap follows the cause the shield was **drawn** with, not a fresh guess,
+            // and a sent request is recorded against its reset so the next configuration shows the confirmation.
+            if ShieldCauseStore.lastDrawnWasDailyLimit, let resetsAt = ShieldCauseStore.lastDrawnResetsAt {
+                reporter.reportTimeRequest(minutes: Self.dailyLimitRequestMinutes,
                                            childId: AlertReporter.pairedChildId())
+                DailyLimitRequestStore.record(resetsAt: resetsAt)
             } else {
                 reporter.report(
                     category: "app_blocked",

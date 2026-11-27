@@ -146,17 +146,46 @@ public struct ShieldText: Equatable {
     /// clock the shield is actually held by.
     public static func current(bundleIdentifier: String?, now: Date = Date(), timeZone: TimeZone = .current,
                                language: String = resolvedLanguage(),
-                               dailyLimitResetsAt: Date? = nil) -> ShieldText {
+                               dailyLimitResetsAt: Date? = nil,
+                               requestSentResetsAt: Date? = nil) -> ShieldText {
+        let situation = resolve(bundleIdentifier: bundleIdentifier, now: now, timeZone: timeZone,
+                                dailyLimitResetsAt: dailyLimitResetsAt,
+                                requestSentResetsAt: requestSentResetsAt)
+        return make(situation: situation, language: language, timeZone: timeZone)
+    }
+
+    /// U105, Codex's first finding: **one** resolved cause, used by both the copy and the tap.
+    ///
+    /// The two used to be decided separately — `current()` looked at the window first, while the delegate asked
+    /// only whether the daily limit was spent — so a phone with Bedtime overlapping an exhausted limit could show
+    /// "Blocked by Bedtime" and still send a time request. Resolving once makes that divergence impossible rather
+    /// than making two call sites agree.
+    ///
+    /// Order is the same as `activeWindow`'s: a window wins, because that is what the screen names. The daily limit
+    /// only speaks when nothing else explains the shield.
+    public static func resolve(bundleIdentifier: String?, now: Date = Date(), timeZone: TimeZone = .current,
+                               dailyLimitResetsAt: Date? = nil,
+                               requestSentResetsAt: Date? = nil) -> Situation {
         let window = activeWindow(bundleIdentifier: bundleIdentifier, now: now, timeZone: timeZone,
                                   bedtimeStart: RuleStore.bedtimeStart(), bedtimeEnd: RuleStore.bedtimeEnd(),
                                   routines: RuleStore.routineSchedules(), blocked: RuleStore.blockedApps(),
                                   alwaysAllowed: RuleStore.alwaysAllowedApps(), allowed: RuleStore.allowedApps())
-        // U105: the daily limit is not a window, so it only shows when no window holds the app. The caller passes
-        // `dailyLimitResetsAt` because the limit's state lives in `DailyScreenTime`, which is iOS-only.
-        if window == nil, let resetsAt = dailyLimitResetsAt {
-            return make(situation: .dailyLimit(resetsAt: resetsAt), language: language, timeZone: timeZone)
+        if let window { return .window(window) }
+        guard let resetsAt = dailyLimitResetsAt else { return .window(nil) }
+        // U105, Codex's second finding: a request recorded for *this* reset means the confirmation is the truth.
+        if let sent = requestSentResetsAt, abs(sent.timeIntervalSince(resetsAt)) < 1 {
+            return .dailyLimitRequestSent(resetsAt: resetsAt)
         }
-        return make(window: window, language: language)
+        return .dailyLimit(resetsAt: resetsAt)
+    }
+
+    /// Whether a resolved situation should send an **access** request rather than a time request. The tap follows
+    /// the cause the screen shows: a window means "ask for access", the daily limit means "ask for more time".
+    public static func sendsAccessRequest(_ situation: Situation) -> Bool {
+        switch situation {
+        case .window(let window): return window != nil
+        case .dailyLimit, .dailyLimitRequestSent: return false
+        }
     }
 
     /// The phone's language among the ones the block screen ships.
