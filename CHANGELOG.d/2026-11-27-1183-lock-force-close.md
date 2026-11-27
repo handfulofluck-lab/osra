@@ -1,0 +1,1 @@
+- feat(child-android): [after] add default-off Lock-only background app cleanup, media pause, and honest Android close/sign-out ack detail (#1183).

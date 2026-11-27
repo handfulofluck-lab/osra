@@ -337,7 +337,14 @@ class CommandDispatcher @Inject constructor(
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(LockActivity.EXTRA_MODE, LockActivity.MODE_LOCKED),
         )
-        return outcome
+        // Issue #1183 after-test follow-up (gated behind LockForceCloseFlags.enabled, Lock only):
+        // best-effort background process cleanup + honest ack detail after LockActivity takes foreground.
+        val closeDetail = com.familyshield.agent.enforcement.LockAppCloser.closeForLock(
+            context = context,
+            rules = rules,
+            devicePolicyManager = devicePolicyManager,
+        )
+        return com.familyshield.agent.enforcement.LockForceClosePolicy.mergeAckDetail(outcome, closeDetail)
     }
 
     /**
