@@ -3505,6 +3505,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appsNoMatch => 'No apps match';
 
   @override
+  String get appsSentToPhone => 'Sent to phone';
+
+  @override
+  String get appsNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
   String get appAboutThisApp => 'About this app';
 
   @override
@@ -3726,6 +3732,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get alertsOffBannerBody =>
+      'Alerts are off. You won\'t hear about urgent messages.';
+
+  @override
+  String get alertsOffTurnOnAction => 'Turn on alerts';
+
+  @override
   String timeRequestTitle(String child, int minutes) {
     return '$child asked for $minutes more minutes today';
   }
@@ -3762,6 +3775,37 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get p15CanBeWrong =>
+      'Possible concern — automatic checks can be wrong.';
+
+  @override
+  String get p15ActionsHeader => 'What you can do';
+
+  @override
+  String p15TalkWithChild(String child) {
+    return 'Talk with $child';
+  }
+
+  @override
+  String p15HelpChildBlockContact(String child, String contact) {
+    return 'Help $child block $contact';
+  }
+
+  @override
+  String p15HelpBlockGuideBody(String child, String app, String contact) {
+    return 'Sit with $child and open $app together to block $contact and mute their messages.';
+  }
+
+  @override
+  String get p15AdjustLimits => 'Adjust screen time & bedtime';
+
+  @override
+  String get p15ReviewAppRules => 'Review app rules';
+
+  @override
+  String get p15IphoneNotYet => 'Not yet available on iPhone';
+
+  @override
   String get p12NotBlockingYet => 'Not blocking yet';
 
   @override
@@ -3769,9 +3813,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p12RecentlyBlocked => 'Recently blocked';
-
-  @override
-  String get appsNotYetOnIphone => 'Not yet available on iPhone';
 
   @override
   String get p12BlockSiteTitle => 'Block a site';

@@ -36,6 +36,7 @@ import 'providers/onboarding_provider.dart';
 import 'providers/social_provider.dart';
 import 'providers/theme_provider.dart';
 import 'push/foreground_push.dart';
+import 'push/notification_permission_service.dart';
 import 'push/notification_tap.dart';
 import 'theme/app_theme.dart';
 
@@ -256,6 +257,7 @@ class FamilyShieldApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(_socialActivityRefreshProvider);
+    ref.watch(notificationLifecycleSyncProvider);
     final mode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
     return MaterialApp.router(

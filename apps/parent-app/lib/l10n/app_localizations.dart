@@ -5751,6 +5751,18 @@ abstract class AppLocalizations {
   /// **'No apps match'**
   String get appsNoMatch;
 
+  /// No description provided for @appsSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get appsSentToPhone;
+
+  /// P-12 (#1182 pair): browser coverage for an iPhone-only child.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get appsNotYetOnIphone;
+
   /// No description provided for @appAboutThisApp.
   ///
   /// In en, this message translates to:
@@ -6016,6 +6028,18 @@ abstract class AppLocalizations {
   /// **'Keep {app} blocked'**
   String accessRequestKeepBlockedLabel(String app);
 
+  /// No description provided for @alertsOffBannerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts are off. You won\'t hear about urgent messages.'**
+  String get alertsOffBannerBody;
+
+  /// No description provided for @alertsOffTurnOnAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on alerts'**
+  String get alertsOffTurnOnAction;
+
   /// No description provided for @timeRequestTitle.
   ///
   /// In en, this message translates to:
@@ -6064,6 +6088,54 @@ abstract class AppLocalizations {
   /// **'Decided {time}'**
   String timeRequestDecidedAt(String time);
 
+  /// No description provided for @p15CanBeWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible concern — automatic checks can be wrong.'**
+  String get p15CanBeWrong;
+
+  /// No description provided for @p15ActionsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'What you can do'**
+  String get p15ActionsHeader;
+
+  /// No description provided for @p15TalkWithChild.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk with {child}'**
+  String p15TalkWithChild(String child);
+
+  /// No description provided for @p15HelpChildBlockContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Help {child} block {contact}'**
+  String p15HelpChildBlockContact(String child, String contact);
+
+  /// No description provided for @p15HelpBlockGuideBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Sit with {child} and open {app} together to block {contact} and mute their messages.'**
+  String p15HelpBlockGuideBody(String child, String app, String contact);
+
+  /// No description provided for @p15AdjustLimits.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust screen time & bedtime'**
+  String get p15AdjustLimits;
+
+  /// No description provided for @p15ReviewAppRules.
+  ///
+  /// In en, this message translates to:
+  /// **'Review app rules'**
+  String get p15ReviewAppRules;
+
+  /// No description provided for @p15IphoneNotYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get p15IphoneNotYet;
+
   /// P-12: pill on the enforcement banner when the filter is not applied on a device (UI/UX Bureau 7204314039).
   ///
   /// In en, this message translates to:
@@ -6081,12 +6153,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Recently blocked'**
   String get p12RecentlyBlocked;
-
-  /// P-12 (#1182 pair): browser coverage for an iPhone-only child.
-  ///
-  /// In en, this message translates to:
-  /// **'Not yet available on iPhone'**
-  String get appsNotYetOnIphone;
 
   /// P-12: dialog title when adding a site to always block.
   ///
