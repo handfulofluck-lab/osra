@@ -21,9 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -36,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -804,6 +808,43 @@ fun OnboardingLoadingScreen(
 }
 
 /**
+ * U101: Pure presentation decision for a single row in [OnboardingChecklistScreen].
+ * Granted rows render a compact Done pill in the badge slot and hide the reason/hint/button;
+ * ungranted rows render the optional badge (if any), reason, OEM hint (if any), and grant button.
+ */
+internal data class ChecklistRowPresentation(
+    val showDonePill: Boolean,
+    val donePillLabel: String?,
+    val optionalBadge: String?,
+    val showReason: Boolean,
+    val showOemHint: Boolean,
+    val showGrantButton: Boolean,
+)
+
+internal fun checklistRowPresentation(
+    row: ChecklistRowUi,
+    doneLabel: String,
+): ChecklistRowPresentation = if (row.granted) {
+    ChecklistRowPresentation(
+        showDonePill = true,
+        donePillLabel = doneLabel,
+        optionalBadge = null,
+        showReason = false,
+        showOemHint = false,
+        showGrantButton = false,
+    )
+} else {
+    ChecklistRowPresentation(
+        showDonePill = false,
+        donePillLabel = null,
+        optionalBadge = row.optionalBadge,
+        showReason = true,
+        showOemHint = row.oemHint != null,
+        showGrantButton = true,
+    )
+}
+
+/**
  * U44 (#952): Branded checklist overview built on [OsraTheme] tokens (`LocalOsraPalette`,
  * `LocalOsraRadii`, `primaryButtonHeight`) — replaces the legacy bare system-colored list.
  */
@@ -814,6 +855,7 @@ fun OnboardingChecklistScreen(
 ) {
     val palette = OsraTheme.LocalOsraPalette.current
     val radii = OsraTheme.LocalOsraRadii.current
+    val doneLabel = stringResource(R.string.setup_done)
     val scroll = rememberScrollState()
 
     Column(
@@ -859,6 +901,7 @@ fun OnboardingChecklistScreen(
         }
 
         copy.rows.forEach { row ->
+            val presentation = checklistRowPresentation(row, doneLabel)
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -891,29 +934,58 @@ fun OnboardingChecklistScreen(
                             },
                             modifier = Modifier.weight(1f),
                         )
-                        row.optionalBadge?.takeIf { !row.granted }?.let { badge ->
-                            Box(
+                        if (presentation.showDonePill && presentation.donePillLabel != null) {
+                            Row(
                                 modifier = Modifier
                                     .padding(start = OsraTokens.spaces.sm)
                                     .clip(RoundedCornerShape(radii.bar))
                                     .background(palette.tint)
-                                    .padding(horizontal = OsraTokens.spaces.sm, vertical = OsraTokens.spaces.xxs),
+                                    .padding(
+                                        horizontal = OsraTokens.spaces.sm,
+                                        vertical = OsraTokens.spaces.xxs,
+                                    ),
+                                horizontalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xxs),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(
-                                    text = badge,
-                                    style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
-                                    color = palette.primary,
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = palette.ok,
+                                    modifier = Modifier.size(14.dp),
                                 )
+                                Text(
+                                    text = presentation.donePillLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
+                                    color = palette.ok,
+                                )
+                            }
+                        } else {
+                            presentation.optionalBadge?.let { badge ->
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = OsraTokens.spaces.sm)
+                                        .clip(RoundedCornerShape(radii.bar))
+                                        .background(palette.tint)
+                                        .padding(horizontal = OsraTokens.spaces.sm, vertical = OsraTokens.spaces.xxs),
+                                ) {
+                                    Text(
+                                        text = badge,
+                                        style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
+                                        color = palette.primary,
+                                    )
+                                }
                             }
                         }
                     }
 
-                    if (!row.granted) {
+                    if (presentation.showReason) {
                         Text(
                             text = row.whyOneSentence,
                             style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
                             color = palette.muted,
                         )
+                    }
+                    if (presentation.showOemHint) {
                         row.oemHint?.let { hint ->
                             Box(
                                 modifier = Modifier
@@ -930,6 +1002,8 @@ fun OnboardingChecklistScreen(
                                 )
                             }
                         }
+                    }
+                    if (presentation.showGrantButton) {
                         Button(
                             onClick = row.onGrant,
                             modifier = Modifier
