@@ -82,10 +82,12 @@ void main() {
 
 
   testWidgets('B1: language and appearance carry their current value', (tester) async {
+    // Both notifiers load from prefs, so seed them rather than guessing the default.
+    SharedPreferences.setMockInitialValues({'app_locale': 'en', 'theme_mode': 'light'});
     await pump(tester);
-    // fixture locale is en and the theme defaults to system
-    expect(find.text('English'), findsOneWidget);
-    expect(find.text('System'), findsOneWidget);
+    expect(find.text('English'), findsOneWidget, reason: 'the language row shows the chosen language');
+    expect(find.text('Light'), findsOneWidget, reason: 'the appearance row shows the chosen theme');
+    expect(find.text('System'), findsNothing, reason: 'neither row is following the device any more');
   });
 
   testWidgets('the time zone row is read-only and shows the family offset, never an IANA id', (tester) async {
