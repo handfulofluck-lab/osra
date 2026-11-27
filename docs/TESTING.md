@@ -535,6 +535,12 @@ It covers both directions of the cross-family restriction with Antigravity and H
 existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
 check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
 
+The verified-gate policy self-test also checks Kimi-Mac’s `kimimac/` (and `kimi-mac/`) author prefixes and
+`— Kimi-Mac` ordinary signature. It verifies both directions of the same-family restriction with Kimi Code
+(Moonshot) and the cross-family pairing with K31/K31-Mac (DeepSeek, per #617), and confirms Kimi-Mac cannot
+supply an R3 security key. The signer-fixture check accepts Kimi-Mac’s signature from the shared agent
+account and rejects it from other accounts.
+
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
 The CI setup disables the Terraform output wrapper: isolated test environments intentionally omit
