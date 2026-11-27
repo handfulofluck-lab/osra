@@ -5,7 +5,15 @@ package com.familyshield.agent.ui.theme
  * while preserving the previous screen as an instant fallback.
  */
 object ChildUxFlags {
+    /** C-01 Child home screen; when false, [com.familyshield.agent.setup.PairingActivity] renders the legacy status screen. */
+    @Volatile
+    var c01ChildHomeEnabled: Boolean = true
+
     /** C-05 First run (permissions before pairing #1174 + transparency card + agreement last); false restores legacy order. */
     @Volatile
     var c05FirstRunEnabled: Boolean = true
+
+    /** C-02 Time's up / blocked screen; when false, [com.familyshield.agent.enforcement.BlockActivity] renders the legacy fallback. */
+    @Volatile
+    var c02BlockedScreenEnabled: Boolean = true
 }

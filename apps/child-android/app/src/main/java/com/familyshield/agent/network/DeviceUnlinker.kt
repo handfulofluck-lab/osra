@@ -120,6 +120,7 @@ class DeviceUnlinker @Inject constructor(
                 stopVpn = { FilterVpnService.stop(context) },
                 clearLock = {
                     LockState.clear(context)
+                    com.familyshield.agent.commands.CommandDispatcher.cancelPausedInternetNotification(context)
                     // S2 (osra-security#39): the period, not just the visible lock, or a re-paired phone
                     // uploads the previous child's open period as the new child's first lock.
                     com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
