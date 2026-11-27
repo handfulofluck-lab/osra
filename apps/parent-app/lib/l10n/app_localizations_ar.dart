@@ -4036,7 +4036,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get p15CanBeWrong => 'ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.';
+  String get p15CanBeWrong => 'مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.';
 
   @override
   String get p15PreviewLoadFailed =>
@@ -4047,17 +4047,17 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String p15TalkWithChild(String child) {
-    return 'تحدّث مع $child';
+    return 'التحدث مع $child';
   }
 
   @override
   String p15HelpChildBlockContact(String child, String contact) {
-    return 'ساعد $child على حظر $contact';
+    return 'مساعدة $child على حظر $contact';
   }
 
   @override
   String p15HelpBlockGuideBody(String child, String app, String contact) {
-    return 'اجلس مع $child وافتحا $app معًا لحظر $contact وكتم رسائله.';
+    return 'الجلوس مع $child وفتح $app معًا لحظر $contact وكتم رسائله.';
   }
 
   @override

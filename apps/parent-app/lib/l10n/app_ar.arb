@@ -1208,14 +1208,13 @@
   "timeRequestDeclinedBy": "سبق رفض هذا الطلب بقرار من {actor}",
   "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
   "timeRequestDecidedAt": "وقت القرار: {time}",
-  "p15CanBeWrong": "ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.",
-  "p15PreviewLoadFailed": "تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.",
+  "p15CanBeWrong": "مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.",
   "p15ActionsHeader": "ما يمكنك فعله",
-  "p15TalkWithChild": "تحدّث مع {child}",
+  "p15TalkWithChild": "التحدث مع {child}",
   "@p15TalkWithChild": { "placeholders": { "child": { "type": "String" } } },
-  "p15HelpChildBlockContact": "ساعد {child} على حظر {contact}",
+  "p15HelpChildBlockContact": "مساعدة {child} على حظر {contact}",
   "@p15HelpChildBlockContact": { "placeholders": { "child": { "type": "String" }, "contact": { "type": "String" } } },
-  "p15HelpBlockGuideBody": "اجلس مع {child} وافتحا {app} معًا لحظر {contact} وكتم رسائله.",
+  "p15HelpBlockGuideBody": "الجلوس مع {child} وفتح {app} معًا لحظر {contact} وكتم رسائله.",
   "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
   "p15AdjustLimits": "تعديل وقت الشاشة ووقت النوم",
   "p15ReviewAppRules": "مراجعة قواعد التطبيقات",
@@ -1231,5 +1230,6 @@
   "p12AllowSite": "السماح بالموقع",
   "p12RecentlyBlocked": "المواقع المحظورة مؤخرًا",
   "p12BlockSiteTitle": "حظر موقع",
-  "p12AllowSiteTitle": "السماح بموقع"
+  "p12AllowSiteTitle": "السماح بموقع",
+  "p15PreviewLoadFailed": "تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى."
 }
