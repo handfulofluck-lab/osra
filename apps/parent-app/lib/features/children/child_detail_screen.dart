@@ -1553,7 +1553,7 @@ class AlertTile extends ConsumerWidget {
               ? formatTimeRequestTimestamp(
                   context, alert.createdAt!, now: ref.watch(clockProvider)(),
                 )
-              : ltrIsolate(
+              : firstStrongIsolate(
                   normalizeDigits(
                     DateFormat.MMMd(context.localeName)
                         .add_Hm()

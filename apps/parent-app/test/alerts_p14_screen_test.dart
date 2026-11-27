@@ -539,6 +539,11 @@ void main() {
     expect(RegExp(r'[\u0660-\u0669]').hasMatch(allTexts), isFalse,
         reason: 'Found Arabic-Indic digits in P-14 Requests Arabic view:\n$allTexts');
     expect(RegExp(r'\d{2}:\d{2}').hasMatch(allTexts), isTrue);
+    // Mutant: using `ltrIsolate` (`\u2066`) instead of `firstStrongIsolate` (`\u2068`)
+    // flips Arabic day/month order visually ("نوفمبر 13:25 27") and fails this check.
+    expect(allTexts.contains('\u206827 نوفمبر'), isTrue,
+        reason: 'Expected FSI-isolated "27 نوفمبر" in Arabic subtitle:\n$allTexts');
+    expect(allTexts.contains('\u206627 نوفمبر'), isFalse);
   });
 
   // Mutant: passing only `alert.id` without `extra: alert` (or dropping group
