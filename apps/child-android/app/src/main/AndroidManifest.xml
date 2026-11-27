@@ -184,6 +184,11 @@
             android:exported="false"
             android:theme="@android:style/Theme.Material.NoActionBar"/>
 
+        <!-- C-03 Ask a parent (#1179): internal child time-request screen, no duplicate native title bar. -->
+        <activity android:name=".ui.request.AskParentActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
+
         <!-- Issue #87: no showWhenLocked - a block screen must not cover the keyguard's PIN pad.
              Issue #175: the overlay must not share the screen with the app it covers. `resizeableActivity
              =false` makes the system launch it full-screen (leaving split screen) rather than into the

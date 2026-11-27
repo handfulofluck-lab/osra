@@ -426,7 +426,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get socialMonitoringTitle => 'مراقبة وسائل التواصل الاجتماعي';
+  String get socialMonitoringTitle => 'مراقبة التواصل';
 
   @override
   String get devices => 'الأجهزة';
