@@ -523,8 +523,8 @@ void main() {
       await flushFakeHttp(tester);
 
       for (final a in kSocialApps) {
-        await reveal(tester, socialAppRow(a.key));
-        expect(socialAppOn(tester, a.key), isTrue, reason: '${a.label} should render ON for {}');
+        await reveal(tester, socialAppRow(a.appKey));
+        expect(socialAppOn(tester, a.appKey), isTrue, reason: '${a.label} should render ON for {}');
       }
     });
 
