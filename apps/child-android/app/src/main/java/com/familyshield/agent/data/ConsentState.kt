@@ -75,6 +75,11 @@ class ConsentState @Inject constructor(
      */
     @Volatile private var pauseEpoch: Long = settings.consentPauseEpochSync()
     @Volatile private var resumedAtMs: Long = settings.consentResumedAtSync()
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(Boolean) -> Unit>()
+
+    fun addListener(listener: (Boolean) -> Unit) {
+        listeners += listener
+    }
 
     /** True while the parent has withdrawn consent; collection and enforcement must stop. */
     fun isPaused(): Boolean = paused
@@ -129,6 +134,7 @@ class ConsentState @Inject constructor(
             paused = false // after the time: a harvest seeing paused == false also sees the new resumedAtMs
         }
         Log.i(TAG, if (next) "consent withdrawn — monitoring paused ($reason)" else "consent active — monitoring resumed ($reason)")
+        listeners.forEach { it(next) }
         scope.launch { runCatching { settings.saveConsentState(next, pauseEpoch, resumedAtMs) } }
     }
 
