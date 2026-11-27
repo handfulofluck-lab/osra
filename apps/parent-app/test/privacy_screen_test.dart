@@ -162,5 +162,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('privacyDelete')), findsOneWidget);
+    // At 200% text scale, _DeleteCard stacks the Delete button below the text so the copy gets full width.
+    final cardRect = tester.getRect(find.byKey(const ValueKey('privacyDelete')));
+    final btnRect = tester.getRect(find.byKey(const ValueKey('privacyDeleteButton')));
+    expect(btnRect.top, greaterThan(cardRect.top + 80));
   });
 }

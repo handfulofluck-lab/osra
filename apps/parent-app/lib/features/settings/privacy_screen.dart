@@ -347,6 +347,30 @@ class _DeleteCard extends StatelessWidget {
     final l10n = context.l10n;
     final tokens = context.tokens;
     final text = Theme.of(context).textTheme;
+    final scale = MediaQuery.textScalerOf(context).scale(1.0);
+    final textBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          isOwner ? l10n.privacyDeleteFamilyTitle : l10n.privacyDeleteSelfTitle,
+          style: text.titleSmall?.copyWith(color: tokens.danger),
+        ),
+        const SizedBox(height: AppSpace.xxs),
+        Text(
+          isOwner ? l10n.privacyDeleteFamilyDesc : l10n.privacyDeleteSelfDesc,
+          style: text.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+        ),
+      ],
+    );
+    final deleteButton = OutlinedButton(
+      key: const ValueKey('privacyDeleteButton'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: tokens.danger,
+        side: BorderSide(color: tokens.danger),
+      ),
+      onPressed: () => context.push('/settings/delete-account'),
+      child: Text(l10n.privacyDeleteAction),
+    );
     return Container(
       key: const ValueKey('privacyDelete'),
       padding: const EdgeInsets.all(AppSpace.lg),
@@ -355,36 +379,22 @@ class _DeleteCard extends StatelessWidget {
         border: Border.all(color: tokens.danger.withValues(alpha: 0.4)),
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: scale >= 1.5
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  isOwner ? l10n.privacyDeleteFamilyTitle : l10n.privacyDeleteSelfTitle,
-                  style: text.titleSmall?.copyWith(color: tokens.danger),
-                ),
-                const SizedBox(height: AppSpace.xxs),
-                Text(
-                  isOwner ? l10n.privacyDeleteFamilyDesc : l10n.privacyDeleteSelfDesc,
-                  style: text.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
-                ),
+                textBlock,
+                const SizedBox(height: AppSpace.md),
+                Align(alignment: AlignmentDirectional.centerStart, child: deleteButton),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: textBlock),
+                const SizedBox(width: AppSpace.md),
+                deleteButton,
               ],
             ),
-          ),
-          const SizedBox(width: AppSpace.md),
-          OutlinedButton(
-            key: const ValueKey('privacyDeleteButton'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: tokens.danger,
-              side: BorderSide(color: tokens.danger),
-            ),
-            onPressed: () => context.push('/settings/delete-account'),
-            child: Text(l10n.privacyDeleteAction),
-          ),
-        ],
-      ),
     );
   }
 }
