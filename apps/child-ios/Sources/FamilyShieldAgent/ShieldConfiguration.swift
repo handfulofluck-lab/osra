@@ -38,6 +38,10 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
         Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil, dailyLimitResetsAt: Self.dailyLimitResetsAt()))
     }
 
+    /// U105: how many minutes the shield asks for. The iOS shield has one button and no picker, so this is a fixed
+    /// ask; 15 matches the shortest Android option (`+15 min`).
+    static let dailyLimitRequestMinutes = 15
+
     /// U105: the daily limit's reset time when the limit is what holds the shield, nil when it is not. The limit is
     /// not a window, so it is only offered to `ShieldText` when nothing else explains the shield.
     static func dailyLimitResetsAt(now: Date = Date()) -> Date? {
@@ -128,12 +132,19 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
         // #744: one request per target every few minutes; further taps keep the shield and send nothing.
         if outcome.alertsParent,
            ShieldTapPolicy.shouldSendRequest(target: target, defaults: UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
-            reporter.report(
-                category: "app_blocked",
-                title: "Child asked for access",
-                body: ShieldTapPolicy.requestAccessAlertBody,
-                childId: AlertReporter.pairedChildId()
-            )
+            // U105: when the daily limit is what holds the shield, the tap asks for time the way Android does, so
+            // the parent's time-request card renders it rather than a generic access alert.
+            if Self.dailyLimitResetsAt() != nil {
+                reporter.reportTimeRequest(minutes: Self.dailyLimitRequestMinutes,
+                                           childId: AlertReporter.pairedChildId())
+            } else {
+                reporter.report(
+                    category: "app_blocked",
+                    title: "Child asked for access",
+                    body: ShieldTapPolicy.requestAccessAlertBody,
+                    childId: AlertReporter.pairedChildId()
+                )
+            }
         }
         if outcome.countsDismissal {
             ShieldTapPolicy.countDismissal(in: UserDefaults(suiteName: AgentIdentityStore.suiteName))
