@@ -192,13 +192,15 @@ class _RetentionCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: AppSpace.sm,
+          runSpacing: AppSpace.xs,
           children: [
-            Expanded(
-              child: Text(
-                l10n.privacyKeptHeader.toUpperCase(),
-                style: text.labelSmall?.copyWith(color: tokens.onSurfaceVariant, letterSpacing: 0.8),
-              ),
+            Text(
+              l10n.privacyKeptHeader.toUpperCase(),
+              style: text.labelSmall?.copyWith(color: tokens.onSurfaceVariant, letterSpacing: 0.8),
             ),
             TextButton(
               key: const ValueKey('privacyFullDetails'),

@@ -134,4 +134,33 @@ void main() {
       TextDirection.rtl,
     );
   });
+
+  // Mutant: reverting the retention header `Wrap` in `_RetentionCard` back to `Row`
+  // causes a 176 px RenderFlex overflow at 320x568 @ 2.0x in Arabic.
+  testWidgets('P9 Arabic at 320x568 @ 2.0x renders excerpts and delete rows with zero overflow',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api())],
+      child: MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+        child: localizedTestApp(const PrivacyScreen(), locale: const Locale('ar')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('privacyRowExcerpts')), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('privacyDelete')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('privacyDelete')), findsOneWidget);
+  });
 }
