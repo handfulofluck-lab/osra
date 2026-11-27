@@ -653,7 +653,15 @@ class WebFilterP12Screen extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.public, color: iosOnly ? tokens.onSurfaceVariant : tokens.primary, size: 20),
+            // U96 (#650): when the phone has not reported the filter ready, the globe
+            // carries the warning colour rather than the ordinary accent.
+            Icon(
+              Icons.public,
+              color: iosOnly
+                  ? tokens.onSurfaceVariant
+                  : (androidReady ? tokens.primary : tokens.warn),
+              size: 20,
+            ),
             const SizedBox(width: AppSpace.sm),
             Expanded(
               child: iosOnly
@@ -687,13 +695,29 @@ class WebFilterP12Screen extends ConsumerWidget {
                               .bodySmall
                               ?.copyWith(color: tokens.onSurfaceVariant),
                         )
-                      : Text(
-                          l10n.p12NotBlockingYet,
-                          key: const ValueKey('p12-browsers-not-ready'),
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: tokens.onSurfaceVariant),
+                      // U96 (#650, UI/UX 12:46): no new copy. The title is the
+                      // screen's own name, and the state is carried by the existing
+                      // warn pill on its own line — the same shape as the banner.
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.tabWebFilter,
+                              key: const ValueKey('p12-browsers-not-ready'),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(color: tokens.onSurface),
+                            ),
+                            const SizedBox(height: AppSpace.xxs),
+                            _pill(
+                              context,
+                              key: const ValueKey('p12-browsers-not-ready-pill'),
+                              label: l10n.p12NotBlockingYet,
+                              icon: Icons.block,
+                              color: tokens.warn,
+                            ),
+                          ],
                         ),
             ),
           ],
