@@ -103,15 +103,18 @@ export function evalSessionVersionScript(
   script: unknown,
   key: unknown,
   floorArg: unknown,
+  allowCreateArg?: unknown,
 ): Promise<unknown> | undefined {
   if (typeof script !== "string") return undefined;
   const k = String(key ?? "");
   const floor = Number(floorArg ?? 0);
   if (script.startsWith("-- osra:session-version-floor\n")) {
+    const allowCreate = allowCreateArg === undefined ? true : String(allowCreateArg) === "1";
     return (async () => {
       const cur = await redis.get(k);
       if (cur === "deleted") return "deleted";
       if (cur === null) {
+        if (!allowCreate) return "__MISS__";
         if (floor === 0) {
           await redis.set(k, "0");
           return "0";
@@ -165,7 +168,7 @@ export class MockRedis {
   lpush = vi.fn(async (_key: string, _value: string) => 1);
   ltrim = vi.fn(async (..._args: unknown[]) => "OK");
   eval = vi.fn(async (...args: unknown[]) => {
-    const sv = evalSessionVersionScript(this, args[0], args[2], args[3]);
+    const sv = evalSessionVersionScript(this, args[0], args[2], args[3], args[4]);
     return sv !== undefined ? sv : (null as unknown);
   });
   lrange = vi.fn(async (_key: string, _start: number, _stop: number) => [] as string[]);

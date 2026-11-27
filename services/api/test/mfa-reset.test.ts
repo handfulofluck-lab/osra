@@ -317,12 +317,13 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
   redis.get!.mockImplementation(async (k: string) => store.get(k) ?? null);
   redis.set!.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
   redis.del!.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
-  redis.eval!.mockImplementation(async (s: string, _n: number, key: string, floorArg?: string) => {
+  redis.eval!.mockImplementation(async (s: string, _n: number, key: string, floorArg?: string, allowCreateArg?: string) => {
     const sv = evalSessionVersionScript(
       redis as unknown as Pick<import("./helpers.js").MockRedis, "get" | "set" | "incrby" | "del">,
       s,
       key,
       floorArg,
+      allowCreateArg,
     );
     if (sv !== undefined) return sv;
     const v = store.get(key) ?? null;

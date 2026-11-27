@@ -28,8 +28,8 @@ function wireRedisStore() {
   redis.get.mockImplementation(async (k: string) => store.get(k) ?? null);
   redis.set.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
   // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL).
-  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string) => {
-    const sv = evalSessionVersionScript(redis, script, key, floorArg);
+  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string, allowCreateArg?: string) => {
+    const sv = evalSessionVersionScript(redis, script, key, floorArg, allowCreateArg);
     if (sv !== undefined) return sv;
     const v = store.get(key) ?? null;
     if (v !== null) store.delete(key);

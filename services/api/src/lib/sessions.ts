@@ -248,18 +248,28 @@ export interface InvalidateSessionsOptions {
   onDurableCommit?: (committedVersion: number) => void;
 }
 
+export const SESSION_VERSION_MISS_SENTINEL = "__MISS__";
+
 /**
  * Atomic Lua monotonic floor for `auth:session-version:<parentId>`:
  *  - Preserves `DELETED_SESSION_MARKER` (`"deleted"`).
  *  - Preserves any cached integer generation already `>= floor` (no overshoot or rollback).
- *  - Raises missing (`false`), malformed non-integer, negative, or lower values to `floor` (no TTL).
+ *  - When `ARGV[2] ~= '1'` (`allowCreate = false`, warm path) and `KEYS[1]` is absent, returns
+ *    `SESSION_VERSION_MISS_SENTINEL` (`"__MISS__"`) **without** creating `KEYS[1]`, forcing the
+ *    caller to restore durable `RevokedToken` rows before initializing the marker (`ARGV[2] == '1'`).
+ *  - When `ARGV[2] == '1'`, initializes an absent marker to `floor` (no TTL), and raises malformed
+ *    non-integer, negative, or lower values to `floor`.
  */
 export const SESSION_VERSION_FLOOR_SCRIPT = [
   "-- osra:session-version-floor",
   "local cur = redis.call('GET', KEYS[1])",
   `if cur == '${DELETED_SESSION_MARKER}' then return '${DELETED_SESSION_MARKER}' end`,
   "local floor = tonumber(ARGV[1])",
+  "local allowCreate = ARGV[2] == '1'",
   "if cur == false then",
+  "  if not allowCreate then",
+  `    return '${SESSION_VERSION_MISS_SENTINEL}'`,
+  "  end",
   "  if floor == 0 then",
   "    redis.call('SET', KEYS[1], '0')",
   "    return '0'",
@@ -297,6 +307,18 @@ export const SESSION_VERSION_CLEANUP_BELOW_FLOOR_SCRIPT = [
   "return 0",
 ].join("\n");
 
+async function restoreDurableRevokedTokensForParent(redis: Redis, parentId: string): Promise<void> {
+  const now = Date.now();
+  const tokens = (await prisma.revokedToken.findMany({
+    where: { parentId, expiresAt: { gt: new Date(now) } },
+    select: { jti: true, expiresAt: true },
+  })) ?? [];
+  for (const token of tokens) {
+    const ttl = Math.ceil((new Date(token.expiresAt).getTime() - now) / 1000);
+    if (ttl > 0) await redis.set(revokedTokenKey(token.jti), "1", "EX", ttl);
+  }
+}
+
 async function applySessionVersionFloor(
   redis: Redis,
   parentId: string,
@@ -304,21 +326,14 @@ async function applySessionVersionFloor(
 ): Promise<"deleted" | "updated"> {
   const floor = Math.max(0, Math.floor(committedVersion));
   const key = sessionVersionKey(parentId);
-  const initial = await redis.get(key);
-  if (initial === DELETED_SESSION_MARKER) return "deleted";
-  if (initial === null) {
-    const now = Date.now();
-    const tokens = (await prisma.revokedToken.findMany({
-      where: { parentId, expiresAt: { gt: new Date(now) } },
-      select: { jti: true, expiresAt: true },
-    })) ?? [];
-    for (const token of tokens) {
-      const ttl = Math.ceil((new Date(token.expiresAt).getTime() - now) / 1000);
-      if (ttl > 0) await redis.set(revokedTokenKey(token.jti), "1", "EX", ttl);
-    }
-  }
-  const applied = await redis.eval(SESSION_VERSION_FLOOR_SCRIPT, 1, key, String(floor));
-  return applied === DELETED_SESSION_MARKER ? "deleted" : "updated";
+  const warm = await redis.eval(SESSION_VERSION_FLOOR_SCRIPT, 1, key, String(floor), "0");
+  if (warm === DELETED_SESSION_MARKER) return "deleted";
+  if (warm !== SESSION_VERSION_MISS_SENTINEL) return "updated";
+  // Warm Lua probe saw an absent marker without creating `key`. Restore durable `RevokedToken`
+  // single-logout keys first; only after restoration succeeds may `allowCreate = '1'` create `key`.
+  await restoreDurableRevokedTokensForParent(redis, parentId);
+  const initialized = await redis.eval(SESSION_VERSION_FLOOR_SCRIPT, 1, key, String(floor), "1");
+  return initialized === DELETED_SESSION_MARKER ? "deleted" : "updated";
 }
 
 async function cleanupSessionVersionBelowFloor(

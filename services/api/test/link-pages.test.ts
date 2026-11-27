@@ -53,8 +53,8 @@ function wireRedis(): Map<string, string> {
     store.set(k, String(v));
     return "OK";
   });
-  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string) => {
-    const sv = evalSessionVersionScript(redis, script, key, floorArg);
+  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string, allowCreateArg?: string) => {
+    const sv = evalSessionVersionScript(redis, script, key, floorArg, allowCreateArg);
     if (sv !== undefined) return sv;
     const v = store.get(key) ?? null;
     store.delete(key);

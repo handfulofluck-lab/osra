@@ -82,8 +82,8 @@ function wireRedisStore() {
   });
   // Atomic consume, mirroring the production Lua GET+DEL script (Redis 5.0 has no GETDEL), plus the
   // session-version floor/cleanup scripts from `lib/sessions.ts`.
-  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string) => {
-    const sv = evalSessionVersionScript(redis, script, key, floorArg);
+  redis.eval.mockImplementation(async (script: string, _n: number, key: string, floorArg?: string, allowCreateArg?: string) => {
+    const sv = evalSessionVersionScript(redis, script, key, floorArg, allowCreateArg);
     if (sv !== undefined) return sv;
     const v = live(key);
     if (v !== null) {
@@ -169,7 +169,7 @@ describe("auth routes", () => {
     // defaults so an implementation from one test cannot leak into the next.
     const redis = getRedis() as unknown as MockRedis;
     redis.get.mockImplementation(async () => null);
-    redis.eval.mockImplementation(async (...args: unknown[]) => evalSessionVersionScript(redis, args[0], args[2], args[3]) ?? null);
+    redis.eval.mockImplementation(async (...args: unknown[]) => evalSessionVersionScript(redis, args[0], args[2], args[3], args[4]) ?? null);
     redis.set.mockImplementation(async () => "OK");
     redis.del.mockImplementation(async () => 0);
     redis.incrby.mockImplementation(async () => 1);
