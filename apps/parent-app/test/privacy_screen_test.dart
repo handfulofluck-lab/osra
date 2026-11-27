@@ -248,4 +248,16 @@ void main() {
     final btnRect = tester.getRect(find.byKey(const ValueKey('privacyDeleteButton')));
     expect(btnRect.top, greaterThan(cardRect.top + 80));
   });
+
+  // U89 (#650): the header's ARB value is sentence case in both locales; the
+  // widget used to shout it. Mutant: restoring `.toUpperCase()` fails this.
+  testWidgets('U89: the kept/deleted header renders in sentence case, not all caps',
+      (tester) async {
+    final client = api();
+    await pump(tester, client);
+
+    const header = 'Kept, then deleted automatically';
+    expect(find.text(header), findsOneWidget);
+    expect(find.text(header.toUpperCase()), findsNothing);
+  });
 }
