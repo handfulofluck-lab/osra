@@ -128,6 +128,10 @@ class MiuiBackgroundPopupPolicy1235Test {
             assertTrue("EN strings missing $key", enStrings.contains("name=\"$key\""))
             assertTrue("AR strings missing $key", arStrings.contains("name=\"$key\""))
         }
+        assertTrue(
+            arStrings.contains("لا يُبلغ هذا الهاتف عمّا إذا كانت النوافذ المنبثقة في الخلفية مفعّلة. لذا يلزم فتح «أذونات أخرى» وتفعيل «عرض النوافذ المنبثقة أثناء التشغيل في الخلفية»، ثم التأكيد أدناه."),
+        )
+        assertTrue(arStrings.contains("تم تفعيل النوافذ المنبثقة في الخلفية"))
     }
 
     private fun findAppSrcRoot(): File {

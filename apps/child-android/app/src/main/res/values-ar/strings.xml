@@ -376,6 +376,6 @@
     <string name="notification_location_active">مشاركة الموقع تعمل</string>
     <string name="notification_channel_content_filter">تصفية المواقع</string>
     <string name="notification_content_filter_active">تصفية المواقع تعمل</string>
-    <string name="miui_popup_confirm_hint">لا يُبلغ هذا الهاتف عمّا إذا كانت النوافذ المنبثقة في الخلفية مفعّلة. افتح «أذونات أخرى»، وفعّل «عرض النوافذ المنبثقة أثناء التشغيل في الخلفية»، ثم أكّد أدناه.</string>
-    <string name="miui_popup_confirm_button">لقد فعّلت النوافذ المنبثقة في الخلفية</string>
+    <string name="miui_popup_confirm_hint">لا يُبلغ هذا الهاتف عمّا إذا كانت النوافذ المنبثقة في الخلفية مفعّلة. لذا يلزم فتح «أذونات أخرى» وتفعيل «عرض النوافذ المنبثقة أثناء التشغيل في الخلفية»، ثم التأكيد أدناه.</string>
+    <string name="miui_popup_confirm_button">تم تفعيل النوافذ المنبثقة في الخلفية</string>
 </resources>
