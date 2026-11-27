@@ -129,6 +129,10 @@ const OPTIONAL = {
   // The code clamps too (socialAlertWindow.ts); the rule keeps an out-of-range value from reading as intended.
   SOCIAL_ALERT_FIRST_PUSHES: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 20 ? null : 'first pushes per child and app: a whole number 1 to 20 (#1139)'),
   SOCIAL_ALERT_SUMMARY_MINUTES: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 60 ? null : 'grouped summary every 1 to 60 minutes (#1139)'),
+  // P-23: what the privacy screen says about server logs and backups. They describe settings kept elsewhere
+  // (log_retention_days, db_backup_retention_days in terraform), so the rule only stops a value past the policy.
+  PRIVACY_LOG_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 90 ? null : "server logs are kept 90 days at most (privacy policy section 11); 1 to 90"),
+  PRIVACY_BACKUP_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 14 ? null : "backups expire after 14 days at most (privacy policy section 11); 1 to 14"),
   ROLLUP_RETENTION_DAYS: (v) => (Number.isInteger(Number(v)) && Number(v) >= 90 && Number(v) <= 365 ? null : 'daily totals are kept 365 days at most (privacy policy); 90 to 365'),
 };
 
