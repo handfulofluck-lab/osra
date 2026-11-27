@@ -486,10 +486,7 @@
     <string name="c03_adults_fallback_speaking">my parents</string>
     <string name="c03_adults_fallback_addressing">your parents</string>
     <string name="c03_question_label">How much more time?</string>
-    <string name="c03_selected_badge">Selected</string>
-    <string name="c03_option_15_eyebrow">A little more</string>
     <string name="c03_option_15_amount">+15 min</string>
-    <string name="c03_option_30_eyebrow">More time</string>
     <string name="c03_option_30_amount">+30 min</string>
     <string name="c03_preview_eyebrow">What %1$s will see</string>
     <string name="c03_preview_sentence">Request for %1$s more minutes of screen time, today only.</string>
