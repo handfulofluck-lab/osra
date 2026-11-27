@@ -148,7 +148,7 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
             // U105, Codex's findings: the tap follows the cause the shield was **drawn** with, not a fresh guess,
             // and a sent request is recorded against its reset so the next configuration shows the confirmation.
             if ShieldCauseStore.lastDrawnWasDailyLimit, let resetsAt = ShieldCauseStore.lastDrawnResetsAt {
-                reporter.reportTimeRequest(minutes: Self.dailyLimitRequestMinutes,
+                reporter.reportTimeRequest(minutes: FamilyShieldConfigurationDataSource.dailyLimitRequestMinutes,
                                            childId: AlertReporter.pairedChildId())
                 DailyLimitRequestStore.record(resetsAt: resetsAt)
             } else {
