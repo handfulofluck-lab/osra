@@ -1,5 +1,6 @@
 package com.familyshield.agent.enforcement
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,20 +37,26 @@ class LockEnforcementPolicyTest {
     private val facts = FakeFacts(system = oemSystem)
 
     @Test
-    fun `locking modes are locked, paused and paused_internet only`() {
+    fun `locking modes are locked and paused only - legacy paused_internet is retired (#1240 B2)`() {
         assertTrue(LockEnforcementPolicy.isLockingMode("locked"))
         assertTrue(LockEnforcementPolicy.isLockingMode("paused"))
-        assertTrue(LockEnforcementPolicy.isLockingMode("paused_internet"))
+        assertFalse(LockEnforcementPolicy.isLockingMode("paused_internet"))
+        assertTrue(LockEnforcementPolicy.isLegacyOverlayMode("paused_internet"))
+        assertFalse(LockEnforcementPolicy.isLegacyOverlayMode("locked"))
+        assertEquals(LockState.MODE_NONE, LockEnforcementPolicy.normalizeStoredMode("paused_internet"))
+        assertEquals("locked", LockEnforcementPolicy.normalizeStoredMode("locked"))
+        assertEquals("paused", LockEnforcementPolicy.normalizeStoredMode("paused"))
         assertFalse(LockEnforcementPolicy.isLockingMode("none"))
         assertFalse(LockEnforcementPolicy.isLockingMode("unlock"))
         assertFalse(LockEnforcementPolicy.isLockingMode(null))
     }
 
     @Test
-    fun `re-raises over the launcher, recents, settings and other apps while locked`() {
+    fun `re-raises over the launcher, recents, settings and other apps while locked but never for retired paused_internet`() {
         for (pkg in listOf("com.sec.android.app.launcher", "com.android.settings", "com.whatsapp", "com.google.android.youtube")) {
             assertTrue(pkg, LockEnforcementPolicy.shouldReraise("locked", pkg, own, facts))
-            assertTrue(pkg, LockEnforcementPolicy.shouldReraise("paused_internet", pkg, own, facts))
+            assertTrue(pkg, LockEnforcementPolicy.shouldReraise("paused", pkg, own, facts))
+            assertFalse(pkg, LockEnforcementPolicy.shouldReraise("paused_internet", pkg, own, facts))
         }
     }
 
