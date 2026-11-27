@@ -1,5 +1,7 @@
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/settings/settings_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,16 +23,29 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  Future<void> pump(WidgetTester tester, {required bool uxP22}) async {
+  Future<GoRouter> pump(WidgetTester tester, {required bool uxP22}) async {
     final api = FakeApiClient(standardRoutes());
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
+        GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
+      ],
+    );
+    addTearDown(router.dispose);
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
         p22SettingsEnabledProvider.overrideWithValue(uxP22),
       ],
-      child: localizedTestApp(const DashboardScreen()),
+      child: MaterialApp.router(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: router,
+      ),
     ));
     await tester.pumpAndSettle();
+    return router;
   }
 
   Future<void> openMenu(WidgetTester tester) async {
@@ -44,6 +59,10 @@ void main() {
 
     expect(find.byKey(const ValueKey('dashboardMenu-settings')), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('dashboardMenu-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsScreen), findsOneWidget,
+        reason: 'flag on: the menu entry must actually reach /settings');
     // The four links it replaces are gone.
     expect(find.text('Appearance'), findsNothing);
     expect(find.text('Digest preferences'), findsNothing);
@@ -56,6 +75,7 @@ void main() {
     expect(find.byKey(const ValueKey('dashboardMenu-settings')), findsNothing);
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Digest preferences'), findsOneWidget);
+    expect(find.text('Two-step verification'), findsOneWidget);
     expect(find.text('Delete account'), findsOneWidget);
   });
 }

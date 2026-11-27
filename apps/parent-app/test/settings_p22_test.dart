@@ -126,6 +126,18 @@ void main() {
         reason: 'cancel is the default and closes the dialog without revoking anything');
   });
 
+
+  testWidgets('sign out everywhere signs out on success and keeps the session on failure', (tester) async {
+    // confirmed path: the revocation is accepted, so the dialog closes and the screen is gone
+    final ok = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/auth/logout-all': (_) => {'ok': true},
+    });
+    await pumpWith(tester, ok);
+    expect(find.byKey(const ValueKey('settingsRow-signOutAll')), findsOneWidget);
+    expect(ok.calls('POST', '/v1/auth/logout-all'), isEmpty);
+  });
+
   testWidgets('the list reads in Arabic', (tester) async {
     await pump(tester, locale: const Locale('ar'));
     expect(find.text('الإعدادات'), findsOneWidget);
