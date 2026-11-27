@@ -248,7 +248,13 @@ class BlockExplainPolicyTest {
         // #1240 B1: concurrent pause must not block the daily-limit explanation, return time, or
         // the "+15 min" ask-time action.
         val exp = BlockExplainPolicy.explain(
-            ruleSet = RuleSetDto(screenTime = ScreenTimeRuleDto(dailyLimitMinutes = 60)),
+            ruleSet = RuleSetDto(
+                screenTime = ScreenTimeRuleDto(
+                    dailyLimitMinutes = 60,
+                    bedtimeStart = "21:00",
+                    bedtimeEnd = "07:00",
+                ),
+            ),
             packageId = minecraft,
             now = wedAfternoon,
             minutesUsedToday = mapOf(minecraft to 60),
@@ -259,7 +265,7 @@ class BlockExplainPolicyTest {
             fallbackWindow = null,
         )
         assertEquals(BlockCause.DAILY_LIMIT, exp.cause)
-        assertEquals("00:00", exp.backAtTime)
+        assertEquals("07:00", exp.backAtTime)
         assertTrue(exp.backAtTomorrow)
         assertTrue(exp.canAskForMoreTime)
     }
