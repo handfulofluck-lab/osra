@@ -643,6 +643,9 @@ void main() {
       expect(find.byKey(const ValueKey('homeSettingsDigests')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsMfa')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsDeleteAccount')), findsOneWidget);
+      // UI/UX Bureau, 17:29: "Privacy and data" is the only entry the P-07 home would otherwise strand, since
+      // its other way in is the dashboard menu this screen replaces. It shows in both switch states.
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget);
     });
 
     // P-22 (`#1179`): the P-07 home replaces the dashboard, so the dashboard's Settings menu entry does not
@@ -665,6 +668,8 @@ void main() {
       expect(find.byKey(const ValueKey('homeSettingsAppearance')), findsNothing);
       expect(find.byKey(const ValueKey('homeSettingsSignOut')), findsOneWidget,
           reason: 'signing out is not a Settings row and stays');
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget,
+          reason: 'Privacy and data has no P-22 row, so it survives the swap');
     });
   });
 

@@ -2030,6 +2030,15 @@ class _HomeSettingsTab extends ConsumerWidget {
           () => context.push('/settings/delete-account'),
         ),
       ],
+      // "Privacy and data" has no row in P-22's approved list and its only other way in is the dashboard menu,
+      // which the P-07 home replaces. It therefore shows in **both** states: the 17:06 rule says a shipped,
+      // signed entry does not drop out without an equivalent in its place (UI/UX Bureau, 17:29).
+      (
+        const ValueKey('homeSettingsPrivacy'),
+        Icons.privacy_tip_outlined,
+        l10n.privacyMenu,
+        () => context.push('/settings/privacy'),
+      ),
       (
         const ValueKey('homeSettingsSignOut'),
         Icons.logout,
