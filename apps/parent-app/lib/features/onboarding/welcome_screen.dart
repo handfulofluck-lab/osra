@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../theme/app_tokens.dart';
+import 'welcome_p01_screen.dart';
 
 /// First screen of the first-run wizard. One primary action: start the account
 /// step. This is the only screen a fresh install can reach, and it never
@@ -14,6 +15,9 @@ class WelcomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(p01WelcomeEnabledProvider)) {
+      return const WelcomeP01Screen();
+    }
     final l10n = context.l10n;
     return Scaffold(
       body: SafeArea(
