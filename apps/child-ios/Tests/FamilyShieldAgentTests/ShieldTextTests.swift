@@ -216,15 +216,31 @@ final class ShieldTextTests: XCTestCase {
         XCTAssertEqual(text.secondaryButton, "إغلاق التطبيق")
     }
 
-    /// U105: after the child asks, the primary label becomes the confirmation sentence.
-    func testTheRequestSentShieldSaysTheParentWasAsked() {
+    /// U105 + UI/UX Bureau (#1279 7226261490): after the child asks, the confirmation sentence goes in the
+    /// subtitle above the reset line, and no button carries it. The primary stays "Ask for more time".
+    func testTheRequestSentShieldSaysTheParentWasAskedInTheSubtitleNotAButton() {
         let en = ShieldText.make(situation: .dailyLimitRequestSent(resetsAt: monday(0, 0, in: utc)),
                                  language: "en", timeZone: utc)
-        XCTAssertEqual(en.primaryButton, "Asked your parent. You'll get more time if they say yes.")
+        let enSent = "Asked your parent. You'll get more time if they say yes."
         XCTAssertEqual(en.title, "Daily time is up")
+        XCTAssertEqual(en.subtitle, enSent + "\n" + "Your time resets at \(fsi)00:00\(pdi)")
+        XCTAssertEqual(en.primaryButton, "Ask for more time")
+        XCTAssertEqual(en.secondaryButton, "Close app")
+        XCTAssertFalse(en.primaryButton.contains(enSent), "the confirmation must not be a button label")
+        XCTAssertFalse(en.secondaryButton.contains(enSent), "the confirmation must not be a button label")
+
         let ar = ShieldText.make(situation: .dailyLimitRequestSent(resetsAt: monday(0, 0, in: utc)),
                                  language: "ar", timeZone: utc)
-        XCTAssertEqual(ar.primaryButton, "أُرسل طلبك إلى أهلك. ستحصل على وقت إضافي إذا وافقوا.")
+        let arSent = "أُرسل طلبك إلى أهلك. ستحصل على وقت إضافي إذا وافقوا."
+        XCTAssertEqual(ar.subtitle, arSent + "\n" + "يتجدّد وقتك الساعة \(fsi)00:00\(pdi)")
+        XCTAssertEqual(ar.primaryButton, "اطلب وقتًا إضافيًا")
+        XCTAssertFalse(ar.primaryButton.contains(arSent), "the confirmation must not be a button label")
+
+        // The plain daily-limit shield is unchanged: reset line only, same buttons.
+        let before = ShieldText.make(situation: .dailyLimit(resetsAt: monday(0, 0, in: utc)),
+                                     language: "en", timeZone: utc)
+        XCTAssertEqual(before.subtitle, "Your time resets at \(fsi)00:00\(pdi)")
+        XCTAssertEqual(before.primaryButton, "Ask for more time")
     }
 
     /// U105: the clock is built from calendar components, so it is Latin `HH:mm` on any zone and never localised.

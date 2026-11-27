@@ -112,16 +112,20 @@ public struct ShieldText: Equatable {
             return make(window: window, language: language)
         case .dailyLimit(let resetsAt), .dailyLimitRequestSent(let resetsAt):
             let clock = fsi + clockTime(resetsAt, timeZone: timeZone) + pdi
-            let primary: String
+            let resetLine = String(format: table("daily_resets_at"), clock)
+            // UI/UX Bureau (#1279 7224449908, 7226261490): the two-sentence confirmation is body text, not a
+            // one-line button label, so it goes in the subtitle above the reset time. The button keeps
+            // "Ask for more time": a repeat tap is collapsed on the server by `child_time_request:shield`.
+            let subtitle: String
             switch situation {
             case .dailyLimitRequestSent:
-                primary = table("daily_request_sent")
+                subtitle = table("daily_request_sent") + "\n" + resetLine
             default:
-                primary = table("daily_ask_more_time")
+                subtitle = resetLine
             }
             return ShieldText(title: table("daily_title_time_up"),
-                              subtitle: String(format: table("daily_resets_at"), clock),
-                              primaryButton: primary,
+                              subtitle: subtitle,
+                              primaryButton: table("daily_ask_more_time"),
                               secondaryButton: table("block_exit_home"))
         }
     }
