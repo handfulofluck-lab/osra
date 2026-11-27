@@ -20,6 +20,15 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 
 For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
 
+For the P-20 daily-limit request, run `flutter test --dart-define=OSRA_UX_P20=true
+test/time_request_actions_test.dart test/time_request_frames_test.dart` from `apps/parent-app`.
+Run the same tests without the define to check the fallback. An opt-in `OSRA_FRAME_DIR`
+captures the card and detail at 390 px and 320 px with 200% text in English and Arabic.
+The fixture checks title wrapping, the Screen time label, both clock settings, localized
+clock direction, and 48 dp tap targets. For device evidence, send an Android daily-limit request
+in a paired test family, approve it once, and confirm the child receives the grant. A
+separate decline should close the request with no new bonus.
+
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
 both an explicit target-app crash and a simulator launch error or runner stall is ambiguous
@@ -525,6 +534,12 @@ The verified-gate policy self-test checks Neon’s `neon/` author prefix and `�
 It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
 existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
 check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
+
+The verified-gate policy self-test also checks Kimi-Mac’s `kimimac/` (and `kimi-mac/`) author prefixes and
+`— Kimi-Mac` ordinary signature. It verifies the same-family restriction with K31/K31-Mac (DeepSeek;
+Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE) and the cross-family pairing with
+Kimi Code (Moonshot), and confirms Kimi-Mac cannot supply an R3 security key. The signer-fixture check
+accepts Kimi-Mac’s signature from the shared agent account and rejects it from other accounts.
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
@@ -1304,6 +1319,16 @@ itself could not be aimed at the monitor; the run verified install, the rational
 camera-ready state and the denial fallback, and the typed path was paired end-to-end against the live
 API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
 the open 3.2 hardware row.
+
+## CI staging Parent APK (synthetic CI proof, private real build)
+
+`scripts/build-parent-staging-apk.sh` is the single command for both proofs of the staging Parent APK. It requires `API_BASE=https://api.staging.osratech.com` and a positive `BUILD_NUMBER`, then checks the Firebase release task, package/versionCode, `INTERNET`, `POST_NOTIFICATIONS`, and the APK signature. `scripts/check-parent-staging-build.mjs --selftest` proves the contract checker itself; the normal invocation fails if the workflow stops being synthetic-only, gains a public APK artifact, or loses one of those assertions.
+
+- **Public CI proof:** `.github/workflows/parent-app.yml` writes a synthetic, non-secret Firebase config and runs the helper with `CI_SYNTHETIC=1`. No APK is uploaded as an Actions artifact. The existing AAB artifact is unchanged. Synthetic values must not look like credentials: gitleaks scans the entire PR history, so an API-key-shaped fixture cannot be removed by a later commit alone.
+- **Local synthetic proof:** prepare the same synthetic config shown in that workflow step, then run `CI_SYNTHETIC=1 API_BASE=https://api.staging.osratech.com BUILD_NUMBER=99 bash scripts/build-parent-staging-apk.sh`. This is a build fixture, not a release.
+- **Private real build:** place the real gitignored Firebase config and lab signing inputs on the approved private builder, set `OSRA_EXPECTED_SIGNER_SHA256` to the Lab Parent certificate digest, and run the same helper without `CI_SYNTHETIC`. The helper refuses any other signer. Publish only through the approved private release channel and compare the old/new certificate digests before installation. No real APK or real Firebase config belongs in the public workflow or repository.
+
+The Firebase JSON, keystore and passwords remain gitignored. Flutter's console can hide the underlying `:app:processReleaseGoogleServices` task name, so the helper proves the plugin ran by requiring `google_app_id` and `project_id` in the generated release `values.xml`; a package that compiles without those resources has no working push registration. Required inputs are validated before building, and the cleanup trap preserves the original non-zero status on older Bash instead of allowing a false success.
 
 ## 5j. Push wake on hardware (roadmap 1.5)
 

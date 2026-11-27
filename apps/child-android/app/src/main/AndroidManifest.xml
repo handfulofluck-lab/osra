@@ -201,7 +201,8 @@
             android:taskAffinity=""
             android:resizeableActivity="false"
             android:supportsPictureInPicture="false"
-            android:turnScreenOn="true"/>
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
 
         <!-- Issue #87: no showWhenLocked here. Drawing over the keyguard hid the bouncer and locked the
              owner out of their own PIN; the activity defers to the keyguard instead (KeyguardPolicy).
