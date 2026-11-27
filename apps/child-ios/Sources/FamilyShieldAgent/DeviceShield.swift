@@ -1,5 +1,7 @@
 import Foundation
+#if os(iOS)
 import ManagedSettings
+#endif
 
 /// #1089: the two Screen Time stores a parent command can switch on an iPhone child.
 ///
@@ -15,11 +17,15 @@ import ManagedSettings
 public enum ShieldSet: String, CaseIterable, Equatable, Sendable {
     case lock = "osraLock"
     case internet = "osraPauseInternet"
+}
 
+#if os(iOS)
+extension ShieldSet {
     var name: ManagedSettingsStore.Name { ManagedSettingsStore.Name(rawValue) }
 
     var store: ManagedSettingsStore { ManagedSettingsStore(named: name) }
 }
+#endif
 
 /// What one write to a Screen Time store did. `failed` carries the server-side reason, never a bare `false`:
 /// the parent panel shows it in Delivery status, and a silent failure is the bug #1089 exists to end.
@@ -39,6 +45,7 @@ public protocol DeviceShielding: Sendable {
 public struct LiveDeviceShield: DeviceShielding {
     public init() {}
 
+    #if os(iOS)
     public func shield(_ set: ShieldSet) async -> ShieldOutcome {
         let store = set.store
         store.shield.applicationCategories = .all()
@@ -54,4 +61,11 @@ public struct LiveDeviceShield: DeviceShielding {
         // Clears every field of this store only; the child's own rules and the other store are untouched.
         return store.shield.applicationCategories == nil ? .cleared : .failed("shield_still_applied")
     }
+
+    #else
+    // ManagedSettings exists only on iOS; the macOS build (package tests) never writes a real store.
+    public func shield(_ set: ShieldSet) async -> ShieldOutcome { .failed("shield_unavailable") }
+
+    public func unshield(_ set: ShieldSet) async -> ShieldOutcome { .failed("shield_unavailable") }
+    #endif
 }

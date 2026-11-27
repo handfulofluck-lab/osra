@@ -137,18 +137,18 @@ describe("decision 3 + A1 — when a command is refused instead of queued", () =
     expect(commandRefusal({ capabilities: r, capabilitiesReportedAt: new Date(NOW) }, "lock", NOW)).toBeNull();
   });
 
-  it("claim 13 — a lock to an iPhone is refused from the table, whatever the report's age", () => {
+  it("claim 13 — a ring to an iPhone is refused from the table, whatever the report's age", () => {
     // A6: the table does not age. This is the case that matters most on iOS, where telemetry has no timer,
     // so a report is often older than 20 minutes and the freshness rule would never fire.
     const ios = report({
       client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "testflight" },
       features: {},
     });
-    expect(commandRefusal({ capabilities: ios, capabilitiesReportedAt: null }, "lock", NOW)).toEqual({
+    expect(commandRefusal({ capabilities: ios, capabilitiesReportedAt: null }, "ring", NOW)).toEqual({
       reason: "not_supported",
     });
     expect(
-      commandRefusal({ capabilities: ios, capabilitiesReportedAt: new Date(NOW - 10 * CAPABILITIES_MAX_AGE_MS) }, "lock", NOW),
+      commandRefusal({ capabilities: ios, capabilitiesReportedAt: new Date(NOW - 10 * CAPABILITIES_MAX_AGE_MS) }, "ring", NOW),
     ).toEqual({ reason: "not_supported" });
   });
 

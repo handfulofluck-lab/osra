@@ -52,8 +52,10 @@ public struct CapabilityReport: Equatable {
     }
 
     /// The features no public iOS API offers (ADR-0034 A1); the server recomputes these from its own table anyway.
-    static let notSupported = ["lock_screen", "pause_screen", "pause_internet", "uninstall_guard",
-                               "notification_scan", "call_sms_log"]
+    static let notSupported = ["uninstall_guard", "notification_scan", "call_sms_log"]
+
+    /// #1089: Lock, Pause and Pause internet run through ManagedSettings shields once Screen Time is allowed.
+    static let shieldFeatures = ["lock_screen", "pause_screen", "pause_internet"]
 
     /// The server's caps (`packages/shared-types`): at most 20 groups.
     static let maxGroups = 20
@@ -68,6 +70,7 @@ public struct CapabilityReport: Equatable {
         ]
         var features: [String: String] = [:]
         for key in Self.notSupported { features[key] = "not_supported" }
+        for key in Self.shieldFeatures { features[key] = approved ? "ready" : "unavailable" }
         // Picker groups exist since ADR-0037 PR A, so blocking and limits work once Screen Time is allowed.
         features["app_blocking"] = approved ? "ready" : "unavailable"
         features["screen_time"] = approved ? "ready" : "unavailable"
