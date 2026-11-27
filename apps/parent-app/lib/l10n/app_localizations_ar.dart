@@ -3723,6 +3723,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appsNoMatch => 'لا توجد تطبيقات مطابقة';
 
   @override
+  String get appsSentToPhone => 'أُرسلت إلى الهاتف';
+
+  @override
+  String get appsNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
   String get appAboutThisApp => 'عن هذا التطبيق';
 
   @override
@@ -4027,5 +4033,67 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String timeRequestDecidedAt(String time) {
     return 'وقت القرار: $time';
+  }
+
+  @override
+  String get p15CanBeWrong => 'ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.';
+
+  @override
+  String get p15ActionsHeader => 'ما يمكنك فعله';
+
+  @override
+  String p15TalkWithChild(String child) {
+    return 'تحدّث مع $child';
+  }
+
+  @override
+  String p15HelpChildBlockContact(String child, String contact) {
+    return 'ساعد $child على حظر $contact';
+  }
+
+  @override
+  String p15HelpBlockGuideBody(String child, String app, String contact) {
+    return 'اجلس مع $child وافتحا $app معًا لحظر $contact وكتم رسائله.';
+  }
+
+  @override
+  String get p15AdjustLimits => 'تعديل وقت الشاشة ووقت النوم';
+
+  @override
+  String get p15ReviewAppRules => 'مراجعة قواعد التطبيقات';
+
+  @override
+  String get p15IphoneNotYet => 'غير متاح بعد على آيفون';
+
+  @override
+  String get p14SegmentRequests => 'الطلبات';
+
+  @override
+  String get p14LevelUrgent => 'عاجل';
+
+  @override
+  String get p14LevelCheckSoon => 'للمراجعة قريبًا';
+
+  @override
+  String get p14LevelInfo => 'للعلم';
+
+  @override
+  String get p14FilterAll => 'الكل';
+
+  @override
+  String get p14NoRequestsYet => 'لا توجد طلبات بعد';
+
+  @override
+  String p14GroupedCount(int count, String time) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مرة · آخرها $time',
+      many: '$count مرة · آخرها $time',
+      few: '$count مرات · آخرها $time',
+      two: 'مرتان · آخرها $time',
+      one: 'مرة واحدة · آخرها $time',
+    );
+    return '$_temp0';
   }
 }

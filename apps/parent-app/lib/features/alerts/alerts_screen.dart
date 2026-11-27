@@ -89,7 +89,6 @@ bool _isStaleSocialAggregate(Alert existing, Alert incoming) {
 /// reconciles social aggregate versions by freshness so out-of-order responses never roll
 /// a contact card backwards, and sorts descending by [Alert.effectiveTimestamp] so an alert
 /// updated in place during a throttle window moves to the top of the feed.
-@visibleForTesting
 List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
   final byId = <String, Alert>{
     for (final a in existing) a.id: a,
