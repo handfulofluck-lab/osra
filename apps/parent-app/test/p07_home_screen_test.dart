@@ -811,6 +811,8 @@ void main() {
 
       expect(find.byKey(const ValueKey('homeIosTimeNotYet-child-ios')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsOneWidget);
+      expect(find.byKey(const ValueKey('homeIosAutoLiftNote-child-ios')), findsNothing,
+          reason: 'no live Lock or Pause, so no auto-lift line');
 
       await tester.tap(find.byKey(const ValueKey('homeActionPauseInternet-child-ios')));
       await tester.pump();
@@ -878,6 +880,8 @@ void main() {
 
       // U104: the banner stays, as the visible reason for the still-faded bonus buttons.
       expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsOneWidget);
+      // #1275: the 2-hour auto-lift line shows while Lock or Pause is live on the iPhone.
+      expect(find.byKey(const ValueKey('homeIosAutoLiftNote-child-ios')), findsOneWidget);
 
       final lockBtn = find.byKey(const ValueKey('homeActionLock-child-ios'));
       await tester.scrollUntilVisible(lockBtn, 120, scrollable: homeVerticalScrollable());
