@@ -1648,7 +1648,7 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
                   );
               },
             ),
-            // #1275: an iPhone Lock or Pause lifts by itself after 8 hours (force-quit safety net); UI/UX
+            // #1275: an iPhone Lock or Pause lifts by itself after 24 hours (force-quit safety net); UI/UX
             // 7223625900: one bodySmall line under the row, only while one of them is live.
             if (iosLockReady || iosInternetReady) ...[
               const SizedBox(height: AppSpace.xs),

@@ -6763,7 +6763,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeIosAutoLiftNote.
   ///
   /// In en, this message translates to:
-  /// **'On iPhone, Lock and Pause end by themselves after 8 hours. Lock again if you need longer.'**
+  /// **'On iPhone, Lock and Pause end by themselves after 24 hours. Lock again if you need longer.'**
   String get homeIosAutoLiftNote;
 
   /// No description provided for @homeKeepBlocked.
