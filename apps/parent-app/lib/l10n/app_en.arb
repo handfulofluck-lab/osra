@@ -2530,6 +2530,118 @@
     "description": "P-23: the retention summary failed on the server side (not the parent's connection)."
   },
   "privacyRetry": "Try again",
+  "homeTabHome": "Home",
+  "homeTabFamily": "Family",
+  "homeTabSettings": "Settings",
+  "homeFilterAll": "All",
+  "homeNeedsYou": "Needs you",
+  "homeSafetyAlertsToReview": "{count, plural, =1{1 safety alert to review} other{{count} safety alerts to review}}",
+  "@homeSafetyAlertsToReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeDurationHoursMinutes": "{hours} {minutes}",
+  "@homeDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "homeTimeLeft": "{duration} left",
+  "@homeTimeLeft": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeOfLimit": "of {limit}",
+  "@homeOfLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSeenJustNow": "Seen just now",
+  "homeSeenAgo": "Seen {duration} ago",
+  "@homeSeenAgo": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeOfflineFor": "Offline for {duration}",
+  "@homeOfflineFor": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeStateAtSchool": "At school",
+  "homeStateBedtime": "Bedtime",
+  "homeStateFreeTime": "Free time",
+  "homeStateHomework": "Homework",
+  "homeStatePaused": "Paused",
+  "homeBatteryPct": "Battery {pct}",
+  "@homeBatteryPct": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "homeBonusPlus15": "+15 min",
+  "homeBonusPlus30": "+30 min",
+  "homePauseInternet": "Pause internet",
+  "homeResumeInternet": "Resume internet",
+  "homeLockAllDevices": "Lock",
+  "homeUnlockAllDevices": "Unlock",
+  "homeNotYetAvailable": "Not yet available",
+  "homeNotYetOnIphone": "Not yet available on iPhone",
+  "homeKeepBlocked": "Keep blocked",
+  "homeNotToday": "Not today",
+  "homeTimeRequestTitle": "{minutes, plural, =1{{child} asked for 1 more minute of screen time} other{{child} asked for {minutes} more minutes of screen time}}",
+  "@homeTimeRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "homeAccessRequestTitle": "{child} asked to open {app}",
+  "@homeAccessRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSentToPhone": "Sent to phone",
+  "homeSendingBonusSnack": "Adding {duration} for today",
+  "@homeSendingBonusSnack": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeExampleBadge": "Example",
   "p14DayToday": "Today",
   "p14DayYesterday": "Yesterday"
 }

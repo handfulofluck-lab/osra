@@ -123,7 +123,7 @@
   "searchSafetyTooltip": "أمان البحث والويب",
   "editRules": "تعديل القواعد",
   "bornYear": "مواليد {year}",
-  "socialMonitoringTitle": "مراقبة وسائل التواصل الاجتماعي",
+  "socialMonitoringTitle": "مراقبة التواصل",
   "devices": "الأجهزة",
   "pairADevice": "إقران جهاز",
   "noDevicesRegistered": "لا توجد أجهزة مسجّلة",
@@ -1350,6 +1350,118 @@
   "privacyLoadFailedServer": "تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.",
   "privacyRetry": "إعادة المحاولة",
   "p15PreviewLoadFailed": "تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.",
+  "homeTabHome": "الرئيسية",
+  "homeTabFamily": "العائلة",
+  "homeTabSettings": "الإعدادات",
+  "homeFilterAll": "الكل",
+  "homeNeedsYou": "يحتاج إليك",
+  "homeSafetyAlertsToReview": "{count, plural, =1{تنبيه سلامة واحد للمراجعة} =2{تنبيها سلامة للمراجعة} few{{count} تنبيهات سلامة للمراجعة} many{{count} تنبيه سلامة للمراجعة} other{{count} تنبيه سلامة للمراجعة}}",
+  "@homeSafetyAlertsToReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeDurationHoursMinutes": "{hours} و{minutes}",
+  "@homeDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "homeTimeLeft": "المتبقي {duration}",
+  "@homeTimeLeft": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeOfLimit": "من {limit}",
+  "@homeOfLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSeenJustNow": "آخر ظهور الآن",
+  "homeSeenAgo": "آخر ظهور قبل {duration}",
+  "@homeSeenAgo": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeOfflineFor": "غير متصل منذ {duration}",
+  "@homeOfflineFor": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeStateAtSchool": "في المدرسة",
+  "homeStateBedtime": "وقت النوم",
+  "homeStateFreeTime": "وقت حر",
+  "homeStateHomework": "الواجبات",
+  "homeStatePaused": "موقوف مؤقتًا",
+  "homeBatteryPct": "البطارية {pct}",
+  "@homeBatteryPct": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "homeBonusPlus15": "+15 دقيقة",
+  "homeBonusPlus30": "+30 دقيقة",
+  "homePauseInternet": "إيقاف الإنترنت مؤقتًا",
+  "homeResumeInternet": "استئناف الإنترنت",
+  "homeLockAllDevices": "قفل كل الأجهزة",
+  "homeUnlockAllDevices": "إلغاء القفل",
+  "homeNotYetAvailable": "غير متاح بعد",
+  "homeNotYetOnIphone": "غير متاح بعد على آيفون",
+  "homeKeepBlocked": "إبقاء الحظر",
+  "homeNotToday": "ليس اليوم",
+  "homeTimeRequestTitle": "{minutes, plural, =1{طلب من {child}: دقيقة إضافية من وقت الشاشة} =2{طلب من {child}: دقيقتان إضافيتان من وقت الشاشة} few{طلب من {child}: {minutes} دقائق إضافية من وقت الشاشة} many{طلب من {child}: {minutes} دقيقة إضافية من وقت الشاشة} other{طلب من {child}: {minutes} دقيقة إضافية من وقت الشاشة}}",
+  "@homeTimeRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "homeAccessRequestTitle": "طلب من {child}: السماح بتطبيق {app}",
+  "@homeAccessRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSentToPhone": "تم الإرسال إلى الهاتف",
+  "homeSendingBonusSnack": "إضافة {duration} لليوم",
+  "@homeSendingBonusSnack": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeExampleBadge": "مثال",
   "p14DayToday": "اليوم",
   "p14DayYesterday": "أمس"
 }

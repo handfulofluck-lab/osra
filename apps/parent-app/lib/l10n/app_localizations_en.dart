@@ -3972,6 +3972,137 @@ class AppLocalizationsEn extends AppLocalizations {
   String get privacyRetry => 'Try again';
 
   @override
+  String get homeTabHome => 'Home';
+
+  @override
+  String get homeTabFamily => 'Family';
+
+  @override
+  String get homeTabSettings => 'Settings';
+
+  @override
+  String get homeFilterAll => 'All';
+
+  @override
+  String get homeNeedsYou => 'Needs you';
+
+  @override
+  String homeSafetyAlertsToReview(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count safety alerts to review',
+      one: '1 safety alert to review',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeDurationHoursMinutes(String hours, String minutes) {
+    return '$hours $minutes';
+  }
+
+  @override
+  String homeTimeLeft(String duration) {
+    return '$duration left';
+  }
+
+  @override
+  String homeOfLimit(String limit) {
+    return 'of $limit';
+  }
+
+  @override
+  String get homeSeenJustNow => 'Seen just now';
+
+  @override
+  String homeSeenAgo(String duration) {
+    return 'Seen $duration ago';
+  }
+
+  @override
+  String homeOfflineFor(String duration) {
+    return 'Offline for $duration';
+  }
+
+  @override
+  String get homeStateAtSchool => 'At school';
+
+  @override
+  String get homeStateBedtime => 'Bedtime';
+
+  @override
+  String get homeStateFreeTime => 'Free time';
+
+  @override
+  String get homeStateHomework => 'Homework';
+
+  @override
+  String get homeStatePaused => 'Paused';
+
+  @override
+  String homeBatteryPct(String pct) {
+    return 'Battery $pct';
+  }
+
+  @override
+  String get homeBonusPlus15 => '+15 min';
+
+  @override
+  String get homeBonusPlus30 => '+30 min';
+
+  @override
+  String get homePauseInternet => 'Pause internet';
+
+  @override
+  String get homeResumeInternet => 'Resume internet';
+
+  @override
+  String get homeLockAllDevices => 'Lock';
+
+  @override
+  String get homeUnlockAllDevices => 'Unlock';
+
+  @override
+  String get homeNotYetAvailable => 'Not yet available';
+
+  @override
+  String get homeNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
+  String get homeKeepBlocked => 'Keep blocked';
+
+  @override
+  String get homeNotToday => 'Not today';
+
+  @override
+  String homeTimeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$child asked for $minutes more minutes of screen time',
+      one: '$child asked for 1 more minute of screen time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeAccessRequestTitle(String child, String app) {
+    return '$child asked to open $app';
+  }
+
+  @override
+  String get homeSentToPhone => 'Sent to phone';
+
+  @override
+  String homeSendingBonusSnack(String duration) {
+    return 'Adding $duration for today';
+  }
+
+  @override
+  String get homeExampleBadge => 'Example';
+
+  @override
   String get p14DayToday => 'Today';
 
   @override
