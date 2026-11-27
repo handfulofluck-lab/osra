@@ -3638,6 +3638,137 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String accessRequestTitle(String child, String app) {
+    return '$child asks to use $app';
+  }
+
+  @override
+  String accessRequestBlockedTitle(String app, String child) {
+    return '$app was blocked on $child\'s phone';
+  }
+
+  @override
+  String accessRequestBody(String child) {
+    return '$child tapped \"Request access\" on the block screen.';
+  }
+
+  @override
+  String accessRequestBlockedBody(String child) {
+    return '$child tried to open it. Nothing for you to do.';
+  }
+
+  @override
+  String get accessRequestAllow => 'Allow';
+
+  @override
+  String get accessRequestAllowing => 'Allowing…';
+
+  @override
+  String get accessRequestKeepBlocked => 'Keep blocked';
+
+  @override
+  String accessRequestDisclosure(String app) {
+    return '$app will be allowed from now on. Bedtime, school time and Pause still apply.';
+  }
+
+  @override
+  String accessRequestAllowFailed(String app) {
+    return 'Couldn\'t allow $app. Check your connection and try again.';
+  }
+
+  @override
+  String accessRequestReadOnly(String owner) {
+    return 'Only $owner can answer this request. Ask them to open OSRA.';
+  }
+
+  @override
+  String accessRequestAllowedBy(String actor, String app, String timeSuffix) {
+    return '$actor allowed $app$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedBy(
+      String actor, String app, String timeSuffix) {
+    return '$actor kept $app blocked$timeSuffix';
+  }
+
+  @override
+  String accessRequestAllowedByYou(String app, String timeSuffix) {
+    return 'You allowed $app$timeSuffix';
+  }
+
+  @override
+  String accessRequestKeptBlockedByYou(String app, String timeSuffix) {
+    return 'You kept $app blocked$timeSuffix';
+  }
+
+  @override
+  String get accessRequestHandled => 'This request was handled';
+
+  @override
+  String accessRequestAllowedSnack(String app) {
+    return 'You allowed $app';
+  }
+
+  @override
+  String accessRequestKeptBlockedSnack(String app) {
+    return 'You kept $app blocked';
+  }
+
+  @override
+  String accessRequestAllowLabel(String app) {
+    return 'Allow $app';
+  }
+
+  @override
+  String accessRequestKeepBlockedLabel(String app) {
+    return 'Keep $app blocked';
+  }
+
+  @override
+  String get alertsOffBannerBody =>
+      'Alerts are off. You won\'t hear about urgent messages.';
+
+  @override
+  String get alertsOffTurnOnAction => 'Turn on alerts';
+
+  @override
+  String timeRequestTitle(String child, int minutes) {
+    return '$child asked for $minutes more minutes today';
+  }
+
+  @override
+  String timeRequestGrant(String minutes) {
+    return '+$minutes min';
+  }
+
+  @override
+  String get timeRequestDecline => 'Not today';
+
+  @override
+  String timeRequestGrantedBy(String actor, int minutes) {
+    return '$actor already gave $minutes minutes today';
+  }
+
+  @override
+  String timeRequestGrantedByYou(int minutes) {
+    return 'You already gave $minutes minutes today';
+  }
+
+  @override
+  String timeRequestDeclinedBy(String actor) {
+    return '$actor already declined this request';
+  }
+
+  @override
+  String get timeRequestDeclinedByYou => 'You already declined this request';
+
+  @override
+  String timeRequestDecidedAt(String time) {
+    return 'Decided $time';
+  }
+
+  @override
   String get privacyMenu => 'Privacy and data';
 
   @override

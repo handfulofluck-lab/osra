@@ -5901,6 +5901,181 @@ abstract class AppLocalizations {
   /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
   String alertBodyDataCleared(String model);
 
+  /// No description provided for @accessRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asks to use {app}'**
+  String accessRequestTitle(String child, String app);
+
+  /// No description provided for @accessRequestBlockedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} was blocked on {child}\'s phone'**
+  String accessRequestBlockedTitle(String app, String child);
+
+  /// No description provided for @accessRequestBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} tapped \"Request access\" on the block screen.'**
+  String accessRequestBody(String child);
+
+  /// No description provided for @accessRequestBlockedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} tried to open it. Nothing for you to do.'**
+  String accessRequestBlockedBody(String child);
+
+  /// No description provided for @accessRequestAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get accessRequestAllow;
+
+  /// No description provided for @accessRequestAllowing.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowing…'**
+  String get accessRequestAllowing;
+
+  /// No description provided for @accessRequestKeepBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep blocked'**
+  String get accessRequestKeepBlocked;
+
+  /// No description provided for @accessRequestDisclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} will be allowed from now on. Bedtime, school time and Pause still apply.'**
+  String accessRequestDisclosure(String app);
+
+  /// No description provided for @accessRequestAllowFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t allow {app}. Check your connection and try again.'**
+  String accessRequestAllowFailed(String app);
+
+  /// No description provided for @accessRequestReadOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {owner} can answer this request. Ask them to open OSRA.'**
+  String accessRequestReadOnly(String owner);
+
+  /// No description provided for @accessRequestAllowedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} allowed {app}{timeSuffix}'**
+  String accessRequestAllowedBy(String actor, String app, String timeSuffix);
+
+  /// No description provided for @accessRequestKeptBlockedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} kept {app} blocked{timeSuffix}'**
+  String accessRequestKeptBlockedBy(
+      String actor, String app, String timeSuffix);
+
+  /// No description provided for @accessRequestAllowedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You allowed {app}{timeSuffix}'**
+  String accessRequestAllowedByYou(String app, String timeSuffix);
+
+  /// No description provided for @accessRequestKeptBlockedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You kept {app} blocked{timeSuffix}'**
+  String accessRequestKeptBlockedByYou(String app, String timeSuffix);
+
+  /// No description provided for @accessRequestHandled.
+  ///
+  /// In en, this message translates to:
+  /// **'This request was handled'**
+  String get accessRequestHandled;
+
+  /// No description provided for @accessRequestAllowedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'You allowed {app}'**
+  String accessRequestAllowedSnack(String app);
+
+  /// No description provided for @accessRequestKeptBlockedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'You kept {app} blocked'**
+  String accessRequestKeptBlockedSnack(String app);
+
+  /// No description provided for @accessRequestAllowLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {app}'**
+  String accessRequestAllowLabel(String app);
+
+  /// No description provided for @accessRequestKeepBlockedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep {app} blocked'**
+  String accessRequestKeepBlockedLabel(String app);
+
+  /// No description provided for @alertsOffBannerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts are off. You won\'t hear about urgent messages.'**
+  String get alertsOffBannerBody;
+
+  /// No description provided for @alertsOffTurnOnAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on alerts'**
+  String get alertsOffTurnOnAction;
+
+  /// No description provided for @timeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked for {minutes} more minutes today'**
+  String timeRequestTitle(String child, int minutes);
+
+  /// No description provided for @timeRequestGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'+{minutes} min'**
+  String timeRequestGrant(String minutes);
+
+  /// No description provided for @timeRequestDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get timeRequestDecline;
+
+  /// No description provided for @timeRequestGrantedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already gave {minutes} minutes today'**
+  String timeRequestGrantedBy(String actor, int minutes);
+
+  /// No description provided for @timeRequestGrantedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already gave {minutes} minutes today'**
+  String timeRequestGrantedByYou(int minutes);
+
+  /// No description provided for @timeRequestDeclinedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already declined this request'**
+  String timeRequestDeclinedBy(String actor);
+
+  /// No description provided for @timeRequestDeclinedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already declined this request'**
+  String get timeRequestDeclinedByYou;
+
+  /// No description provided for @timeRequestDecidedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Decided {time}'**
+  String timeRequestDecidedAt(String time);
+
   /// No description provided for @privacyMenu.
   ///
   /// In en, this message translates to:
