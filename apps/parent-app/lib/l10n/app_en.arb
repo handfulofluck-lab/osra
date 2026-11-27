@@ -2084,5 +2084,9 @@
   "privacyDeleteSelfDesc": "Deletes only your own account. The family carries on.",
   "privacyDeleteAction": "Delete…",
   "privacyLoadFailed": "Could not load what is kept. Check your connection and try again.",
+  "privacyLoadFailedServer": "Couldn't load this right now. Try again in a moment.",
+  "@privacyLoadFailedServer": {
+    "description": "P-23: the retention summary failed on the server side (not the parent's connection)."
+  },
   "privacyRetry": "Try again"
 }

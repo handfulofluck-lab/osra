@@ -1234,7 +1234,7 @@
   "privacyMenu": "الخصوصية والبيانات",
   "privacyTitle": "الخصوصية والبيانات",
   "privacyKeptHeader": "نحتفظ بها ثم تُحذف تلقائيًا",
-  "privacyFullDetails": "التفاصيل الكاملة",
+  "privacyFullDetails": "التفاصيل الكاملة (بالإنجليزية)",
   "privacyRowExcerpts": "مقتطفات الرسائل التي أثارت تنبيهًا",
   "privacyRowAlerts": "التنبيهات",
   "privacyRowLocation": "سجل المواقع",
@@ -1275,5 +1275,6 @@
   "privacyDeleteSelfDesc": "يحذف حسابك أنت فقط، وتبقى العائلة كما هي.",
   "privacyDeleteAction": "حذف…",
   "privacyLoadFailed": "تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "privacyLoadFailedServer": "تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.",
   "privacyRetry": "إعادة المحاولة"
 }

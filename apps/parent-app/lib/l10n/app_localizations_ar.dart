@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3532,7 +3533,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes) {
+    String device,
+    String when,
+    int minutes,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,
       locale: localeName,
@@ -3929,7 +3933,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String accessRequestKeptBlockedBy(
-      String actor, String app, String timeSuffix) {
+    String actor,
+    String app,
+    String timeSuffix,
+  ) {
     return 'بقي $app محظورًا بقرار من $actor$timeSuffix';
   }
 
@@ -4122,7 +4129,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get privacyKeptHeader => 'نحتفظ بها ثم تُحذف تلقائيًا';
 
   @override
-  String get privacyFullDetails => 'التفاصيل الكاملة';
+  String get privacyFullDetails => 'التفاصيل الكاملة (بالإنجليزية)';
 
   @override
   String get privacyRowExcerpts => 'مقتطفات الرسائل التي أثارت تنبيهًا';
@@ -4228,6 +4235,10 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get privacyLoadFailed =>
       'تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get privacyLoadFailedServer =>
+      'تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.';
 
   @override
   String get privacyRetry => 'إعادة المحاولة';

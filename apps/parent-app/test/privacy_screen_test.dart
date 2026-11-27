@@ -40,7 +40,7 @@ void main() {
         },
         'storage': storage,
         'deletionCancelDays': null,
-        'policyUrls': {'en': 'https://osratech.com/privacy', 'ar': 'https://osratech.com/ar/privacy'},
+        'policyUrls': {'en': 'https://osratech.com/privacy', 'ar': 'https://osratech.com/privacy'},
       };
 
   FakeApiClient api({FakeRoute? privacy, Map<String, dynamic>? me, FakeRoute? familyMeRoute}) => FakeApiClient({
@@ -97,6 +97,23 @@ void main() {
     expect(find.byKey(const ValueKey('privacyLoadFailed')), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
     expect(find.byKey(const ValueKey('privacyDelete')), findsOneWidget);
+    // A server failure is not the parent's connection (R-ID-1, #1195).
+    expect(find.text("Couldn't load this right now. Try again in a moment."), findsOneWidget);
+    expect(find.textContaining('Check your connection'), findsNothing);
+  });
+
+  testWidgets('P4b no connection keeps the connection sentence', (tester) async {
+    await pump(tester, api(privacy: (_) => const FakeNetworkError()));
+
+    expect(find.text('Could not load what is kept. Check your connection and try again.'), findsOneWidget);
+  });
+
+  testWidgets('P3b a storage place that is not text hides only that row', (tester) async {
+    await pump(tester, api(privacy: (_) => policy(storage: const {'area': 'eu', 'location': 42})));
+
+    expect(find.byKey(const ValueKey('privacyLoadFailed')), findsNothing);
+    expect(find.byKey(const ValueKey('privacyRowStoredIn')), findsNothing);
+    expect(find.byKey(const ValueKey('privacyRowExcerpts')), findsOneWidget);
   });
 
   testWidgets('P5 the owner is offered the family deletion', (tester) async {

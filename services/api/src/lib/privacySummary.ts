@@ -54,6 +54,8 @@ export function privacySummary(env: NodeJS.ProcessEnv = process.env): PrivacySum
     },
     storage: location ? { area: "eu", location } : null,
     deletionCancelDays: null,
-    policyUrls: { en: "https://osratech.com/privacy", ar: "https://osratech.com/ar/privacy" },
+    // No Arabic policy page is published yet (site/ar links the English one), so both point at the page that
+    // exists, as the consent copy does (Kimi-Mac, #1195). Switch `ar` when site/ar/privacy ships.
+    policyUrls: { en: "https://osratech.com/privacy", ar: "https://osratech.com/privacy" },
   };
 }

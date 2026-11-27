@@ -1,9 +1,11 @@
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import '../../api/models.dart';
+import '../../api/permission_errors.dart' show friendlyErrorText, isNetworkDioError, logParentError;
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart' show apiClientProvider;
 import '../../providers/family_provider.dart';
@@ -30,7 +32,8 @@ class PrivacySummary {
     this.locationDays,
     this.storageLocation,
     this.policyUrlEn = 'https://osratech.com/privacy',
-    this.policyUrlAr = 'https://osratech.com/ar/privacy',
+    // No Arabic policy page is published yet; the English one is the page that exists (#1195).
+    this.policyUrlAr = 'https://osratech.com/privacy',
   });
 
   static int? _days(Object? v) => v is int && v > 0 ? v : null;
@@ -45,9 +48,10 @@ class PrivacySummary {
       excerptDays: _days(retention['messageExcerptDays']),
       alertDays: _days(retention['alertDays']),
       locationDays: _days(retention['locationDays']),
-      storageLocation: storage?['area'] == 'eu' ? storage!['location'] as String? : null,
+      // A value that isn't text hides only the "Stored in" row, never the whole card (#1195).
+      storageLocation: storage?['area'] == 'eu' && storage!['location'] is String ? storage['location'] as String : null,
       policyUrlEn: url(urls['en'], 'https://osratech.com/privacy'),
-      policyUrlAr: url(urls['ar'], 'https://osratech.com/ar/privacy'),
+      policyUrlAr: url(urls['ar'], 'https://osratech.com/privacy'),
     );
   }
 }
@@ -101,7 +105,10 @@ class PrivacyScreen extends ConsumerWidget {
               padding: EdgeInsets.all(AppSpace.xl),
               child: Center(child: CircularProgressIndicator()),
             ),
-            error: (_, __) => _LoadFailed(onRetry: () => ref.invalidate(privacySummaryProvider)),
+            error: (e, __) => _LoadFailed(
+              message: _loadFailedText(l10n, e),
+              onRetry: () => ref.invalidate(privacySummaryProvider),
+            ),
           ),
           const SizedBox(height: AppSpace.lg),
           _Section(children: [
@@ -259,8 +266,19 @@ class _RetentionCard extends StatelessWidget {
   }
 }
 
+/// Offline keeps the connection sentence; a server or unknown failure never blames the parent's connection
+/// (R-ID-1, #1195).
+String _loadFailedText(AppLocalizations l10n, Object error) {
+  if (error is DioException && isNetworkDioError(error)) {
+    logParentError(error);
+    return l10n.privacyLoadFailed;
+  }
+  return friendlyErrorText(l10n, error, () => l10n.privacyLoadFailedServer);
+}
+
 class _LoadFailed extends StatelessWidget {
-  const _LoadFailed({required this.onRetry});
+  const _LoadFailed({required this.message, required this.onRetry});
+  final String message;
   final VoidCallback onRetry;
 
   @override
@@ -270,7 +288,7 @@ class _LoadFailed extends StatelessWidget {
       key: const ValueKey('privacyLoadFailed'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(l10n.privacyLoadFailed),
+        Text(message),
         const SizedBox(height: AppSpace.sm),
         OutlinedButton(onPressed: onRetry, child: Text(l10n.privacyRetry)),
       ],

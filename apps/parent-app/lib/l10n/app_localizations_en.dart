@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3337,7 +3338,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String alertDeviceRestartedBodyMinutes(
-      String device, String when, int minutes) {
+    String device,
+    String when,
+    int minutes,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
       minutes,
       locale: localeName,
@@ -3694,7 +3698,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String accessRequestKeptBlockedBy(
-      String actor, String app, String timeSuffix) {
+    String actor,
+    String app,
+    String timeSuffix,
+  ) {
     return '$actor kept $app blocked$timeSuffix';
   }
 
@@ -3959,6 +3966,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get privacyLoadFailed =>
       'Could not load what is kept. Check your connection and try again.';
+
+  @override
+  String get privacyLoadFailedServer =>
+      'Couldn\'t load this right now. Try again in a moment.';
 
   @override
   String get privacyRetry => 'Try again';

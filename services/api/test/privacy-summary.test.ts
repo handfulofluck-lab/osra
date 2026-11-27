@@ -1,5 +1,5 @@
 // P-23 Privacy and data: the retention numbers the parent app shows come from the server's own settings.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privacySummary } from "../src/lib/privacySummary.js";
@@ -31,8 +31,17 @@ describe("P-23 privacy summary", () => {
       },
       storage: { area: "eu", location: "frankfurt" },
       deletionCancelDays: null,
-      policyUrls: { en: "https://osratech.com/privacy", ar: "https://osratech.com/ar/privacy" },
+      policyUrls: { en: "https://osratech.com/privacy", ar: "https://osratech.com/privacy" },
     });
+  });
+
+  it("links only to policy pages we publish", () => {
+    // An Arabic parent tapping "Full details" must not land on a 404 (Kimi-Mac, #1195): read the site tree.
+    for (const url of Object.values(privacySummary({}).policyUrls)) {
+      const path = new URL(url).pathname.replace(/^\/|\/$/g, "");
+      const page = fileURLToPath(new URL(`../../../site/${path}/index.html`, import.meta.url));
+      expect(existsSync(page), `${url} must be a page we publish (looked for site/${path}/index.html)`).toBe(true);
+    }
   });
 
   it("follows the cleanup job's own settings, so the screen can't promise a period the job doesn't apply", () => {
