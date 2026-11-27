@@ -20,6 +20,15 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 
 For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
 
+For the P-20 daily-limit request, run `flutter test --dart-define=OSRA_UX_P20=true
+test/time_request_actions_test.dart test/time_request_frames_test.dart` from `apps/parent-app`.
+Run the same tests without the define to check the fallback. An opt-in `OSRA_FRAME_DIR`
+captures the card and detail at 390 px and 320 px with 200% text in English and Arabic.
+The fixture checks title wrapping, the Screen time label, both clock settings, localized
+clock direction, and 48 dp tap targets. For device evidence, send an Android daily-limit request
+in a paired test family, approve it once, and confirm the child receives the grant. A
+separate decline should close the request with no new bonus.
+
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
 both an explicit target-app crash and a simulator launch error or runner stall is ambiguous
@@ -525,6 +534,12 @@ The verified-gate policy self-test checks Neon’s `neon/` author prefix and `�
 It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
 existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
 check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
+
+The verified-gate policy self-test also checks Kimi-Mac’s `kimimac/` (and `kimi-mac/`) author prefixes and
+`— Kimi-Mac` ordinary signature. It verifies the same-family restriction with K31/K31-Mac (DeepSeek;
+Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE) and the cross-family pairing with
+Kimi Code (Moonshot), and confirms Kimi-Mac cannot supply an R3 security key. The signer-fixture check
+accepts Kimi-Mac’s signature from the shared agent account and rejects it from other accounts.
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
