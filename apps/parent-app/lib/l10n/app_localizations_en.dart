@@ -3804,4 +3804,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p15IphoneNotYet => 'Not yet available on iPhone';
+
+  @override
+  String get p14SegmentRequests => 'Requests';
+
+  @override
+  String get p14LevelUrgent => 'Urgent';
+
+  @override
+  String get p14LevelCheckSoon => 'Check soon';
+
+  @override
+  String get p14LevelInfo => 'Info';
+
+  @override
+  String get p14FilterAll => 'All';
+
+  @override
+  String get p14NoRequestsYet => 'No requests yet';
+
+  @override
+  String p14GroupedCount(int count, String time) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count times · last $time',
+      one: '1 time · last $time',
+    );
+    return '$_temp0';
+  }
 }

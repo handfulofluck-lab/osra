@@ -1218,5 +1218,12 @@
   "@p15HelpBlockGuideBody": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" }, "contact": { "type": "String" } } },
   "p15AdjustLimits": "تعديل وقت الشاشة ووقت النوم",
   "p15ReviewAppRules": "مراجعة قواعد التطبيقات",
-  "p15IphoneNotYet": "غير متاح بعد على آيفون"
+  "p15IphoneNotYet": "غير متاح بعد على آيفون",
+  "p14SegmentRequests": "الطلبات",
+  "p14LevelUrgent": "عاجل",
+  "p14LevelCheckSoon": "للمراجعة قريبًا",
+  "p14LevelInfo": "للعلم",
+  "p14FilterAll": "الكل",
+  "p14NoRequestsYet": "لا توجد طلبات بعد",
+  "p14GroupedCount": "{count, plural, =1{مرة واحدة · آخرها {time}} =2{مرتان · آخرها {time}} few{{count} مرات · آخرها {time}} many{{count} مرة · آخرها {time}} other{{count} مرة · آخرها {time}}}"
 }
