@@ -74,8 +74,8 @@ Command enum lives in `services/api/src/routes/devices.ts` CommandSchema.
 - **Android**: blocklist apps auto-added as blocked AppRules; social capture via
   Accessibility for WhatsApp/Instagram/TikTok/Snapchat/X/LINE text nodes → redact →
   ai-engine → HMAC alert; calls/SMS via default dialer-role request (declined → log-only
-  NOTE) + READ_CALL_LOG/READ_SMS; pause_internet = overlay + network callback sinkhole
-  (VPNService is the production path — document); always-allowed beats bedtime/school/
+  NOTE) + READ_CALL_LOG/READ_SMS; pause_internet = network-only VPN sinkhole + ongoing notification
+  (no full-screen overlay; offline apps stay open, #1183/#1240); always-allowed beats bedtime/school/
   routines/pause; SOS = quick-settings tile; install approval via PACKAGE_ADDED broadcast;
   tamper = accessibility-service-disabled + package-replaced receivers.
 - **Parent app**: screens per feature; dashboard live chip listens to `live_activity` WS.

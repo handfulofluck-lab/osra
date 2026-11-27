@@ -132,11 +132,11 @@ class RuleRepositoryEssentialExemptionTest {
     }
 
     @Test
-    fun `pause the internet blocks third-party apps but not the essential set`() {
+    fun `pause the internet is network-only so apps and essentials remain open in RuleEngine (#1183)`() {
         for (pkg in essentials) {
             assertEquals(pkg, Decision.ALLOW, decide(pkg, rules(), at(DayOfWeek.MONDAY, 12), pausedInternet = true))
         }
-        assertEquals(Decision.BLOCK, decide(thirdParty, rules(), at(DayOfWeek.MONDAY, 12), pausedInternet = true))
+        assertEquals(Decision.ALLOW, decide(thirdParty, rules(), at(DayOfWeek.MONDAY, 12), pausedInternet = true))
     }
 
     @Test
