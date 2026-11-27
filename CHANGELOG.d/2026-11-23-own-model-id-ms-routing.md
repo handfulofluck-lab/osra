@@ -1,0 +1,1 @@
+- Added Indonesian (`id`) and Malay (`ms`) language detection with `id`-vs-`ms` disambiguation and an explicit `status: "uncertain"` (`reason: "uncalibrated: language not determined"`) outcome with no verdict and no parent alert for ambiguous short Latin text in `services/ai-engine/own_model_service.py` (follow-up to `#1015`, `osra-security#72`).
