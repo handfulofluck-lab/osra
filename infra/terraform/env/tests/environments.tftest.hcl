@@ -68,6 +68,12 @@ mock_provider "aws" {
       arn = "arn:aws:iam::000000000000:role/test"
     }
   }
+  # The load-test ALB rule builds a /32 from the NAT address, which must parse as an IPv4 address.
+  mock_resource "aws_eip" {
+    defaults = {
+      public_ip = "198.51.100.10"
+    }
+  }
   mock_resource "aws_ecs_task_definition" {
     defaults = {
       arn = "arn:aws:ecs:eu-central-1:000000000000:task-definition/test:1"
