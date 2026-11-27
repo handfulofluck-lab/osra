@@ -285,20 +285,20 @@
     <string name="notification_channel_content_filter">تصفية المواقع</string>
     <string name="notification_content_filter_active">تصفية المواقع تعمل</string>
 
-    <!-- C-02 Time's up / blocked (#1179; Arabic Bureau staged core copy 7191839045). -->
-    <string name="c02_paused_title">توقّف %1$s الآن</string>
+    <!-- C-02 Time's up / blocked (#1179; Arabic Bureau staged core copy 7191839045 + 7204732398). -->
+    <string name="c02_paused_title">%1$s متوقف مؤقتًا</string>
     <string name="c02_reason_daily_limit">انتهى الوقت المحدد لليوم</string>
     <string name="c02_reason_app_limit">انتهى وقت التطبيق لليوم</string>
     <string name="c02_reason_bedtime">حان وقت النوم</string>
     <string name="c02_reason_school">ساعات المدرسة</string>
     <string name="c02_reason_paused_internet">الإنترنت متوقف مؤقتًا</string>
     <string name="c02_reason_blocked">محظور</string>
-    <string name="c02_subtitle_used_of">استخدمت %1$s من %2$s</string>
+    <string name="c02_subtitle_used_of">المستخدم: %1$s · الحد: %2$s</string>
     <string name="c02_subtitle_daily_limit">انتهى الوقت المحدد للشاشة اليوم.</string>
     <string name="c02_subtitle_app_limit">انتهى الوقت المحدد لتطبيق %1$s اليوم.</string>
     <string name="c02_subtitle_bedtime">حان وقت النوم الآن.</string>
     <string name="c02_subtitle_school">ساعات المدرسة سارية الآن.</string>
-    <string name="c02_subtitle_routine">%1$s سارٍ الآن.</string>
+    <string name="c02_subtitle_routine">جدول «%1$s» سارٍ الآن.</string>
     <string name="c02_subtitle_paused_internet">الإنترنت متوقف مؤقتًا الآن.</string>
     <string name="c02_subtitle_blocked">هذا التطبيق محظور حسب قواعد أهلك.</string>
     <string name="c02_back_again_label">يعود متاحًا</string>
@@ -316,7 +316,7 @@
     <string name="c02_emergency_note">مكالمات الطوارئ تعمل دائمًا</string>
     <plurals name="c02_hours">
         <item quantity="zero">%1$d ساعة</item>
-        <item quantity="one">ساعة واحدة</item>
+        <item quantity="one">ساعة</item>
         <item quantity="two">ساعتان</item>
         <item quantity="few">%1$d ساعات</item>
         <item quantity="many">%1$d ساعة</item>
@@ -324,7 +324,7 @@
     </plurals>
     <plurals name="c02_minutes">
         <item quantity="zero">%1$d دقيقة</item>
-        <item quantity="one">دقيقة واحدة</item>
+        <item quantity="one">دقيقة</item>
         <item quantity="two">دقيقتان</item>
         <item quantity="few">%1$d دقائق</item>
         <item quantity="many">%1$d دقيقة</item>
@@ -332,7 +332,7 @@
     </plurals>
     <string name="c02_hours_and_minutes">%1$s و%2$s</string>
     <string name="c02_rules_sheet_title">قواعدي</string>
-    <string name="c02_rules_daily_limit">وقت الشاشة اليومي: استخدمت %1$s من %2$s</string>
+    <string name="c02_rules_daily_limit">وقت الشاشة اليومي: المستخدم %1$s، والحد %2$s</string>
     <string name="c02_rules_bedtime">وقت النوم: %1$s</string>
     <string name="c02_rules_school">ساعات المدرسة: %1$s</string>
     <string name="c02_rules_routines">الجداول: %1$s</string>
