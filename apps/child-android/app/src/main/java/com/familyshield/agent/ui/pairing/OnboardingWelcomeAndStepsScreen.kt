@@ -347,6 +347,51 @@ internal const val LARGE_TEXT_FONT_SCALE_THRESHOLD = 1.5f
 internal fun shouldScrollSecondaryActions(fontScale: Float): Boolean =
     fontScale >= LARGE_TEXT_FONT_SCALE_THRESHOLD
 
+internal enum class PermissionStepActionSlot {
+    PRIMARY_GRANT,
+    CONFIRM_HINT,
+    CONFIRM_BUTTON,
+    SKIP_BUTTON,
+    CHECKLIST_BUTTON,
+}
+
+internal data class PermissionStepActionPlacement(
+    val scrollable: List<PermissionStepActionSlot>,
+    val pinned: List<PermissionStepActionSlot>,
+)
+
+/**
+ * Single source of truth for which action slots scroll with the permission step card vs stay
+ * pinned at the bottom of [OnboardingPermissionStepScreen].
+ */
+internal fun permissionStepActionPlacement(
+    fontScale: Float,
+    hasConfirmHint: Boolean,
+    hasConfirmButton: Boolean,
+    hasSkipButton: Boolean,
+    hasChecklistButton: Boolean,
+): PermissionStepActionPlacement {
+    val secondary = buildList {
+        if (hasConfirmButton) {
+            if (hasConfirmHint) add(PermissionStepActionSlot.CONFIRM_HINT)
+            add(PermissionStepActionSlot.CONFIRM_BUTTON)
+        }
+        if (hasSkipButton) add(PermissionStepActionSlot.SKIP_BUTTON)
+        if (hasChecklistButton) add(PermissionStepActionSlot.CHECKLIST_BUTTON)
+    }
+    return if (shouldScrollSecondaryActions(fontScale)) {
+        PermissionStepActionPlacement(
+            scrollable = secondary,
+            pinned = listOf(PermissionStepActionSlot.PRIMARY_GRANT),
+        )
+    } else {
+        PermissionStepActionPlacement(
+            scrollable = emptyList(),
+            pinned = listOf(PermissionStepActionSlot.PRIMARY_GRANT) + secondary,
+        )
+    }
+}
+
 /**
  * U44 (#952): Single-permission setup step screen on [OsraTheme] tokens, presenting the OSRA mark,
  * permission title, one-sentence explanation, optional OEM guidance, and primary 52 dp action.
@@ -364,10 +409,13 @@ fun OnboardingPermissionStepScreen(
     val palette = OsraTheme.LocalOsraPalette.current
     val radii = OsraTheme.LocalOsraRadii.current
     val scroll = rememberScrollState()
-    val scrollSecondaryActions = shouldScrollSecondaryActions(LocalDensity.current.fontScale)
-    val hasSecondaryActions = (onConfirm != null && copy.confirmButton != null) ||
-        (onSkip != null && copy.skipLabel != null) ||
-        (onOpenChecklist != null && copy.checklistLabel != null)
+    val placement = permissionStepActionPlacement(
+        fontScale = LocalDensity.current.fontScale,
+        hasConfirmHint = copy.confirmHint != null,
+        hasConfirmButton = onConfirm != null && copy.confirmButton != null,
+        hasSkipButton = onSkip != null && copy.skipLabel != null,
+        hasChecklistButton = onOpenChecklist != null && copy.checklistLabel != null,
+    )
 
     Column(
         modifier = modifier
@@ -519,23 +567,59 @@ fun OnboardingPermissionStepScreen(
                 }
             }
 
-            if (scrollSecondaryActions && hasSecondaryActions) {
+            if (placement.scrollable.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
-                PermissionStepSecondaryActions(
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
+                ) {
+                    placement.scrollable.forEach { slot ->
+                        RenderPermissionStepActionSlot(
+                            slot = slot,
+                            copy = copy,
+                            onGrant = onGrant,
+                            onConfirm = onConfirm,
+                            onSkip = onSkip,
+                            onOpenChecklist = onOpenChecklist,
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(if (placement.scrollable.isNotEmpty()) OsraTokens.spaces.sm else OsraTokens.spaces.md))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
+        ) {
+            placement.pinned.forEach { slot ->
+                RenderPermissionStepActionSlot(
+                    slot = slot,
                     copy = copy,
+                    onGrant = onGrant,
                     onConfirm = onConfirm,
                     onSkip = onSkip,
                     onOpenChecklist = onOpenChecklist,
                 )
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(if (scrollSecondaryActions) OsraTokens.spaces.sm else OsraTokens.spaces.md))
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
-        ) {
+@Composable
+private fun RenderPermissionStepActionSlot(
+    slot: PermissionStepActionSlot,
+    copy: PermissionStepCopy,
+    onGrant: () -> Unit,
+    onConfirm: (() -> Unit)?,
+    onSkip: (() -> Unit)?,
+    onOpenChecklist: (() -> Unit)?,
+) {
+    val palette = OsraTheme.LocalOsraPalette.current
+    val radii = OsraTheme.LocalOsraRadii.current
+    when (slot) {
+        PermissionStepActionSlot.PRIMARY_GRANT -> {
             Button(
                 onClick = onGrant,
                 modifier = Modifier
@@ -555,33 +639,9 @@ fun OnboardingPermissionStepScreen(
                     textAlign = TextAlign.Center,
                 )
             }
-
-            if (!scrollSecondaryActions && hasSecondaryActions) {
-                PermissionStepSecondaryActions(
-                    copy = copy,
-                    onConfirm = onConfirm,
-                    onSkip = onSkip,
-                    onOpenChecklist = onOpenChecklist,
-                )
-            }
         }
-    }
-}
 
-@Composable
-private fun PermissionStepSecondaryActions(
-    copy: PermissionStepCopy,
-    onConfirm: (() -> Unit)?,
-    onSkip: (() -> Unit)?,
-    onOpenChecklist: (() -> Unit)?,
-) {
-    val palette = OsraTheme.LocalOsraPalette.current
-    val radii = OsraTheme.LocalOsraRadii.current
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xs),
-    ) {
-        if (onConfirm != null && copy.confirmButton != null) {
+        PermissionStepActionSlot.CONFIRM_HINT -> {
             copy.confirmHint?.let { hint ->
                 Text(
                     text = hint,
@@ -593,56 +653,65 @@ private fun PermissionStepSecondaryActions(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            OutlinedButton(
-                onClick = onConfirm,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
-                shape = RoundedCornerShape(radii.control),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary),
-            ) {
-                Text(
-                    text = copy.confirmButton,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        textDirection = TextDirection.Content,
-                    ),
-                    textAlign = TextAlign.Center,
-                )
+        }
+
+        PermissionStepActionSlot.CONFIRM_BUTTON -> {
+            if (onConfirm != null && copy.confirmButton != null) {
+                OutlinedButton(
+                    onClick = onConfirm,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                    shape = RoundedCornerShape(radii.control),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary),
+                ) {
+                    Text(
+                        text = copy.confirmButton,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
 
-        if (onSkip != null && copy.skipLabel != null) {
-            OutlinedButton(
-                onClick = onSkip,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
-                shape = RoundedCornerShape(radii.control),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.ink),
-            ) {
-                Text(
-                    text = copy.skipLabel,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        textDirection = TextDirection.Content,
-                    ),
-                    textAlign = TextAlign.Center,
-                )
+        PermissionStepActionSlot.SKIP_BUTTON -> {
+            if (onSkip != null && copy.skipLabel != null) {
+                OutlinedButton(
+                    onClick = onSkip,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                    shape = RoundedCornerShape(radii.control),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.ink),
+                ) {
+                    Text(
+                        text = copy.skipLabel,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
 
-        if (onOpenChecklist != null && copy.checklistLabel != null) {
-            TextButton(
-                onClick = onOpenChecklist,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = copy.checklistLabel,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        textDirection = TextDirection.Content,
-                    ),
-                    color = palette.primary,
-                    textAlign = TextAlign.Center,
-                )
+        PermissionStepActionSlot.CHECKLIST_BUTTON -> {
+            if (onOpenChecklist != null && copy.checklistLabel != null) {
+                TextButton(
+                    onClick = onOpenChecklist,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = copy.checklistLabel,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.primary,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }

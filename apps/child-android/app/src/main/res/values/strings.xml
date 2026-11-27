@@ -360,8 +360,9 @@
     <string name="notification_channel_content_filter">Content filter</string>
     <string name="notification_content_filter_active">Content filter active</string>
 
-    <!-- LockActivity: the lock and pause overlays. #725's Bureau section 9 supplied the Arabic; the English
-         bodies keep the `· أسرة` tail, which the Arabic drops, exactly as the titles do. -->
+    <!-- LockActivity: the lock and pause overlays. #725's Bureau section 9 supplied the Arabic (which drops
+         the `· أسرة` tail). U85 (#650) dropped `· أسرة` from `lock_locked_body` in English too; the paused
+         bodies currently retain it. -->
     <string name="lock_locked_title">This device is locked by your parent</string>
     <string name="lock_locked_body">It will unlock when your parent allows it.</string>
     <string name="lock_paused_title">Device paused by your parent</string>

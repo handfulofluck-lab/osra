@@ -2,6 +2,9 @@ package com.familyshield.agent.setup
 
 import androidx.compose.ui.unit.dp
 import com.familyshield.agent.ui.pairing.LARGE_TEXT_FONT_SCALE_THRESHOLD
+import com.familyshield.agent.ui.pairing.PermissionStepActionPlacement
+import com.familyshield.agent.ui.pairing.PermissionStepActionSlot
+import com.familyshield.agent.ui.pairing.permissionStepActionPlacement
 import com.familyshield.agent.ui.pairing.shouldScrollSecondaryActions
 import com.familyshield.agent.ui.theme.OsraTokens
 import java.io.File
@@ -101,18 +104,119 @@ class OnboardingWelcomeAndStepsTest {
     }
 
     @Test
-    fun `U90 permission step scrolls secondary actions at large text while keeping primary button pinned`() {
+    fun `U90 permission step pins all active actions at normal text without duplicating or dropping any`() {
         assertEquals(1.5f, LARGE_TEXT_FONT_SCALE_THRESHOLD, 0f)
         assertFalse(shouldScrollSecondaryActions(1.0f))
         assertFalse(shouldScrollSecondaryActions(1.3f))
+
+        val normal = permissionStepActionPlacement(
+            fontScale = 1.0f,
+            hasConfirmHint = true,
+            hasConfirmButton = true,
+            hasSkipButton = true,
+            hasChecklistButton = true,
+        )
+        assertEquals(
+            PermissionStepActionPlacement(
+                scrollable = emptyList(),
+                pinned = listOf(
+                    PermissionStepActionSlot.PRIMARY_GRANT,
+                    PermissionStepActionSlot.CONFIRM_HINT,
+                    PermissionStepActionSlot.CONFIRM_BUTTON,
+                    PermissionStepActionSlot.SKIP_BUTTON,
+                    PermissionStepActionSlot.CHECKLIST_BUTTON,
+                ),
+            ),
+            normal,
+        )
+        val combined = normal.scrollable + normal.pinned
+        assertEquals("Every active action must appear exactly once", combined.size, combined.toSet().size)
+    }
+
+    @Test
+    fun `U90 permission step pins only primary grant and scrolls secondary actions at 1_5x and 2_0x`() {
         assertTrue(shouldScrollSecondaryActions(1.5f))
         assertTrue(shouldScrollSecondaryActions(2.0f))
 
+        for (scale in listOf(1.5f, 2.0f)) {
+            val largeText = permissionStepActionPlacement(
+                fontScale = scale,
+                hasConfirmHint = true,
+                hasConfirmButton = true,
+                hasSkipButton = true,
+                hasChecklistButton = true,
+            )
+            assertEquals(
+                PermissionStepActionPlacement(
+                    scrollable = listOf(
+                        PermissionStepActionSlot.CONFIRM_HINT,
+                        PermissionStepActionSlot.CONFIRM_BUTTON,
+                        PermissionStepActionSlot.SKIP_BUTTON,
+                        PermissionStepActionSlot.CHECKLIST_BUTTON,
+                    ),
+                    pinned = listOf(PermissionStepActionSlot.PRIMARY_GRANT),
+                ),
+                largeText,
+            )
+            val combined = largeText.scrollable + largeText.pinned
+            assertEquals("Every active action must appear exactly once at scale $scale", combined.size, combined.toSet().size)
+        }
+    }
+
+    @Test
+    fun `U90 permission step omits inactive secondary slots and keeps confirm hint gated by confirm button`() {
+        val batteryAtLargeText = permissionStepActionPlacement(
+            fontScale = 2.0f,
+            hasConfirmHint = true,
+            hasConfirmButton = false,
+            hasSkipButton = true,
+            hasChecklistButton = true,
+        )
+        assertEquals(
+            PermissionStepActionPlacement(
+                scrollable = listOf(
+                    PermissionStepActionSlot.SKIP_BUTTON,
+                    PermissionStepActionSlot.CHECKLIST_BUTTON,
+                ),
+                pinned = listOf(PermissionStepActionSlot.PRIMARY_GRANT),
+            ),
+            batteryAtLargeText,
+        )
+
+        val requiredStepOnly = permissionStepActionPlacement(
+            fontScale = 2.0f,
+            hasConfirmHint = false,
+            hasConfirmButton = false,
+            hasSkipButton = false,
+            hasChecklistButton = false,
+        )
+        assertEquals(
+            PermissionStepActionPlacement(
+                scrollable = emptyList(),
+                pinned = listOf(PermissionStepActionSlot.PRIMARY_GRANT),
+            ),
+            requiredStepOnly,
+        )
+    }
+
+    @Test
+    fun `U90 screen renders actions exclusively through permissionStepActionPlacement slots`() {
         val screenSrc = locate("src/main/java/com/familyshield/agent/ui/pairing/OnboardingWelcomeAndStepsScreen.kt").readText()
-        assertTrue(screenSrc.contains("shouldScrollSecondaryActions(LocalDensity.current.fontScale)"))
-        assertTrue(screenSrc.contains("if (scrollSecondaryActions && hasSecondaryActions)"))
-        assertTrue(screenSrc.contains("if (!scrollSecondaryActions && hasSecondaryActions)"))
-        assertTrue(screenSrc.contains("PermissionStepSecondaryActions("))
+        val permFn = screenSrc
+            .substringAfter("fun OnboardingPermissionStepScreen(")
+            .substringBefore("private fun RenderPermissionStepActionSlot(")
+        assertTrue(permFn.contains("permissionStepActionPlacement("))
+        assertEquals(
+            "OnboardingPermissionStepScreen must invoke RenderPermissionStepActionSlot exactly twice (scrollable + pinned)",
+            2,
+            Regex("""RenderPermissionStepActionSlot\(""").findAll(permFn).count(),
+        )
+        assertFalse(
+            "OnboardingPermissionStepScreen must not bypass placement by rendering OutlinedButton directly in the pinned area",
+            permFn.substringAfter("val placement = permissionStepActionPlacement(")
+                .substringAfter("Spacer(modifier = Modifier.height(if (placement.scrollable.isNotEmpty())")
+                .contains("OutlinedButton("),
+        )
     }
 
     private fun loadStrings(relativeToModule: String): Map<String, String> {
