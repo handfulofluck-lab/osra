@@ -146,7 +146,7 @@
         <item quantity="other">%1$s minutes</item>
     </plurals>
     <string name="c05_rule_hours_and_minutes">%1$s %2$s</string>
-    <string name="c05_cat_pornography">Pornography</string>
+    <string name="c05_cat_pornography">Adult content</string>
     <string name="c05_cat_gambling">Gambling</string>
     <string name="c05_cat_drugs">Drugs</string>
     <string name="c05_cat_violence">Violence</string>
@@ -154,7 +154,7 @@
     <string name="c05_cat_hate">Hate speech</string>
     <string name="c05_cat_self_harm">Self-harm</string>
     <string name="c05_cat_dating">Dating</string>
-    <string name="c05_cat_social_media_nsfw">NSFW social media</string>
+    <string name="c05_cat_social_media_nsfw">Adult social media</string>
     <string name="c05_cat_chat_random">Random chat</string>
     <string name="c05_cat_proxies_vpn">Proxies &amp; VPN</string>
     <string name="c05_cat_warez">Piracy</string>
