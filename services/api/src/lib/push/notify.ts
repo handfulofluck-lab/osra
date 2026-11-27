@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { FcmProvider, loadServiceAccountFromEnv } from "./fcm.js";
 import { ApnsProvider, loadApnsConfigFromEnv } from "./apns.js";
@@ -318,31 +319,49 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     // ADR-0014 amendment, decision 3: a guardian without `alerts` must not be pushed an alert either,
     // or the gate on `GET /v1/alerts` would be cosmetic — the push *is* the alert text on a lock
     // screen. Owners and co-parents are unaffected, which is why only guardians are filtered.
-    const parents = await prisma.parent.findMany({
-      where: {
-        familyId,
-        OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+    const { parents, rawTokens } = await prisma.$transaction(
+      async (tx) => {
+        const eligibleParents = await tx.parent.findMany({
+          where: {
+            familyId,
+            OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+          },
+          select: { id: true, sessionVersion: true },
+        });
+        const candidateTokens = eligibleParents.length === 0
+          ? []
+          : await tx.parentPushToken.findMany({
+              where: { parentId: { in: eligibleParents.map((p) => p.id) } },
+            });
+        return { parents: eligibleParents, rawTokens: candidateTokens };
       },
-      select: { id: true, sessionVersion: true },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
     const minSessionVersionByParent = new Map(
       parents.map((p) => [p.id, typeof p.sessionVersion === "number" ? p.sessionVersion : 0]),
     );
-    const rawTokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
-    const retiredIds: string[] = [];
+    const retired: Array<{ id: string; parentId: string; minVersion: number }> = [];
     const tokens = rawTokens.filter((row) => {
       const rowVersion = typeof (row as { sessionVersion?: unknown }).sessionVersion === "number"
         ? ((row as { sessionVersion: number }).sessionVersion)
         : 0;
       const minVersion = minSessionVersionByParent.get(row.parentId) ?? 0;
       if (rowVersion < minVersion) {
-        retiredIds.push(row.id);
+        retired.push({ id: row.id, parentId: row.parentId, minVersion });
         return false;
       }
       return true;
     });
-    if (retiredIds.length > 0) {
-      await prisma.parentPushToken.deleteMany({ where: { id: { in: retiredIds } } }).catch(() => undefined);
+    if (retired.length > 0) {
+      await prisma.parentPushToken.deleteMany({
+        where: {
+          OR: retired.map(({ id, parentId, minVersion }) => ({
+            id,
+            parentId,
+            sessionVersion: { lt: minVersion },
+          })),
+        },
+      }).catch(() => undefined);
     }
     if (tokens.length === 0) {
       logParentAlertOutcome({

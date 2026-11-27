@@ -240,34 +240,54 @@ async function withParentSessionLock<T>(parentId: string, fn: () => Promise<T>):
 
 export interface InvalidateSessionsOptions {
   /**
-   * Retire every `ParentPushToken` row of `parentId` in the same atomic database transaction as the
-   * `Parent.sessionVersion` increment.
+   * Retire every `ParentPushToken` row of `parentId` older than the new `Parent.sessionVersion`
+   * in the same atomic database transaction as the `Parent.sessionVersion` increment.
    */
   retirePushTokens?: boolean;
-  /** Invoked immediately after the durable database transaction commits, before Redis cache updates. */
-  onDurableCommit?: () => void;
+  /**
+   * When true (used after `/v1/auth/mfa/verify` has already committed one-time recovery-code hashes),
+   * reconciles the Redis cache on error without throwing after the durable DB bump has committed.
+   */
+  preserveAfterDurableCommit?: boolean;
+  /** Invoked immediately after the durable database transaction commits, with the new `sessionVersion`. */
+  onDurableCommit?: (committedVersion: number) => void;
 }
 
 export async function invalidateSessionsBefore(
   parentId: string,
   nowSeconds = Math.floor(Date.now() / 1000),
   opts: InvalidateSessionsOptions = {},
-): Promise<void> {
+): Promise<number | null> {
   const redis = getRedis();
-  const cached = await redis.get(sessionVersionKey(parentId));
-  // #442: a tombstoned parent is revoked for good and has no row to increment.
-  if (cached === DELETED_SESSION_MARKER) return;
-  if (cached === null && (await loadSessionState(parentId, redis)) === DELETED_SESSION_VERSION) return;
-  await withParentSessionLock(parentId, async () => {
-    await prisma.$transaction(async (tx) => {
+  let priorVersion = 0;
+  try {
+    const cached = await redis.get(sessionVersionKey(parentId));
+    // #442: a tombstoned parent is revoked for good and has no row to increment.
+    if (cached === DELETED_SESSION_MARKER) return null;
+    priorVersion = cached === null ? await loadSessionState(parentId, redis) : parseVersion(cached);
+    if (priorVersion === DELETED_SESSION_VERSION) return null;
+  } catch (err) {
+    if (!opts.preserveAfterDurableCommit) throw err;
+    const row = await prisma.parent.findUnique({ where: { id: parentId }, select: { sessionVersion: true } });
+    if (!row) return null;
+    priorVersion = typeof row.sessionVersion === "number" ? row.sessionVersion : 0;
+  }
+  const committedVersion = await withParentSessionLock(parentId, async () =>
+    prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM "Parent" WHERE "id" = ${parentId} FOR NO KEY UPDATE`;
-      await tx.parent.update({ where: { id: parentId }, data: { sessionVersion: { increment: 1 } } });
+      const updated = await tx.parent.update({ where: { id: parentId }, data: { sessionVersion: { increment: 1 } } });
+      const nextVersion = typeof (updated as { sessionVersion?: unknown } | null)?.sessionVersion === "number"
+        ? (updated as { sessionVersion: number }).sessionVersion
+        : priorVersion + 1;
       if (opts.retirePushTokens) {
-        await tx.parentPushToken.deleteMany({ where: { parentId } });
+        await tx.parentPushToken.deleteMany({
+          where: { parentId, sessionVersion: { lt: nextVersion } },
+        });
       }
-    });
-  });
-  opts.onDurableCommit?.();
+      return nextVersion;
+    }),
+  );
+  opts.onDurableCommit?.(committedVersion);
   try {
     await redis.incrby(sessionVersionKey(parentId), 1);
   } catch (err) {
@@ -276,9 +296,11 @@ export async function invalidateSessionsBefore(
     // serves reads and still accepts DEL, so without this the old marker would keep answering and
     // the token this request was meant to kill would stay live while the node stayed full.
     await redis.del(sessionVersionKey(parentId)).catch(() => {});
-    throw err;
+    if (!opts.preserveAfterDurableCommit) throw err;
+    return committedVersion;
   }
   await redis.set(invalidBeforeKey(parentId), String(nowSeconds), "EX", 8 * 24 * 3600).catch(() => {});
+  return committedVersion;
 }
 
 export interface RegisterParentPushTokenInput {
@@ -293,7 +315,10 @@ async function isSessionLiveForLockedParent(
   user: ParentSessionClaims & { sub: string },
   durableVersion: number,
 ): Promise<boolean> {
-  if (typeof user.sv === "number" && user.sv < durableVersion) {
+  // Every parent bearer token minted since #117 (7-day TTL, well past its compatibility window) carries a
+  // numeric `sv`. Retire `sv`-less admission here so a claim without a durable generation can never rely on
+  // a Redis-only timestamp or be stamped with `durableVersion`.
+  if (typeof user.sv !== "number" || user.sv < durableVersion) {
     return false;
   }
   if (user.jti) {
@@ -309,12 +334,7 @@ async function isSessionLiveForLockedParent(
   try {
     const rawVersion = await redis.get(sessionVersionKey(user.sub));
     if (rawVersion === DELETED_SESSION_MARKER) return false;
-    if (typeof user.sv === "number") {
-      if (rawVersion !== null && user.sv < parseVersion(rawVersion)) return false;
-    } else {
-      const before = await redis.get(invalidBeforeKey(user.sub));
-      if (before !== null && typeof user.iat === "number" && user.iat <= Number(before)) return false;
-    }
+    if (rawVersion !== null && user.sv < parseVersion(rawVersion)) return false;
     if (user.jti && (await redis.get(revokedTokenKey(user.jti)))) return false;
     return true;
   } catch (err) {

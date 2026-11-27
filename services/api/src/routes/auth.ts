@@ -159,13 +159,25 @@ export async function authRoutes(app: FastifyInstance) {
     opts: { preserveResponseOnCleanupError?: boolean } = {},
   ): Promise<void> => {
     const redis = getRedis();
-    const retireRefreshIndex = async (): Promise<void> => {
+    const retireRefreshIndex = async (cutoffVersion: number | null): Promise<void> => {
       const hashes = await redis.smembers(indexKey(parentId)).catch(() => [] as string[]);
       for (const hash of hashes) {
+        const raw = await redis.get(liveKey(hash));
+        if (raw !== null && cutoffVersion !== null) {
+          try {
+            const rec = JSON.parse(raw) as { sv?: unknown };
+            if (typeof rec?.sv === "number" && rec.sv >= cutoffVersion) {
+              // Refresh credential issued at or after the revocation cutoff: preserve it.
+              continue;
+            }
+          } catch {
+            // Retire unreadable entries below.
+          }
+        }
         await redis.del(liveKey(hash));
         await redis.set(usedKey(hash), "1", "EX", Math.floor(REFRESH_TTL_MS / 1000));
+        await redis.srem(indexKey(parentId), hash);
       }
-      await redis.del(indexKey(parentId));
     };
     // osra-security#4 item 3: every path that ends a parent's sessions (logout-all, password reset, MFA
     // enable / recover / reset, refresh-token theft) also closes that parent's open sockets now, instead of
@@ -181,13 +193,24 @@ export async function authRoutes(app: FastifyInstance) {
 
     if (opts.preserveResponseOnCleanupError) {
       // `/mfa/verify` has already committed the one-time recovery-code hashes; increment `Parent.sessionVersion`
-      // first (which immediately fences out pre-MFA `ParentPushToken` rows via `sessionVersion`), then run
-      // row deletion, refresh-index cleanup, and socket notification without discarding the recovery-code response.
-      await invalidateSessionsBefore(parentId, undefined, { retirePushTokens: false });
-      await prisma.parentPushToken.deleteMany({ where: { parentId } }).catch((err) => {
-        app.log.warn({ err, parentId }, "push-token cleanup deferred after sessionVersion bump; delivery fence active");
+      // first (reconciling Redis cache without throwing after the durable bump), then conditionally prune
+      // only pre-cutoff push rows (`sessionVersion < cutoffVersion`) and pre-cutoff refresh credentials so
+      // neither a cleanup error nor a cache hiccup discards the recovery-code response or wipes new sessions.
+      const cutoffVersion = await invalidateSessionsBefore(parentId, undefined, {
+        retirePushTokens: false,
+        preserveAfterDurableCommit: true,
+      }).catch((err) => {
+        app.log.warn({ err, parentId }, "session revocation deferred after MFA verification");
+        return null;
       });
-      await retireRefreshIndex().catch((err) => {
+      if (cutoffVersion !== null) {
+        await prisma.parentPushToken.deleteMany({
+          where: { parentId, sessionVersion: { lt: cutoffVersion } },
+        }).catch((err) => {
+          app.log.warn({ err, parentId }, "push-token cleanup deferred after sessionVersion bump; delivery fence active");
+        });
+      }
+      await retireRefreshIndex(cutoffVersion).catch((err) => {
         app.log.warn({ err, parentId }, "refresh-index cleanup failed after sessionVersion bump");
       });
       await publishSessionRevoked();
@@ -195,21 +218,22 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     let durableCommitted = false;
+    let committedCutoff: number | null = null;
     try {
-      // ADR-0014 / ADR-0025 / ADR-0032: commit the `Parent.sessionVersion` increment and `ParentPushToken`
-      // retirement atomically in one transaction (serialized on the `Parent` row) before mutating Redis
-      // refresh keys, so a failed DB write rolls back without invalidating the caller's retry session or
-      // leaving push registrations eligible after revocation.
-      await invalidateSessionsBefore(parentId, undefined, {
+      // ADR-0014 / ADR-0025 / ADR-0032: commit the `Parent.sessionVersion` increment and conditional
+      // `ParentPushToken` retirement (`sessionVersion < cutoff`) atomically in one transaction before mutating
+      // Redis refresh keys, so a failed DB write rolls back without invalidating the caller's retry session.
+      committedCutoff = await invalidateSessionsBefore(parentId, undefined, {
         retirePushTokens: true,
-        onDurableCommit: () => {
+        onDurableCommit: (ver) => {
           durableCommitted = true;
+          committedCutoff = ver;
         },
       });
-      await retireRefreshIndex();
+      await retireRefreshIndex(committedCutoff);
     } catch (err) {
       if (durableCommitted) {
-        await retireRefreshIndex().catch(() => {});
+        await retireRefreshIndex(committedCutoff).catch(() => {});
         await publishSessionRevoked();
       }
       throw err;

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireParent } from "../middleware/requireFamily.js";
@@ -63,13 +64,19 @@ export async function meRoutes(app: FastifyInstance) {
 
   app.get("/push-tokens", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
-    const parent = await prisma.parent.findUnique({ where: { id: user.sub }, select: { sessionVersion: true } });
+    const { parent, rows } = await prisma.$transaction(
+      async (tx) => {
+        const p = await tx.parent.findUnique({ where: { id: user.sub }, select: { sessionVersion: true } });
+        const list = await tx.parentPushToken.findMany({
+          where: { parentId: user.sub },
+          select: { id: true, platform: true, appVersion: true, sessionVersion: true, createdAt: true, lastSeenAt: true },
+          orderBy: { lastSeenAt: "desc" },
+        });
+        return { parent: p, rows: list };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
     const minVersion = typeof parent?.sessionVersion === "number" ? parent.sessionVersion : 0;
-    const rows = await prisma.parentPushToken.findMany({
-      where: { parentId: user.sub },
-      select: { id: true, platform: true, appVersion: true, sessionVersion: true, createdAt: true, lastSeenAt: true },
-      orderBy: { lastSeenAt: "desc" },
-    });
     const tokens = rows
       .filter((r) => (typeof r.sessionVersion === "number" ? r.sessionVersion : 0) >= minVersion)
       .map(({ id, platform, appVersion, createdAt, lastSeenAt }) => ({ id, platform, appVersion, createdAt, lastSeenAt }));
