@@ -1,5 +1,6 @@
 import Foundation
 #if os(iOS)
+import DeviceActivity
 import ManagedSettings
 #endif
 
@@ -17,6 +18,16 @@ import ManagedSettings
 public enum ShieldSet: String, CaseIterable, Equatable, Sendable {
     case lock = "osraLock"
     case internet = "osraPauseInternet"
+
+    /// The longest a parent command's shield lasts on an iPhone before it lifts by itself (Ahmed, #1275).
+    ///
+    /// A child who force-quits OSRA under a lock cannot relaunch it (the shield covers OSRA too), and iOS does
+    /// not wake a force-quit app for a push, so a parent's Unlock could never arrive. The safety net is a
+    /// one-off `DeviceActivity` interval named after the store: when it ends, the monitor extension clears that
+    /// store (`FamilyShieldDeviceActivityMonitor.intervalDidEnd` already clears the store named after the
+    /// activity, and `ShieldPolicy` applies nothing when it starts). The extension runs whatever state the app
+    /// is in. Each new Lock restarts the interval; Unlock and Resume stop it.
+    public static let failsafeSeconds: TimeInterval = 2 * 60 * 60
 }
 
 #if os(iOS)
@@ -58,6 +69,8 @@ public struct LiveDeviceShield: DeviceShielding {
 
     #if os(iOS)
     public func shield(_ set: ShieldSet) async -> ShieldOutcome {
+        // The safety net first: a shield that cannot lift by itself is never applied (Ahmed, #1275).
+        guard Self.startFailsafe(for: set) else { return .failed("failsafe_not_scheduled") }
         let store = set.store
         store.shield.applicationCategories = .all()
         store.shield.webDomainCategories = .all()
@@ -69,11 +82,32 @@ public struct LiveDeviceShield: DeviceShielding {
     }
 
     public func unshield(_ set: ShieldSet) async -> ShieldOutcome {
+        DeviceActivityCenter().stopMonitoring([DeviceActivityName(set.rawValue)])
         let store = set.store
         store.clearAllSettings()
         // Clears every field of this store only; the child's own rules and the other store are untouched.
         let cleared = store.shield.applicationCategories == nil && store.shield.webDomainCategories == nil
         return cleared ? .cleared : .failed("shield_still_applied")
+    }
+
+    /// Starts (or restarts) the one-off interval whose end lifts this store's shield. False when iOS refuses
+    /// it, so the caller can refuse the shield rather than risk a lock with no way out.
+    private static func startFailsafe(for set: ShieldSet, now: Date = Date()) -> Bool {
+        let calendar = Calendar.current
+        let fields: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents(fields, from: now),
+            intervalEnd: calendar.dateComponents(fields, from: now.addingTimeInterval(ShieldSet.failsafeSeconds)),
+            repeats: false
+        )
+        // No stopMonitoring first: starting the same name replaces its schedule, and a stop here could race an
+        // interval end that clears the store this Lock is about to write.
+        do {
+            try DeviceActivityCenter().startMonitoring(DeviceActivityName(set.rawValue), during: schedule)
+            return true
+        } catch {
+            return false
+        }
     }
 
     #else
