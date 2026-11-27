@@ -153,6 +153,11 @@ class PushRegistration {
     return _postTokenForEpoch(token: token, epoch: epoch);
   }
 
+  static bool _isAuthoritativeServerRefusal(Object error) =>
+      error is PushFailure &&
+      (error.kind == PushFailureKind.validation ||
+          error.kind == PushFailureKind.unauthorized);
+
   Future<PushRegistrationOutcome> _postTokenForEpoch({
     required String token,
     required int epoch,
@@ -171,7 +176,13 @@ class PushRegistration {
       // bumped [_sessionEpoch] while the request was in flight, and NEVER clear
       // [_registeredToken] or [_ownedTokens] here — [unregister] owns cleanup.
       _ownedTokens.add(token);
-    } catch (_) {
+    } catch (e) {
+      // A dropped response, network timeout, 5xx gateway error, or malformed 2xx
+      // can occur after the server already stored the row. Retain the candidate for
+      // sign-out cleanup unless the server explicitly refused it (400/401).
+      if (!_isAuthoritativeServerRefusal(e)) {
+        _ownedTokens.add(token);
+      }
       return PushRegistrationOutcome.failed;
     } finally {
       _inFlight.remove(entry);
@@ -199,10 +210,17 @@ class PushRegistration {
     while (_inFlight.isNotEmpty) {
       final snapshot = List<_InFlightRegister>.of(_inFlight);
       for (final entry in snapshot) {
+        // Add the pending candidate BEFORE awaiting its response so a server-side
+        // commit whose response is lost in flight is still cleaned up on sign-out.
+        final alreadyOwned = cleanupTokens.contains(entry.token);
+        cleanupTokens.add(entry.token);
         try {
           await entry.request;
-          cleanupTokens.add(entry.token);
-        } catch (_) {}
+        } catch (e) {
+          if (!alreadyOwned && _isAuthoritativeServerRefusal(e)) {
+            cleanupTokens.remove(entry.token);
+          }
+        }
       }
     }
     cleanupTokens.addAll(_ownedTokens);

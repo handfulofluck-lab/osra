@@ -668,6 +668,131 @@ void main() {
       expect(activeOnServer2, isEmpty, reason: 'in-flight rotation during sign-out must remove both deliveries');
     });
 
+    /// Mutant A: add `entry.token` to `cleanupTokens` only after `await entry.request` succeeds ->
+    /// an in-flight `POST /v1/me/push-token` that commits on the server before its response drops
+    /// is missed by sign-out cleanup and remains active on the server.
+    /// Mutant B: discard `token` when `_api.register` fails with a network/5xx response-loss error
+    /// before sign-out -> a registration whose response failed prior to `logout()` remains active.
+    test('sign-out removes server-committed registrations whose response was lost in-flight or prior to sign-out', () async {
+      // Subcase 1: in-flight registration commits on server, then response drops during sign-out.
+      FlutterSecureStorage.setMockInitialValues({'refresh': 'rt-loss-1'});
+      SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
+      final activeInFlightLoss = <String>{};
+      var revokedInFlightLoss = false;
+      final dropGate = Completer<void>();
+
+      final apiLoss1 = FakeApiClient({
+        ...pushRoutes(),
+        'POST /v1/auth/login': (_) => {'token': 'jwt-token', 'refreshToken': 'rt-loss-1'},
+        'POST /v1/auth/logout': (_) {
+          revokedInFlightLoss = true;
+          return const {'ok': true};
+        },
+        'POST /v1/me/push-token': (req) => FakeDeferred(
+              dropGate.future.then((_) {
+                final tok = req.body['token'] as String;
+                if (!revokedInFlightLoss) {
+                  activeInFlightLoss.add(tok);
+                }
+                return const FakeNetworkError();
+              }),
+            ),
+        'DELETE /v1/me/push-token': (req) {
+          if (revokedInFlightLoss) return const FakeHttpError(401, {'error': 'session_revoked'});
+          final tok = req.body['token'] as String;
+          return {'removed': activeInFlightLoss.remove(tok) ? 1 : 0};
+        },
+      });
+      final platformLoss1 = _FakePermissionPlatform(enabled: true, requestResult: true);
+      final sourceLoss1 = _FakePushSource()..currentToken = 'ddd444';
+      final containerLoss1 = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(apiLoss1),
+          notificationPermissionPlatformProvider.overrideWithValue(platformLoss1),
+          pushTokenSourceProvider.overrideWithValue(sourceLoss1),
+        ],
+      );
+      addTearDown(() async {
+        containerLoss1.dispose();
+        await platformLoss1.dispose();
+      });
+
+      containerLoss1.read(notificationLifecycleSyncProvider);
+      await containerLoss1.read(authProvider.notifier).login('p1@osratech.com', 'good-password');
+      await settleAsync(12);
+      expect(apiLoss1.calls('POST', '/v1/me/push-token'), hasLength(1));
+
+      final logoutLoss1 = containerLoss1.read(authProvider.notifier).logout();
+      await settleAsync(4);
+      dropGate.complete();
+      await logoutLoss1;
+      await settleAsync(8);
+
+      expect(
+        apiLoss1.calls('DELETE', '/v1/me/push-token').map((r) => r.body['token']).toList(),
+        ['ddd444'],
+      );
+      expect(activeInFlightLoss, isEmpty, reason: 'in-flight response loss must still delete committed row on sign-out');
+
+      // Subcase 2: registration commits on server, response fails BEFORE sign-out (e.g. network drop / 502),
+      // then parent signs out later without a retry succeeding.
+      FlutterSecureStorage.setMockInitialValues({'refresh': 'rt-loss-2'});
+      SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
+      final activePriorLoss = <String>{};
+      var revokedPriorLoss = false;
+
+      final apiLoss2 = FakeApiClient({
+        ...pushRoutes(),
+        'POST /v1/auth/login': (_) => {'token': 'jwt-token', 'refreshToken': 'rt-loss-2'},
+        'POST /v1/auth/logout': (_) {
+          revokedPriorLoss = true;
+          return const {'ok': true};
+        },
+        'POST /v1/me/push-token': (req) {
+          final tok = req.body['token'] as String;
+          if (!revokedPriorLoss) {
+            activePriorLoss.add(tok);
+          }
+          // Server stored the row, then upstream proxy or transport dropped the response.
+          return const FakeNetworkError();
+        },
+        'DELETE /v1/me/push-token': (req) {
+          if (revokedPriorLoss) return const FakeHttpError(401, {'error': 'session_revoked'});
+          final tok = req.body['token'] as String;
+          return {'removed': activePriorLoss.remove(tok) ? 1 : 0};
+        },
+      });
+      final platformLoss2 = _FakePermissionPlatform(enabled: true, requestResult: true);
+      final sourceLoss2 = _FakePushSource()..currentToken = 'eee555';
+      final containerLoss2 = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(apiLoss2),
+          notificationPermissionPlatformProvider.overrideWithValue(platformLoss2),
+          pushTokenSourceProvider.overrideWithValue(sourceLoss2),
+        ],
+      );
+      addTearDown(() async {
+        containerLoss2.dispose();
+        await platformLoss2.dispose();
+      });
+
+      containerLoss2.read(notificationLifecycleSyncProvider);
+      await containerLoss2.read(authProvider.notifier).login('p1@osratech.com', 'good-password');
+      await settleAsync(16);
+      // Registration response already failed and finished before sign-out begins.
+      expect(activePriorLoss, {'eee555'});
+      expect(apiLoss2.calls('DELETE', '/v1/me/push-token'), isEmpty);
+
+      await containerLoss2.read(authProvider.notifier).logout();
+      await settleAsync(10);
+
+      expect(
+        apiLoss2.calls('DELETE', '/v1/me/push-token').map((r) => r.body['token']).toList(),
+        ['eee555'],
+      );
+      expect(activePriorLoss, isEmpty, reason: 'registration whose response already failed before sign-out must still be deleted');
+    });
+
     /// Mutant: skip `syncPushRegistration()` after `requestPermission()` grants
     /// on sign-in to an existing account, and `POST /v1/me/push-token` stays empty.
     test('sign-in to an existing account prompts once immediately, posts token, and does not re-prompt', () async {
