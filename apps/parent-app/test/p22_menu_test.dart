@@ -52,32 +52,37 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('with the flag on the menu offers one Settings entry', (tester) async {
+  /// Every assertion about the menu is scoped to the popup: the dashboard underneath carries these words too,
+  /// so an unscoped `find.text` would answer a different question than the one being asked.
+  Finder inMenu(String label) => find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.text(label),
+      );
+
+  /// Exactly the four links this menu shipped with, in the order the flag-off menu must keep them.
+  const shipped = ['Appearance', 'Digest preferences', 'Two-step verification', 'Delete account'];
+
+  testWidgets('with the flag on the menu offers one Settings entry and none of the four', (tester) async {
     await pump(tester, uxP22: true);
     await openMenu(tester);
 
-    expect(find.byKey(const ValueKey('dashboardMenu-settings')), findsOneWidget);
-    expect(find.text('Settings'), findsOneWidget);
+    expect(inMenu('Settings'), findsOneWidget);
+    for (final label in shipped) {
+      expect(inMenu(label), findsNothing, reason: 'flag on: "$label" is replaced by Settings');
+    }
     await tester.tap(find.byKey(const ValueKey('dashboardMenu-settings')));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsScreen), findsOneWidget,
         reason: 'flag on: the menu entry must actually reach /settings');
-    // The four links it replaces are gone.
-    // Scoped to the popup: the dashboard underneath may carry the word elsewhere.
-    expect(
-        find.descendant(
-            of: find.byType(PopupMenuItem<String>), matching: find.text('Appearance')),
-        findsNothing);
   });
 
   testWidgets('with the flag off the four shipped links are unchanged', (tester) async {
     await pump(tester, uxP22: false);
     await openMenu(tester);
 
-    expect(find.byKey(const ValueKey('dashboardMenu-settings')), findsNothing);
-    expect(find.text('Appearance'), findsOneWidget);
-    expect(find.text('Digest preferences'), findsOneWidget);
-    expect(find.text('Two-step verification'), findsOneWidget);
-    expect(find.text('Delete account'), findsOneWidget);
+    expect(inMenu('Settings'), findsNothing);
+    for (final label in shipped) {
+      expect(inMenu(label), findsOneWidget, reason: 'flag off: "$label" still ships');
+    }
   });
 }
