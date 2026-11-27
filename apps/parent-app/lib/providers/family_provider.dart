@@ -5,11 +5,14 @@ import 'dart:math' as math;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Family;
+
+import '../core/bounded_refetch.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api/models.dart';
 import 'auth_provider.dart';
+import 'social_provider.dart';
 import 'world_class_provider.dart';
 
 import '../api/permission_errors.dart';
@@ -487,11 +490,12 @@ final locationProvider = FutureProvider.family<LocationPing?, String>((ref, chil
 });
 
 /// Recent durable commands for one device (`GET /v1/devices/:id/commands/history`,
-/// newest first). The parent-facing counterpart of the agent's drain endpoint:
-/// it never consumes anything, so polling it is safe.
+/// newest first, up to the server's 100-row `listDeviceCommands` cap). The
+/// parent-facing counterpart of the agent's drain endpoint: it never consumes
+/// anything, so polling it is safe.
 final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, String>((ref, deviceId) async {
   final api = ref.watch(apiClientProvider);
-  final res = await api.raw.get('/v1/devices/$deviceId/commands/history', queryParameters: {'limit': 20});
+  final res = await api.raw.get('/v1/devices/$deviceId/commands/history', queryParameters: {'limit': 100});
   final data = res.data is Map ? res.data as Map : const <String, dynamic>{};
   final raw = data['items'];
   return [
@@ -528,6 +532,7 @@ abstract class RealtimeEffects {
   void invalidateAlerts();
   void invalidateUnacknowledgedCount();
   void invalidateFamily();
+  void invalidateSocialEvents(String childId);
   void invalidateLocation(String childId);
 
   /// Issue #253: an open consent screen watches `consentStatusProvider(childId)`, which nothing else
@@ -544,21 +549,33 @@ abstract class RealtimeEffects {
 /// [RealtimeEffects] that invalidates the affected providers and writes the
 /// `live_activity` overlay the dashboard reads.
 class RiverpodRealtimeEffects implements RealtimeEffects {
-  RiverpodRealtimeEffects(this._ref);
+  RiverpodRealtimeEffects(this._ref) {
+    _ref.onDispose(_countRefetch.cancel);
+  }
 
   final Ref _ref;
 
-  @override
-  void invalidateAlerts() => _ref.invalidate(alertsProvider);
+  /// #1056: an `alert` frame can be handled before its row is readable, so the unread count is read once
+  /// more shortly after. One extra read per event, not a poll, and cancelled with the ref.
+  late final BoundedRefetch _countRefetch = BoundedRefetch(run: _invalidateCount);
 
-  @override
-  void invalidateUnacknowledgedCount() {
+  void _invalidateCount() {
     _ref.invalidate(unacknowledgedAlertsProvider);
     _ref.invalidate(unacknowledgedCountProvider);
   }
 
   @override
+  void invalidateAlerts() => _ref.invalidate(alertsProvider);
+
+  @override
+  void invalidateUnacknowledgedCount() => _countRefetch.schedule();
+
+  @override
   void invalidateFamily() => _ref.invalidate(familyProvider);
+
+  @override
+  void invalidateSocialEvents(String childId) =>
+      _ref.invalidate(socialEventsProvider(childId));
 
   @override
   void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
@@ -585,6 +602,13 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       effects.invalidateAlerts();
       effects.invalidateUnacknowledgedCount();
       effects.invalidateFamily();
+      final payload = msg['payload'];
+      if (payload case {
+        'childId': final String childId,
+        'category': 'social_concern' || 'gaming_chat',
+      } when childId.isNotEmpty) {
+        effects.invalidateSocialEvents(childId);
+      }
     case 'location':
       final payload = msg['payload'];
       if (payload is Map && payload['childId'] != null) {

@@ -38,6 +38,7 @@ export const MOCKED_MODELS = [
   "locationPing",
   "activityEvent",
   "socialEvent",
+  "socialEventFeedback",
   "stagingScanOutcome",
   "digestPrefs",
   "digestRecipient",
@@ -92,6 +93,60 @@ export const prismaMock = makePrismaMock();
  */
 export const SIGNUP_CONSENTS = { termsPrivacy: true, textVersion: "signup-v1", locale: "en" } as const;
 
+/**
+ * Emulate `SESSION_VERSION_FLOOR_SCRIPT` and `SESSION_VERSION_CLEANUP_BELOW_FLOOR_SCRIPT` against a
+ * `MockRedis` instance by delegating through its `get` / `set` / `incrby` / `del` mocks (matching the
+ * `multi()` pattern below). Real-Redis Lua execution is covered separately in `session-version-redis.test.ts`.
+ */
+export function evalSessionVersionScript(
+  redis: Pick<MockRedis, "get" | "set" | "incrby" | "del">,
+  script: unknown,
+  key: unknown,
+  floorArg: unknown,
+  allowCreateArg?: unknown,
+): Promise<unknown> | undefined {
+  if (typeof script !== "string") return undefined;
+  const k = String(key ?? "");
+  const floor = Number(floorArg ?? 0);
+  if (script.startsWith("-- osra:session-version-floor\n")) {
+    const allowCreate = allowCreateArg === undefined ? true : String(allowCreateArg) === "1";
+    return (async () => {
+      const cur = await redis.get(k);
+      if (cur === "deleted") return "deleted";
+      if (cur === null) {
+        if (!allowCreate) return "__MISS__";
+        if (floor === 0) {
+          await redis.set(k, "0");
+          return "0";
+        }
+        return String(await redis.incrby(k, floor));
+      }
+      const n = Number(cur);
+      if (!Number.isFinite(n) || cur !== String(Math.floor(n)) || n < 0) {
+        await redis.set(k, String(floor));
+        return String(floor);
+      }
+      const curFloor = Math.floor(n);
+      if (curFloor < floor) {
+        return String(await redis.incrby(k, floor - curFloor));
+      }
+      return cur;
+    })();
+  }
+  if (script.startsWith("-- osra:session-version-cleanup-below-floor\n")) {
+    return (async () => {
+      const cur = await redis.get(k);
+      if (cur === null || cur === "deleted") return 0;
+      const n = Number(cur);
+      if (!Number.isFinite(n) || cur !== String(Math.floor(n)) || n < floor) {
+        return redis.del(k);
+      }
+      return 0;
+    })();
+  }
+  return undefined;
+}
+
 /** In-memory stand-in for ioredis so no live Redis is needed. */
 export class MockRedis {
   static instances: MockRedis[] = [];
@@ -112,7 +167,10 @@ export class MockRedis {
   quit = vi.fn(async () => "OK");
   lpush = vi.fn(async (_key: string, _value: string) => 1);
   ltrim = vi.fn(async (..._args: unknown[]) => "OK");
-  eval = vi.fn(async (..._args: unknown[]) => null as unknown);
+  eval = vi.fn(async (...args: unknown[]) => {
+    const sv = evalSessionVersionScript(this, args[0], args[2], args[3], args[4]);
+    return sv !== undefined ? sv : (null as unknown);
+  });
   lrange = vi.fn(async (_key: string, _start: number, _stop: number) => [] as string[]);
   del = vi.fn(async (..._keys: string[]) => 0);
   sadd = vi.fn(async (_key: string, ..._members: string[]) => 1);

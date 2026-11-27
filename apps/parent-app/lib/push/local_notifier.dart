@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/models.dart';
 import '../l10n/l10n.dart';
+import 'alert_notification.dart';
 import 'notification_tap.dart';
 import 'restart_alert_text.dart';
 import 'sos_fix_text.dart';
@@ -24,10 +25,20 @@ import 'sos_fix_text.dart';
 @immutable
 class VisibleAlert {
   final String alertId;
+  final String? deliveryId;
   final String title;
   final String body;
 
-  const VisibleAlert({required this.alertId, required this.title, required this.body});
+  const VisibleAlert({
+    required this.alertId,
+    this.deliveryId,
+    required this.title,
+    required this.body,
+  });
+
+  VisibleAlert withDeliveryId(String? id) => id == deliveryId
+      ? this
+      : VisibleAlert(alertId: alertId, deliveryId: id, title: title, body: body);
 
   /// The one shape every producer uses, from one [Alert].
   ///
@@ -57,7 +68,12 @@ class VisibleAlert {
     }
     return VisibleAlert(
       alertId: alert.id,
-      title: l10n.alertTitleFor(alert.category, alert.title, isEnglish: isEnglish),
+      title: l10n.alertTitleFor(
+        alert.category,
+        alert.title,
+        isEnglish: isEnglish,
+        tamperType: alert.metadata['type']?.toString(),
+      ),
       body: body,
     );
   }
@@ -80,7 +96,7 @@ class UnavailableNotifier implements LocalNotifier {
 
 /// `flutter_local_notifications`, one channel for alerts.
 ///
-/// A stable notification id per alert ([_idFor]) matters: a redelivered wake
+/// A stable notification id per delivery ([_idFor]) matters: a redelivered wake
 /// replaces the existing notification instead of stacking a second copy, so the
 /// duplicate rule in `planNotifications` is not the only thing standing between
 /// the parent and a wall of identical rows.
@@ -150,7 +166,7 @@ class FlutterLocalNotifier implements LocalNotifier {
   Future<void> show(VisibleAlert alert) async {
     await _ensureInitialised();
     await _plugin.show(
-      id: _idFor(alert.alertId),
+      id: _idFor(pushNotificationKey(alert.alertId, alert.deliveryId)),
       title: alert.title,
       body: alert.body,
       notificationDetails: const NotificationDetails(
@@ -175,11 +191,10 @@ class FlutterLocalNotifier implements LocalNotifier {
     );
   }
 
-  /// A stable 31-bit id from the alert id, so the same alert always lands on the
-  /// same notification slot.
-  static int _idFor(String alertId) {
+  /// A stable 31-bit platform id from the delivery key.
+  static int _idFor(String key) {
     var hash = 0;
-    for (final unit in alertId.codeUnits) {
+    for (final unit in key.codeUnits) {
       hash = (hash * 31 + unit) & 0x7fffffff;
     }
     return hash;

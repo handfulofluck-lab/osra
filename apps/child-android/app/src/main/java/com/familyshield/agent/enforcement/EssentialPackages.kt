@@ -112,6 +112,48 @@ object EssentialPackages {
     )
 
     /**
+     * Issue #1096 (Ahmed's child-2 run, Redmi/MIUI, 24 Nov): the screens a child must reach to finish
+     * setup or answer a permission prompt. Pairing a child after 21:00 let the default Bedtime routine
+     * cover Xiaomi's Security app (`com.miui.securitycenter`), which hosts the Autostart and permission
+     * screens OSRA itself asks the child to open, so setup could not finish until 07:00.
+     *
+     * These names are exempt **only when the OS says they are system apps** ([isEssential] with
+     * [PackageFacts]). They are not in [EXACT]: the Full build is sideloaded, and a child can install a
+     * package called `com.miui.securitycenter` on a phone that is not a Xiaomi (review of #83 F1: a name
+     * the child can choose must not buy an exemption). `com.android.settings` stays in [EXACT] as before.
+     *
+     * Exempting these costs no more than Settings already does: the tamper guard, not the block overlay,
+     * is what protects the agent's own permissions and device-admin state on these screens.
+     */
+    val SYSTEM_SETUP_SURFACES: Set<String> = setOf(
+        // Android permission prompts (AOSP and Google builds).
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
+        "com.android.packageinstaller",
+        "com.google.android.packageinstaller",
+        // Xiaomi / Redmi / POCO (MIUI, HyperOS): Autostart, battery saver, other permissions.
+        "com.miui.securitycenter",
+        "com.miui.powerkeeper",
+        "com.lbe.security.miui",
+        // Samsung device care (battery "never sleeping apps").
+        "com.samsung.android.lool",
+        "com.samsung.android.sm.devicesecurity",
+        // OPPO / realme / OnePlus (ColorOS, OxygenOS).
+        "com.coloros.safecenter",
+        "com.oplus.safecenter",
+        "com.coloros.oppoguardelf",
+        "com.oneplus.security",
+        // vivo / iQOO.
+        "com.iqoo.secure",
+        "com.vivo.permissionmanager",
+        // Huawei / Honor.
+        "com.huawei.systemmanager",
+        "com.hihonor.systemmanager",
+        // Transsion (TECNO, Infinix, itel), common in launch markets.
+        "com.transsion.phonemaster",
+    )
+
+    /**
      * True when [packageId] is on the static essential set.
      *
      * NOTE: a name is a *hint* here, not a role. `com.anything.dialer` is NOT exempt by name — review
@@ -136,6 +178,7 @@ object EssentialPackages {
         if (packageId.isNullOrBlank()) return false
         if (isEssential(packageId)) return true
         if (packageId in facts.homePackages()) return true
+        if (packageId in SYSTEM_SETUP_SURFACES && facts.isSystemApp(packageId)) return true
         return LockEnforcementPolicy.isExemptPackage(packageId, facts)
     }
 

@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError, EndpointConnectionError, ParamValid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import own_model_service
 import staging_qa
 from app import app
 from eval.prompt import CATEGORIES
@@ -113,6 +114,120 @@ def setup_qa(monkeypatch):
 
 def payload(**overrides):
     return {"text": APPROVED_TEXT, "trace_id": str(uuid4()), **overrides}
+
+
+@pytest.fixture
+def consented_staging(setup_qa, monkeypatch):
+    monkeypatch.setenv("OSRA_STAGING_AI_ALL_CHILDREN", "1")
+    monkeypatch.setenv("OSRA_STAGING_QA_ENGINE", "own")
+    monkeypatch.setenv("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "1")
+    monkeypatch.setenv("OSRA_OWN_MODEL_REGION", "eu-north-1")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    monkeypatch.setattr(own_model_service, "APPROVED_PROMPT_SHA256", staging_qa.APPROVED_PROMPT_SHA256, raising=False)
+    config = own_model_service.load_serving_config()
+    for version in ("V9", "V9B"):
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{version}_MODEL_SHA256", "1" * 64)
+        monkeypatch.setenv(f"OSRA_STAGING_QA_{version}_THRESHOLDS_SHA256", config.sha256)
+    scores = {label: 0.01 for label in own_model_service.LABELS}
+    scores["cyberbullying"] = 0.999
+    scorer = Mock(return_value=scores)
+    model = own_model_service.LoadedModel(tag="v9", model_name="osra-own-v9",
+                                         model_sha256="1" * 64, scorer=scorer)
+    registry = own_model_service.OwnModelRegistry(config=config, models={"v9": model})
+    monkeypatch.setattr(own_model_service, "_registry", registry)
+    hosted = Mock(side_effect=AssertionError("unexpected hosted inference"))
+    monkeypatch.setattr(staging_qa, "score_own", hosted)
+    return scorer, hosted, setup_qa
+
+
+def test_consented_stockholm_collector_reaches_cpu_without_fixture_or_expiry(consented_staging, monkeypatch, caplog):
+    # Mutants: require legacy fixtures, select an external provider, or leak the request text.
+    scorer, hosted, bedrock = consented_staging
+    monkeypatch.delenv("OSRA_STAGING_QA_EXPIRES_AT")
+    monkeypatch.delenv("OSRA_STAGING_QA_FIXTURE_SHA256")
+    text = "The group agreed to leave an example out."
+    body = payload(text=text, include_provider_outcomes=True, consented_staging=True)
+    with caplog.at_level("INFO"):
+        response = TestClient(app).post(PATH, json=body)
+
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["trace_id"] == body["trace_id"]
+    assert receipt["mode"] == "own" and receipt["region"] == "eu-north-1"
+    assert set(receipt["outcomes"]) == {"own"}
+    assert receipt["outcomes"]["own"]["status"] == "scored"
+    assert receipt["outcomes"]["own"]["model"] == "v9"
+    assert receipt["outcomes"]["own"]["flagged_categories"] == ["cyberbullying"]
+    assert text not in response.text + caplog.text
+    scorer.assert_called_once_with(text)
+    hosted.assert_not_called()
+    assert bedrock.calls == []
+
+
+@pytest.mark.parametrize("name,value", [
+    ("OSRA_DEPLOYMENT_SCOPE", "production"),
+    ("OSRA_STAGING_QA_ANALYZER_ENABLED", "0"),
+    ("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0"),
+    ("OSRA_STAGING_QA_ENGINE", "bedrock"),
+    ("OSRA_STAGING_QA_ENGINE", "both"),
+    ("OSRA_OWN_MODEL_REGION", "eu-central-1"),
+    ("AWS_REGION", "eu-central-1"),
+    ("OSRA_STAGING_QA_SYSTEM_PROMPT", "Unapproved prompt"),
+])
+def test_consented_mode_fails_closed_on_wrong_configuration(consented_staging, monkeypatch, name, value):
+    # Mutant: treat an invalid explicit broad mode as a legacy audited fixture request.
+    scorer, hosted, bedrock = consented_staging
+    monkeypatch.setenv(name, value)
+    response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True, consented_staging=True))
+    assert response.status_code == 404 and response.json() == {"detail": "not_found"}
+    scorer.assert_not_called()
+    hosted.assert_not_called()
+    assert bedrock.calls == []
+
+
+def test_legacy_pair_text_collector_rejects_consented_rollout_marker(setup_qa, monkeypatch):
+    # Mutant: accept a new caller's consented request while still in the legacy pair-text window.
+    monkeypatch.setenv("OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT", "1")
+    text = "A message outside the legacy fixture file."
+    with TestClient(app) as client:
+        mismatched = client.post(PATH, json=payload(text=text, include_provider_outcomes=True,
+                                                    consented_staging=True))
+        assert mismatched.status_code == 422 and mismatched.json() == {"detail": "invalid_request"}
+        assert setup_qa.calls == []
+        legacy = client.post(PATH, json=payload(text=text, include_provider_outcomes=True))
+    assert legacy.status_code == 200
+    assert legacy.json()["outcomes"]["bedrock"]["status"] == "scored"
+    assert len(setup_qa.calls) == 1
+
+
+@pytest.mark.parametrize("marker", [{}, {"consented_staging": False}, {"consented_staging": "true"}])
+def test_consented_collector_requires_strict_true_rollout_marker(consented_staging, marker):
+    # Mutants: accept a legacy caller or coerce a string into an enabled consented request.
+    scorer, hosted, bedrock = consented_staging
+    response = TestClient(app).post(PATH, json=payload(include_provider_outcomes=True, **marker))
+    assert response.status_code == 422 and response.json() == {"detail": "invalid_request"}
+    scorer.assert_not_called()
+    hosted.assert_not_called()
+    assert bedrock.calls == []
+
+
+def test_consented_mode_applies_body_guards_and_closes_raw_cpu_http(consented_staging):
+    # Mutants: accept direct HTTP CPU calls or remove the text-byte/receipt boundary.
+    scorer, hosted, bedrock = consented_staging
+    with TestClient(app) as client:
+        direct = client.post(f"{PATH}/own", json=payload())
+        missing_outcomes = client.post(PATH, json=payload(consented_staging=True))
+        oversized = client.post(PATH, json=payload(text="é" * 513, include_provider_outcomes=True,
+                                                  consented_staging=True))
+    with TestClient(own_model_service.own_model_app) as standalone:
+        direct_alias = standalone.post(PATH, json=payload())
+    assert direct.status_code == direct_alias.status_code == 404
+    assert missing_outcomes.status_code == 422
+    assert missing_outcomes.json() == {"detail": "provider_outcomes_required"}
+    assert oversized.status_code == 422 and oversized.json() == {"detail": "invalid_request"}
+    scorer.assert_not_called()
+    hosted.assert_not_called()
+    assert bedrock.calls == []
 
 
 @pytest.mark.parametrize("name,value", [

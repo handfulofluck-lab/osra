@@ -195,6 +195,23 @@ void main() {
       expect(markedIds, ['alert-ios-1']);
     });
 
+    test('iOS grouped native wake avoids a second local presenter', () async {
+      var wakeCalls = 0;
+      final bridge = ForegroundPushBridge(
+        runWake: () async {
+          wakeCalls++;
+          return WakeOutcome.shown;
+        },
+        isApplePlatform: true,
+        nativeForegroundPresentationEnabled: true,
+      );
+
+      final outcome = await bridge.handleMessage(data: const {'w': '1', 'g': '1'});
+
+      expect(outcome, WakeOutcome.shown);
+      expect(wakeCalls, 0);
+    });
+
     test('iOS data-only foreground push (no APNs alert) still uses local presenter', () async {
       // Mutant: suppressing all iOS foreground pushes would drop data-only wakes.
       var wakeCalls = 0;
