@@ -30,7 +30,7 @@ class OnboardingWelcomeAndStepsTest {
 
         assertEquals("لنبدأ إعداد هذا الهاتف", ar["setup_welcome_title"])
         assertEquals(
-            "بضع خطوات ليساعد والدك أو والدتك في الحفاظ على أمان هذا الهاتف.",
+            "بضع خطوات ليساعدك أهلك في الحفاظ على أمان هذا الهاتف.",
             ar["setup_welcome_body"],
         )
         assertEquals("البدء", ar["setup_welcome_start"])
@@ -65,6 +65,7 @@ class OnboardingWelcomeAndStepsTest {
         assertTrue(activitySrc.contains("nextUngrantedPermissionStep(rows)"))
         assertTrue(activitySrc.contains("showPermissionStep(rows, nextStep, firstRun)"))
         assertTrue(activitySrc.contains("OnboardingWelcomeScreen("))
+        assertTrue(activitySrc.contains("OnboardingPairingStepScreen("))
         assertTrue(activitySrc.contains("OnboardingPermissionStepScreen("))
         assertTrue(activitySrc.contains("OnboardingChecklistScreen("))
         assertTrue(activitySrc.contains("OnboardingLoadingScreen("))
