@@ -1196,6 +1196,8 @@
   "accessRequestKeptBlockedSnack": "بقي {app} محظورًا",
   "accessRequestAllowLabel": "السماح باستخدام {app}",
   "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
+  "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
+  "alertsOffTurnOnAction": "تفعيل التنبيهات",
   "locationP13AllChildren": "الكل",
   "locationP13Refresh": "تحديث",
   "locationP13Refreshing": "جارٍ التحقق…",
