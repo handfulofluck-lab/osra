@@ -37,6 +37,7 @@ void main() {
     required double width,
     required double textScale,
     required Map<String, dynamic> family,
+    bool uxP22 = true,
   }) async {
     // B1: seed the two preferences the Settings values read, so the frame shows a chosen
     // language and theme rather than 'System' on both rows.
@@ -60,7 +61,7 @@ void main() {
       overrides: [
         apiClientProvider.overrideWithValue(api),
         p17SocialEnabledProvider.overrideWithValue(true),
-        p22SettingsEnabledProvider.overrideWithValue(true),
+        p22SettingsEnabledProvider.overrideWithValue(uxP22),
       ],
       child: localizedTestApp(
         RepaintBoundary(
@@ -127,10 +128,45 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+
+  testWidgets('P-22 sign-out confirm dialog en-light-390', (tester) async {
+    await pumpFrame(
+      tester,
+      const SettingsScreen(),
+      locale: const Locale('en'),
+      dark: false,
+      width: 390,
+      textScale: 1,
+      family: familyWith(),
+    );
+    await tester.tap(find.byKey(const ValueKey('settingsRow-signOutAll')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settingsSignOutAllDialog')), findsOneWidget);
+    await maybeCaptureFrame(tester, 'p22-settings-signout-dialog-en-light-390.png');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('P-22 with the switch off en-light-390', (tester) async {
+    await pumpFrame(
+      tester,
+      const SettingsScreen(),
+      locale: const Locale('en'),
+      dark: false,
+      width: 390,
+      textScale: 1,
+      family: familyWith(),
+      uxP22: false,
+    );
+    expect(tester.takeException(), isNull);
+    await maybeCaptureFrame(tester, 'p22-settings-flag-off-en-light-390.png');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final config in const [
     (locale: 'en', dark: false, width: 390.0, scale: 1.0, tag: 'en-light-390'),
     (locale: 'ar', dark: true, width: 390.0, scale: 1.0, tag: 'ar-dark-390'),
     (locale: 'en', dark: false, width: 320.0, scale: 2.0, tag: 'en-light-320-200'),
+    (locale: 'ar', dark: true, width: 320.0, scale: 2.0, tag: 'ar-dark-320-200'),
   ]) {
     testWidgets('P-17 social monitoring ${config.tag}', (tester) async {
       await pumpFrame(
