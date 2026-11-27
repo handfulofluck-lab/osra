@@ -37,11 +37,15 @@ double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
 class SocialVoteControls extends ConsumerStatefulWidget {
   final String eventId;
   final bool compact;
+  final bool? editing;
+  final ValueChanged<bool>? onEditingChanged;
 
   const SocialVoteControls({
     super.key,
     required this.eventId,
     this.compact = false,
+    this.editing,
+    this.onEditingChanged,
   });
 
   @override
@@ -50,6 +54,15 @@ class SocialVoteControls extends ConsumerStatefulWidget {
 
 class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
   bool _editing = false;
+
+  bool get _isEditing => widget.editing ?? _editing;
+
+  void _setEditing(bool value) {
+    if (widget.editing == null) {
+      setState(() => _editing = value);
+    }
+    widget.onEditingChanged?.call(value);
+  }
 
   @override
   void didUpdateWidget(covariant SocialVoteControls oldWidget) {
@@ -67,7 +80,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     if (ref.read(socialVoteProvider(widget.eventId)).ownVerdict == verdict) {
       return;
     }
-    setState(() => _editing = false);
+    _setEditing(false);
     unawaited(controller.vote(verdict));
     final l10n = context.l10n;
     ScaffoldMessenger.of(context)
@@ -85,7 +98,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
 
   void _clear() {
     final controller = ref.read(socialVoteProvider(widget.eventId).notifier);
-    setState(() => _editing = false);
+    _setEditing(false);
     unawaited(controller.withdraw());
     final l10n = context.l10n;
     ScaffoldMessenger.of(context)
@@ -255,7 +268,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (verdict != null && !_editing)
+        if (verdict != null && !_isEditing)
           _selectedPill(verdict)
         else
           Wrap(
@@ -335,7 +348,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     final concerning = verdict == 'concerning';
     final tokens = context.tokens;
     return FilledButton.tonalIcon(
-      onPressed: () => setState(() => _editing = true),
+      onPressed: () => _setEditing(true),
       icon: const Icon(Icons.check, size: 18),
       label: Text(_label(l10n, verdict)),
       style: FilledButton.styleFrom(
