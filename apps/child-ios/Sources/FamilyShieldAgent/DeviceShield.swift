@@ -49,12 +49,15 @@ extension ShieldSet {
         #endif
     }
 
+    /// OSRA Kids' own bundle: the one exemption a Lock or Pause cannot do without.
+    public static let osraBundleIdentifier = "com.osratech.child"
+
     /// The apps a Lock or Pause must never shield. OSRA Kids stays openable after a force-quit so the app can
     /// receive Unlock and Resume; without this a child who force-quits while locked has no way back. Phone stays
     /// reachable for emergency calls, and the parent's always-on list is honoured as it is during bedtime.
     public static var alwaysAllowedBundleIdentifiers: [String] {
         var seen = Set<String>()
-        return (["com.osratech.child"] + ShieldPolicy.essentialApps + RuleStore.alwaysAllowedApps())
+        return ([osraBundleIdentifier] + ShieldPolicy.essentialApps + RuleStore.alwaysAllowedApps())
             .filter { seen.insert($0).inserted }
     }
 }
@@ -63,8 +66,19 @@ extension ShieldSet {
 /// the parent panel shows it in Delivery status, and a silent failure is the bug #1089 exists to end.
 public enum ShieldOutcome: Equatable, Sendable {
     case applied
+    /// Applied, but a best-effort exemption did not resolve (for example `phone_exception_missing`). Still a
+    /// lock the child sees, so it acks ok, with the note in `detail` so it never hides behind a plain ok.
+    case appliedWithNote(String)
     case cleared
     case failed(String)
+
+    /// True for both kinds of applied shield.
+    public var isApplied: Bool {
+        switch self {
+        case .applied, .appliedWithNote: return true
+        case .cleared, .failed: return false
+        }
+    }
 }
 
 /// A parent command's effect on one store. Injectable so the drainer's tests need no Screen Time: the live
@@ -83,17 +97,26 @@ public struct LiveDeviceShield: DeviceShielding {
         guard AuthorizationCenter.shared.authorizationStatus == .approved else {
             return .failed("not_authorized")
         }
+        // OSRA's own exemption is the recovery path, so a token that does not resolve refuses the lock rather
+        // than shield the one app that can receive Unlock. It is resolved once, before anything is written or
+        // scheduled, so a refused lock leaves no safety interval behind (Ahmed and Codex, #1275).
+        guard let osraToken = Application(bundleIdentifier: ShieldSet.osraBundleIdentifier).token else {
+            return .failed("osra_token_unavailable")
+        }
+        var exceptions: Set<ApplicationToken> = [osraToken]
+        var phoneMissing = false
+        for bundle in ShieldSet.alwaysAllowedBundleIdentifiers where bundle != ShieldSet.osraBundleIdentifier {
+            if let token = Application(bundleIdentifier: bundle).token {
+                exceptions.insert(token)
+            } else if ShieldPolicy.essentialApps.contains(bundle) {
+                // Phone stays best effort (Claude's decision on #1275): emergency calls from the lock screen are
+                // outside Screen Time, but a missing exemption is reported, never a silent ok.
+                phoneMissing = true
+            }
+        }
         // Then the safety net: a shield that cannot lift by itself is never applied (Ahmed, #1275).
         guard Self.startFailsafe(for: set) else { return .failed("failsafe_not_scheduled") }
         let store = set.store
-        // OSRA's own exemption is the recovery path, so a token that did not resolve must refuse the lock rather
-        // than shield the one app that can receive Unlock. The other exemptions are best effort.
-        guard Application(bundleIdentifier: "com.osratech.child").token != nil else {
-            return .failed("osra_token_unavailable")
-        }
-        let exceptions = Set(ShieldSet.alwaysAllowedBundleIdentifiers.compactMap {
-            Application(bundleIdentifier: $0).token
-        })
         store.shield.applicationCategories = .all(except: exceptions)
         store.shield.webDomainCategories = .all()
         if set == .internet {
@@ -108,7 +131,8 @@ public struct LiveDeviceShield: DeviceShielding {
         let applied = store.shield.applicationCategories != nil
             && store.shield.webDomainCategories != nil
             && webApplied
-        return applied ? .applied : .failed("shield_not_applied")
+        guard applied else { return .failed("shield_not_applied") }
+        return phoneMissing ? .appliedWithNote("phone_exception_missing") : .applied
     }
 
     public func unshield(_ set: ShieldSet) async -> ShieldOutcome {

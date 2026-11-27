@@ -118,6 +118,22 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertNil(acks[0]["detail"], "a lock that took carries no failure detail")
     }
 
+    func testALockWithoutThePhoneExemptionAcksOkWithANote() async {
+        pair()
+        StubProtocol.responder = { request in
+            request.url?.path.hasSuffix("/commands") == true
+                ? (200, self.json([["id": "c1", "type": "lock"]])) : (200, self.json([:]))
+        }
+        let shield = FakeShield(outcomes: [.appliedWithNote("phone_exception_missing")])
+        _ = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                          shield: shield) { .notPaired }
+
+        let ack = ackBodies().first
+        XCTAssertEqual(ack?["status"] as? String, "ok", "the lock took, so the parent sees it as locked")
+        XCTAssertEqual((ack?["detail"] as? [String: String])?["note"], "phone_exception_missing",
+                       "a missing Phone exemption is reported, never hidden behind a plain ok (#1275)")
+    }
+
     func testAFailedSyncIsAckedFailed() async {
         pair()
         StubProtocol.responder = { request in

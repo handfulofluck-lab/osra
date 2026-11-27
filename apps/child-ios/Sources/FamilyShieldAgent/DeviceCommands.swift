@@ -199,7 +199,7 @@ public enum CommandDrainer {
             case .shield(let set):
                 let outcome = await shield.shield(set)
                 try? await client.ack(identity, commandId: command.id,
-                                      ok: outcome == .applied, detail: Self.shieldDetail(outcome))
+                                      ok: outcome.isApplied, detail: Self.shieldDetail(outcome))
                 result.handled.append(command.type)
             case .unshield(let set):
                 let outcome = await shield.unshield(set)
@@ -217,10 +217,14 @@ public enum CommandDrainer {
 }
 
 extension CommandDrainer {
-    /// The ack's `detail` for a shield write: empty on success, the store's own reason when it did not take.
+    /// The ack's `detail` for a shield write: empty on a clean success, the store's own reason when it did not
+    /// take, and the note when it took without a best-effort exemption (Phone, #1275).
     static func shieldDetail(_ outcome: ShieldOutcome) -> [String: String] {
-        if case .failed(let reason) = outcome { return ["reason": reason] }
-        return [:]
+        switch outcome {
+        case .failed(let reason): return ["reason": reason]
+        case .appliedWithNote(let note): return ["note": note]
+        case .applied, .cleared: return [:]
+        }
     }
 }
 
