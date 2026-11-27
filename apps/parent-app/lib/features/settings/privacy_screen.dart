@@ -216,7 +216,9 @@ class _RetentionCard extends StatelessWidget {
           runSpacing: AppSpace.xs,
           children: [
             Text(
-              l10n.privacyKeptHeader.toUpperCase(),
+              // U89 (#650): the ARB value is sentence case in both locales already;
+              // upper-casing it in the widget shouted it instead.
+              l10n.privacyKeptHeader,
               style: text.labelSmall?.copyWith(color: tokens.onSurfaceVariant, letterSpacing: 0.8),
             ),
             TextButton(

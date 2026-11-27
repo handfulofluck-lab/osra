@@ -3164,7 +3164,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get grantDeviceAdmin => 'Device admin';
 
   @override
-  String get grantWebFilter => 'Web filter (VPN consent)';
+  String get grantWebFilter => 'Web filter';
 
   @override
   String get grantLocation => 'Location (allow all the time)';
@@ -3777,6 +3777,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get p15CanBeWrong =>
       'Possible concern — automatic checks can be wrong.';
+
+  @override
+  String get p15PreviewLoadFailed =>
+      'Couldn\'t load the preview. Check your connection and try again.';
 
   @override
   String get p15ActionsHeader => 'What you can do';
