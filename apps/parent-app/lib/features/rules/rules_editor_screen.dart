@@ -316,6 +316,9 @@ class _RulesEditorScreenState extends ConsumerState<RulesEditorScreen> {
           FadingScrollableTabBar(
             tabBar: TabBar(
               isScrollable: true,
+              // U95 (#650): without this the strip centres itself when it fits and
+              // left-aligns when it overflows, so the first tab visibly shifts.
+              tabAlignment: TabAlignment.start,
               tabs: FadingScrollableTabBar.scaledTabs(context, [
                 l10n.tabScreenTime,
                 l10n.tabWebFilter,

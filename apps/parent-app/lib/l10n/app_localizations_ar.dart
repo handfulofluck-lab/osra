@@ -426,7 +426,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get socialMonitoringTitle => 'مراقبة وسائل التواصل الاجتماعي';
+  String get socialMonitoringTitle => 'مراقبة التواصل';
 
   @override
   String get devices => 'الأجهزة';
@@ -1033,7 +1033,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get tabScreenTime => 'وقت الشاشة';
 
   @override
-  String get tabWebFilter => 'تصفية الويب';
+  String get tabWebFilter => 'تصفية المواقع';
 
   @override
   String get tabRoutines => 'الروتين';
@@ -3361,7 +3361,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantDeviceAdmin => 'مسؤول الجهاز';
 
   @override
-  String get grantWebFilter => 'تصفية المواقع (موافقة VPN)';
+  String get grantWebFilter => 'تصفية المواقع';
 
   @override
   String get grantLocation => 'الموقع (السماح دائمًا)';
@@ -4039,6 +4039,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get p15CanBeWrong => 'مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.';
 
   @override
+  String get p15PreviewLoadFailed =>
+      'تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.';
+
+  @override
   String get p15ActionsHeader => 'ما يمكنك فعله';
 
   @override
@@ -4235,4 +4239,162 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get privacyRetry => 'إعادة المحاولة';
+
+  @override
+  String get homeTabHome => 'الرئيسية';
+
+  @override
+  String get homeTabFamily => 'العائلة';
+
+  @override
+  String get homeTabSettings => 'الإعدادات';
+
+  @override
+  String get homeFilterAll => 'الكل';
+
+  @override
+  String get homeNeedsYou => 'يحتاج إليك';
+
+  @override
+  String homeSafetyAlertsToReview(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count تنبيه سلامة للمراجعة',
+      many: '$count تنبيه سلامة للمراجعة',
+      few: '$count تنبيهات سلامة للمراجعة',
+      two: 'تنبيها سلامة للمراجعة',
+      one: 'تنبيه سلامة واحد للمراجعة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeDurationHoursMinutes(String hours, String minutes) {
+    return '$hours و$minutes';
+  }
+
+  @override
+  String homeTimeLeft(String duration) {
+    return 'المتبقي $duration';
+  }
+
+  @override
+  String homeOfLimit(String limit) {
+    return 'من $limit';
+  }
+
+  @override
+  String get homeSeenJustNow => 'آخر ظهور الآن';
+
+  @override
+  String homeSeenAgo(String duration) {
+    return 'آخر ظهور قبل $duration';
+  }
+
+  @override
+  String homeOfflineFor(String duration) {
+    return 'غير متصل منذ $duration';
+  }
+
+  @override
+  String get homeStateAtSchool => 'في المدرسة';
+
+  @override
+  String get homeStateBedtime => 'وقت النوم';
+
+  @override
+  String get homeStateFreeTime => 'وقت حر';
+
+  @override
+  String get homeStateHomework => 'الواجبات';
+
+  @override
+  String get homeStatePaused => 'موقوف مؤقتًا';
+
+  @override
+  String homeBatteryPct(String pct) {
+    return 'البطارية $pct';
+  }
+
+  @override
+  String get homeBonusPlus15 => '+15 دقيقة';
+
+  @override
+  String get homeBonusPlus30 => '+30 دقيقة';
+
+  @override
+  String get homePauseInternet => 'إيقاف الإنترنت مؤقتًا';
+
+  @override
+  String get homeResumeInternet => 'استئناف الإنترنت';
+
+  @override
+  String get homeLockAllDevices => 'قفل كل الأجهزة';
+
+  @override
+  String get homeUnlockAllDevices => 'إلغاء القفل';
+
+  @override
+  String get homeNotYetAvailable => 'غير متاح بعد';
+
+  @override
+  String get homeNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
+  String get homeKeepBlocked => 'إبقاء الحظر';
+
+  @override
+  String get homeNotToday => 'ليس اليوم';
+
+  @override
+  String homeTimeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'طلب من $child: $minutes دقيقة إضافية من وقت الشاشة',
+      many: 'طلب من $child: $minutes دقيقة إضافية من وقت الشاشة',
+      few: 'طلب من $child: $minutes دقائق إضافية من وقت الشاشة',
+      two: 'طلب من $child: دقيقتان إضافيتان من وقت الشاشة',
+      one: 'طلب من $child: دقيقة إضافية من وقت الشاشة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeAccessRequestTitle(String child, String app) {
+    return 'طلب من $child: السماح بتطبيق $app';
+  }
+
+  @override
+  String get homeSentToPhone => 'تم الإرسال إلى الهاتف';
+
+  @override
+  String homeSendingBonusSnack(String duration) {
+    return 'إضافة $duration لليوم';
+  }
+
+  @override
+  String get homeExampleBadge => 'مثال';
+
+  @override
+  String get p01WelcomeSubtitle => 'صورة أوضح ليوم عائلتك الرقمي.';
+
+  @override
+  String get p01ExampleBadge => 'مثال';
+
+  @override
+  String get p01NoAdsLine => 'بلا إعلانات. لا تُباع بيانات عائلتك أبدًا.';
+
+  @override
+  String get p01PreviewScreenTimeValue => 'المتبقي ساعة و20 دقيقة';
+
+  @override
+  String get p01PreviewBedtimeValue => 'من 21:30 إلى 07:00';
+
+  @override
+  String get p01PreviewAppsValue => 'تطبيقان محظوران';
+
+  @override
+  String get p01PreviewLocationValue => 'في المدرسة';
 }

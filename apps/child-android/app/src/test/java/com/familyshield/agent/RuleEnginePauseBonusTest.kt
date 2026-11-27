@@ -46,11 +46,11 @@ class RuleEnginePauseBonusTest {
     }
 
     @Test
-    fun `alwaysAllowed app is ALLOWED during pause while others are BLOCKED`() {
+    fun `pause internet is network-only and leaves offline apps allowed in RuleEngine (#1183)`() {
         val rs = base(alwaysAllowed = listOf("com.edu.math"))
         val noonSat = at(DayOfWeek.SATURDAY, 12)
         assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.edu.math", noonSat, pausedInternet = true))
-        assertEquals(Decision.BLOCK, engine.evaluate(rs, "com.game", noonSat, pausedInternet = true))
+        assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", noonSat, pausedInternet = true))
     }
 
     @Test
@@ -74,21 +74,25 @@ class RuleEnginePauseBonusTest {
     }
 
     @Test
-    fun `pause blocks even an explicitly allowed per-app rule`() {
+    fun `network-only pause preserves explicit per-app allow and block rules (#1183)`() {
         val rs = base().copy(
-            appRules = listOf(AppRuleDto(packageId = "com.game", appName = "Game", action = "allow")),
+            appRules = listOf(
+                AppRuleDto(packageId = "com.game", appName = "Game", action = "allow"),
+                AppRuleDto(packageId = "com.blocked", appName = "Blocked", action = "block"),
+            ),
         )
         val noonSat = at(DayOfWeek.SATURDAY, 12)
         assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", noonSat))
-        assertEquals(Decision.BLOCK, engine.evaluate(rs, "com.game", noonSat, pausedInternet = true))
+        assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", noonSat, pausedInternet = true))
+        assertEquals(Decision.BLOCK, engine.evaluate(rs, "com.blocked", noonSat, pausedInternet = true))
     }
 
     @Test
-    fun `pause blocks even when the daily limit is not reached`() {
+    fun `network-only pause does not block apps before the daily limit is reached (#1183)`() {
         val rs = base()
         val noonSat = at(DayOfWeek.SATURDAY, 12)
         assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", noonSat, pausedInternet = false))
-        assertEquals(Decision.BLOCK, engine.evaluate(rs, "com.game", noonSat, pausedInternet = true))
+        assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", noonSat, pausedInternet = true))
     }
 
     @Test

@@ -26,7 +26,10 @@ import 'alert_detail_screen.dart'
 
 /// Build-time switch for UX Final Decisions P-15 Alert detail (#1179).
 /// Defaults to `false` so legacy `_SocialAlertDetailBody` remains the fallback.
-const bool kP15AlertDetailDefault = bool.fromEnvironment('OSRA_UX_P15', defaultValue: false);
+const bool kP15AlertDetailDefault = bool.fromEnvironment(
+  'OSRA_UX_P15',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 
 /// Feature switch for P-15 Alert detail (#1179).
 final p15AlertDetailEnabledProvider = Provider<bool>((ref) => kP15AlertDetailDefault);
@@ -294,7 +297,9 @@ class _AlertDetailP15BodyState extends ConsumerState<AlertDetailP15Body> {
                       message: friendlyErrorText(
                         l10n,
                         eventsAsync.error ?? Exception('preview_unavailable'),
-                        () => l10n.alertsLoadFailed,
+                        // U91 (#650): the preview has its own failure line; borrowing the
+                        // alerts-list string told the parent the wrong thing failed.
+                        () => l10n.p15PreviewLoadFailed,
                       ),
                       onRetry: () => ref.invalidate(eventsProvider),
                     ),

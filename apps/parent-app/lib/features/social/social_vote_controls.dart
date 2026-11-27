@@ -8,12 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../providers/social_vote_provider.dart';
 import '../../theme/app_tokens.dart';
 
-double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
-  if (verdict == null) return 48 * 2 + AppSpace.sm;
-  final l10n = context.l10n;
-  final label = verdict == 'concerning'
-      ? l10n.flagVoteConcerning
-      : l10n.flagVoteNotConcerning;
+double _measureVoteButtonWidth(BuildContext context, String label) {
   final painter = TextPainter(
     text: TextSpan(
       text: label,
@@ -26,14 +21,31 @@ double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
   return painter.width + 18 + 8 + 24;
 }
 
+double measureCompactVoteControlWidth(BuildContext context, String? verdict) {
+  final l10n = context.l10n;
+  if (verdict == null) {
+    return _measureVoteButtonWidth(context, l10n.flagVoteConcerning) +
+        AppSpace.sm +
+        _measureVoteButtonWidth(context, l10n.flagVoteNotConcerning);
+  }
+  final label = verdict == 'concerning'
+      ? l10n.flagVoteConcerning
+      : l10n.flagVoteNotConcerning;
+  return _measureVoteButtonWidth(context, label);
+}
+
 class SocialVoteControls extends ConsumerStatefulWidget {
   final String eventId;
   final bool compact;
+  final bool? editing;
+  final ValueChanged<bool>? onEditingChanged;
 
   const SocialVoteControls({
     super.key,
     required this.eventId,
     this.compact = false,
+    this.editing,
+    this.onEditingChanged,
   });
 
   @override
@@ -42,6 +54,15 @@ class SocialVoteControls extends ConsumerStatefulWidget {
 
 class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
   bool _editing = false;
+
+  bool get _isEditing => widget.editing ?? _editing;
+
+  void _setEditing(bool value) {
+    if (widget.editing == null) {
+      setState(() => _editing = value);
+    }
+    widget.onEditingChanged?.call(value);
+  }
 
   @override
   void didUpdateWidget(covariant SocialVoteControls oldWidget) {
@@ -59,7 +80,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     if (ref.read(socialVoteProvider(widget.eventId)).ownVerdict == verdict) {
       return;
     }
-    setState(() => _editing = false);
+    _setEditing(false);
     unawaited(controller.vote(verdict));
     final l10n = context.l10n;
     ScaffoldMessenger.of(context)
@@ -77,7 +98,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
 
   void _clear() {
     final controller = ref.read(socialVoteProvider(widget.eventId).notifier);
-    setState(() => _editing = false);
+    _setEditing(false);
     unawaited(controller.withdraw());
     final l10n = context.l10n;
     ScaffoldMessenger.of(context)
@@ -247,7 +268,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (verdict != null && !_editing)
+        if (verdict != null && !_isEditing)
           _selectedPill(verdict)
         else
           Wrap(
@@ -271,35 +292,53 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     final concerning = verdict == 'concerning';
     final selected = selectedVerdict == verdict;
     final tokens = context.tokens;
-    return SizedBox(
-      width: 48,
-      height: 48,
-      child: Semantics(
-        label: concerning
-            ? l10n.flagVoteA11yConcerning
-            : l10n.flagVoteA11yNotConcerning,
-        button: true,
-        enabled: !selected,
-        child: IconButton(
-          onPressed: selected ? null : () => _cast(verdict),
-          tooltip: concerning
-              ? l10n.flagVoteA11yConcerning
-              : l10n.flagVoteA11yNotConcerning,
-          icon: Icon(concerning ? Icons.flag : Icons.check_circle, size: 20),
-          color: selected
-              ? concerning
-                  ? tokens.severityWarningText
-                  : tokens.onSurfaceVariant
-              : null,
-          style: IconButton.styleFrom(
-            backgroundColor: selected
-                ? concerning
-                    ? tokens.severityWarning.withValues(alpha: 0.24)
-                    : tokens.surfaceVariant
-                : null,
-            side: BorderSide(color: tokens.border),
-          ),
+    final a11yLabel = concerning
+        ? l10n.flagVoteA11yConcerning
+        : l10n.flagVoteA11yNotConcerning;
+    final label = _label(l10n, verdict);
+    final icon = Icon(concerning ? Icons.flag : Icons.check_circle, size: 18);
+    final Widget button;
+    if (selected) {
+      final bg = concerning
+          ? tokens.severityWarning.withValues(alpha: 0.24)
+          : tokens.surfaceVariant;
+      final fg =
+          concerning ? tokens.severityWarningText : tokens.onSurfaceVariant;
+      button = FilledButton.tonalIcon(
+        onPressed: null,
+        icon: icon,
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          backgroundColor: bg,
+          foregroundColor: fg,
+          disabledBackgroundColor: bg,
+          disabledForegroundColor: fg,
+          side: BorderSide(color: tokens.border),
         ),
+      );
+    } else {
+      button = OutlinedButton.icon(
+        onPressed: () => _cast(verdict),
+        icon: icon,
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          side: BorderSide(color: tokens.border),
+        ),
+      );
+    }
+    return Tooltip(
+      message: a11yLabel,
+      excludeFromSemantics: true,
+      child: Semantics(
+        label: a11yLabel,
+        button: true,
+        selected: selected,
+        enabled: !selected,
+        child: button,
       ),
     );
   }
@@ -309,7 +348,7 @@ class _SocialVoteControlsState extends ConsumerState<SocialVoteControls> {
     final concerning = verdict == 'concerning';
     final tokens = context.tokens;
     return FilledButton.tonalIcon(
-      onPressed: () => setState(() => _editing = true),
+      onPressed: () => _setEditing(true),
       icon: const Icon(Icons.check, size: 18),
       label: Text(_label(l10n, verdict)),
       style: FilledButton.styleFrom(
