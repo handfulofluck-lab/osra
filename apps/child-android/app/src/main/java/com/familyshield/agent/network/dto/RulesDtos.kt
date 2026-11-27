@@ -36,7 +36,7 @@ data class RuleSetDto(
      * does not send the field, and the default is off on purpose.
      */
     val siteNames: Boolean = false,
-    /** F7 (#1179): parents'/guardians' display names for child-facing copy (fallback when empty). */
+    /** F7 (#1179 / #1192): parents'/guardians' display names for child-facing copy (fallback when empty). */
     val adultNames: List<String> = emptyList(),
     val updatedAt: String = "",
 )

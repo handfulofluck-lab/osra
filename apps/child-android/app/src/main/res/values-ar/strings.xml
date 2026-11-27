@@ -409,4 +409,27 @@
         <item quantity="other">%1$s دقيقة</item>
     </plurals>
     <string name="c01_hours_and_minutes">%1$s و%2$s</string>
+
+    <!-- C-03 Ask a parent (#1179; Arabic Bureau staged core copy 7191839045 + review 7197378987). -->
+    <string name="c03_title">أطلب من %1$s</string>
+    <string name="c03_close">إغلاق</string>
+    <string name="c03_adults_fallback_speaking">أهلي</string>
+    <string name="c03_adults_fallback_addressing">أهلك</string>
+    <string name="c03_question_label">كم من الوقت الإضافي؟</string>
+    <string name="c03_selected_badge">محدَّد</string>
+    <string name="c03_option_15_eyebrow">قليل من الوقت</string>
+    <string name="c03_option_15_amount">+15 دقيقة</string>
+    <string name="c03_option_30_eyebrow">وقت أطول</string>
+    <string name="c03_option_30_amount">+30 دقيقة</string>
+    <string name="c03_preview_eyebrow">ما سيُعرض على %1$s</string>
+    <string name="c03_preview_sentence">طلب %1$s دقيقة إضافية من وقت الشاشة، اليوم فقط.</string>
+    <string name="c03_goes_to">سيصل طلبك إلى %1$s</string>
+    <string name="c03_send_request">إرسال الطلب</string>
+    <string name="c03_sending">جارٍ الإرسال…</string>
+    <string name="c03_send_failed">تعذّر الإرسال الآن. حاول مرة أخرى.</string>
+    <string name="c03_pending_title">أُرسل الطلب: +%1$s دقيقة من وقت الشاشة</string>
+    <string name="c03_waiting_reply">بانتظار الرد</string>
+    <string name="c03_sent_to_line">أُرسل إلى %1$s · %2$s</string>
+    <string name="c03_no_daily_limit">لا يوجد حد يومي مفعّل لوقت الشاشة حاليًا.</string>
+    <string name="c03_footer_honest">سيظهر الرد في «الطلبات». يمكن إرسال طلب واحد فقط في كل مرة.</string>
 </resources>

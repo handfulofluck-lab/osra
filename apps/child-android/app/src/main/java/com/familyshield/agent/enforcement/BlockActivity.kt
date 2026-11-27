@@ -58,6 +58,7 @@ import com.familyshield.agent.sos.SosActivity
 import com.familyshield.agent.ui.block.BlockedAppCopy
 import com.familyshield.agent.ui.block.BlockedAppScreen
 import com.familyshield.agent.ui.block.StillOpenAppUi
+import com.familyshield.agent.ui.request.AskParentActivity
 import com.familyshield.agent.ui.theme.ChildUxFlags
 import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.vpn.FilterVpnService
@@ -180,8 +181,13 @@ class BlockActivity : ComponentActivity() {
                         val copy = buildC02Copy(appLabel, explanation)
                         BlockedAppScreen(
                             copy = copy,
+                            opensExternalAskScreen = explanation.canAskForMoreTime,
                             onPrimaryRequest = {
-                                sendChildRequest(session.requestAccessPackage(), explanation, request.reason)
+                                if (explanation.canAskForMoreTime) {
+                                    openAskParent()
+                                } else {
+                                    sendChildRequest(session.requestAccessPackage(), explanation, request.reason)
+                                }
                             },
                             onOpenAllowedApp = { pkg -> openStillOpenTarget(pkg) },
                             onCallParent = { openDialer() },
@@ -423,6 +429,13 @@ class BlockActivity : ComponentActivity() {
     private fun openSos() {
         runCatching {
             startActivity(Intent(this, SosActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** C-03 (#1179, K31 #1196 finding 1): opens the dedicated Ask-a-parent screen for daily-limit time requests. */
+    private fun openAskParent() {
+        runCatching {
+            startActivity(AskParentActivity.intent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 

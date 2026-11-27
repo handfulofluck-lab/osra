@@ -127,8 +127,10 @@ class CommandDispatcher @Inject constructor(
                     ),
                 )
                 scope.launch {
+                    val beforeWebFilter = runCatching { rules.currentRules()?.webFilter }.getOrNull()
+                    var afterWebFilter: com.familyshield.agent.network.dto.WebFilterRuleDto? = null
                     val failed = refreshThenReload(
-                        refresh = { rules.refresh() },
+                        refresh = { afterWebFilter = rules.refresh()?.webFilter },
                         // #848 (Kimi): a rule edit must not revive a filter that is not running — that
                         // would also undo a paused state or a consent the child has not given yet. The
                         // refresh still lands; the next start applies it.
@@ -137,6 +139,19 @@ class CommandDispatcher @Inject constructor(
                     // #826 happened because the parent's change was live nowhere and nothing said so.
                     // A failed step is logged rather than swallowed.
                     for (stage in failed) Log.w(TAG, "rules_updated: $stage failed; the change may not be live yet")
+                    // #1224: briefly switch an active MODE_DNS tunnel through MODE_SINKHOLE_ALL (~1 s)
+                    // when a domain or category is newly blocked so open TCP/QUIC browser tabs drop.
+                    if ("refresh" !in failed) {
+                        runCatching {
+                            com.familyshield.agent.vpn.WebFilterConnectionReset.resetIfNeeded(
+                                context = context,
+                                rules = rules,
+                                consent = consent,
+                                before = beforeWebFilter,
+                                after = afterWebFilter,
+                            )
+                        }.onFailure { Log.w(TAG, "rules_updated: brief tunnel reset failed", it) }
+                    }
                 }
                 CommandOutcome.Applied()
             }
