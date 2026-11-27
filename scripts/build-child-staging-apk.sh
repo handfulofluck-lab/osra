@@ -71,14 +71,17 @@ path = sys.argv[1]
 try:
     with open(path, encoding="utf-8") as handle:
         config = json.load(handle)
-    assert config["project_info"]["project_id"]
-    assert config["project_info"]["project_number"]
+    if not config["project_info"]["project_id"]:
+        raise ValueError("project_info.project_id is empty")
+    if not config["project_info"]["project_number"]:
+        raise ValueError("project_info.project_number is empty")
     clients = config["client"]
-    assert any(
+    if not any(
         client["client_info"]["android_client_info"]["package_name"] == "com.osratech.child.full"
         for client in clients
-    )
-except (OSError, KeyError, IndexError, AssertionError, json.JSONDecodeError) as error:
+    ):
+        raise ValueError("no client entry for com.osratech.child.full")
+except (OSError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
     raise SystemExit(f"::error::Firebase config is missing or does not name com.osratech.child.full: {error}")
 print("Firebase config names com.osratech.child.full (values withheld)")
 PY
@@ -99,15 +102,18 @@ try:
         element.attrib["name"]: element.text
         for element in ET.parse(values_path).getroot().findall("string")
     }
-    assert values.get("project_id") == config["project_info"]["project_id"]
-    assert values.get("gcm_defaultSenderId") == config["project_info"]["project_number"]
+    if values.get("project_id") != config["project_info"]["project_id"]:
+        raise ValueError("generated project_id does not match input config")
+    if values.get("gcm_defaultSenderId") != config["project_info"]["project_number"]:
+        raise ValueError("generated gcm_defaultSenderId does not match input config")
     expected_app_ids = {
         client["client_info"]["mobilesdk_app_id"]
         for client in config["client"]
         if client["client_info"]["android_client_info"]["package_name"] == "com.osratech.child.full"
     }
-    assert values.get("google_app_id") in expected_app_ids
-except (OSError, KeyError, IndexError, AssertionError, ET.ParseError, json.JSONDecodeError) as error:
+    if not expected_app_ids or values.get("google_app_id") not in expected_app_ids:
+        raise ValueError("generated google_app_id does not match com.osratech.child.full input config")
+except (OSError, KeyError, IndexError, TypeError, ValueError, ET.ParseError, json.JSONDecodeError) as error:
     raise SystemExit(f"::error::release Firebase resources are missing or stale: {error}")
 print("Generated Firebase resources match the input config (values withheld)")
 PY
@@ -149,8 +155,10 @@ fi
 import hashlib
 import sys
 
+digest = hashlib.sha256()
 with open(sys.argv[1], "rb") as handle:
-    digest = hashlib.file_digest(handle, "sha256")
+    for chunk in iter(lambda: handle.read(65536), b""):
+        digest.update(chunk)
 print(f"{digest.hexdigest()} *{sys.argv[1]}")
 PY
-echo "Child Full staging APK verified: package, versionCode ${BUILD_NUMBER}, Firebase resources, packaged FCM IDs, INTERNET, BIND_NOTIFICATION_LISTENER_SERVICE and signer"
+echo "Child Full staging APK verified: package, versionCode ${BUILD_NUMBER}, targetSdk 35, generated Firebase values equal input config, packaged google_app_id and gcm_defaultSenderId resources present, INTERNET, BIND_NOTIFICATION_LISTENER_SERVICE, and signer"

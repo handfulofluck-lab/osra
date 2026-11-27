@@ -24,6 +24,13 @@ function contractErrors(workflow, script, gradle) {
   for (const step of workflowSteps.filter((s) => s.includes("upload-artifact"))) {
     require(!/child-.*staging/i.test(step), "public_staging_apk_artifact");
   }
+  const fullGuardStep = workflowSteps.find(
+    (s) => s.includes("OSRA_FULL_KEYSTORE") && s.includes("unset OSRA_UPLOAD_KEYSTORE") && s.includes("rm -f app/google-services.json"),
+  );
+  require(
+    Boolean(fullGuardStep && fullGuardStep.includes("google-services.json is missing for a signed release build (a release or Full keystore is configured)")),
+    "missing_full_key_firebase_guard_proof",
+  );
 
   const active = uncommented(script);
   require(active.includes("assembleFullRelease"), "missing_apk_build");
@@ -31,6 +38,7 @@ function contractErrors(workflow, script, gradle) {
     active.includes("google_app_id") && active.includes("gcm_defaultSenderId") && active.includes("project_id") && active.includes("VALUES_XML"),
     "missing_google_services_assertion",
   );
+  require(!/^\s*assert\b/m.test(active), "assert_used_for_firebase_check");
   require(active.includes("string/google_app_id") && active.includes("string/gcm_defaultSenderId"), "missing_packaged_fcm_assertion");
   require(active.includes("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"), "missing_full_flavor_permission_assertion");
   require(active.includes("android.permission.INTERNET"), "missing_internet_assertion");
@@ -51,10 +59,20 @@ function contractErrors(workflow, script, gradle) {
     /\(\s*hasReleaseKey\s*\|\|\s*hasFullKey\s*\)\s*&&\s*!file\("google-services\.json"\)\.exists\(\)/.test(activeGradle),
     "missing_full_key_firebase_guard",
   );
+  require(
+    activeGradle.includes("google-services.json is missing for a signed release build (a release or Full keystore is configured)"),
+    "missing_full_key_firebase_guard_reason",
+  );
   return errors;
 }
 
 const validWorkflow = `
+      - name: Prove Full-only keystore refuses missing google-services.json (#1217)
+        run: |
+          rm -f app/google-services.json
+          unset OSRA_UPLOAD_KEYSTORE
+          export OSRA_FULL_KEYSTORE="$T/full.jks"
+          grep -Fq "google-services.json is missing for a signed release build (a release or Full keystore is configured)" "$OUT"
       - name: Prove staging Child Full APK without publishing it
         env:
           CI_SYNTHETIC: "1"
@@ -80,7 +98,7 @@ package: name='com.osratech.child.full' versionCode=
 `;
 const validGradle = `
 if ((hasReleaseKey || hasFullKey) && !file("google-services.json").exists()) {
-    throw GradleException("google-services.json is missing")
+    throw GradleException("google-services.json is missing for a signed release build (a release or Full keystore is configured).")
 }
 `;
 
@@ -90,7 +108,10 @@ const cases = [
   ["real-only CI inputs", validWorkflow.replace('CI_SYNTHETIC: "1"', 'CI_SYNTHETIC: "0"'), validScript, validGradle, "ci_not_synthetic"],
   ["commented-out invocation", uncommented(validWorkflow).replace(/^/gm, "# "), validScript, validGradle, "missing_ci_invocation"],
   ["public staging APK artifact", `${validWorkflow}\n      - name: upload\n        uses: actions/upload-artifact@v4\n        with:\n          name: child-staging-apk`, validScript, validGradle, "public_staging_apk_artifact"],
+  ["missing Full-only guard proof in CI", validWorkflow.replace("rm -f app/google-services.json", "echo skip"), validScript, validGradle, "missing_full_key_firebase_guard_proof"],
+  ["missing Full-only guard rejection reason in CI", validWorkflow.replace("(a release or Full keystore is configured)", "(other)"), validScript, validGradle, "missing_full_key_firebase_guard_proof"],
   ["missing Google Services assertion", validWorkflow, validScript.replace("project_id", ""), validGradle, "missing_google_services_assertion"],
+  ["Python assert used for mandatory check", validWorkflow, `${validScript}\n    assert True`, validGradle, "assert_used_for_firebase_check"],
   ["missing packaged FCM assertion", validWorkflow, validScript.replace("string/google_app_id", ""), validGradle, "missing_packaged_fcm_assertion"],
   ["missing Full permission assertion", validWorkflow, validScript.replace("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE", ""), validGradle, "missing_full_flavor_permission_assertion"],
   ["missing INTERNET assertion", validWorkflow, validScript.replace("android.permission.INTERNET", ""), validGradle, "missing_internet_assertion"],
@@ -106,28 +127,61 @@ const cases = [
   ["missing freshness guard", validWorkflow, validScript.replace('rm -f "$VALUES_XML"', ""), validGradle, "missing_freshness_guard"],
   ["private upload in build script", validWorkflow, `${validScript}\ngh release upload`, validGradle, "private_upload_in_build_script"],
   ["missing Full keystore Firebase guard in Gradle", validWorkflow, validScript, validGradle.replace("(hasReleaseKey || hasFullKey)", "hasReleaseKey"), "missing_full_key_firebase_guard"],
+  ["missing Full keystore Firebase guard reason in Gradle", validWorkflow, validScript, validGradle.replace("(a release or Full keystore is configured)", "(other)"), "missing_full_key_firebase_guard_reason"],
 ];
 
+const VALID_SIGNER = "a".repeat(64);
 const behavioralCases = [
-  ["missing API_BASE", { BUILD_NUMBER: "99" }],
-  ["missing BUILD_NUMBER", { API_BASE: "https://api.staging.osratech.com" }],
-  ["wrong API_BASE (production)", { API_BASE: "https://api.osratech.com", BUILD_NUMBER: "99", OSRA_EXPECTED_SIGNER_SHA256: "a".repeat(64) }],
-  ["missing signer digest", { API_BASE: "https://api.staging.osratech.com", BUILD_NUMBER: "99" }],
-  ["malformed signer digest", { API_BASE: "https://api.staging.osratech.com", BUILD_NUMBER: "99", OSRA_EXPECTED_SIGNER_SHA256: ".*" }],
+  [
+    "missing API_BASE",
+    { BUILD_NUMBER: "99", OSRA_EXPECTED_SIGNER_SHA256: VALID_SIGNER },
+    ["API_BASE"],
+    "::error::Set the staging API base URL",
+  ],
+  [
+    "missing BUILD_NUMBER",
+    { API_BASE: "https://api.staging.osratech.com", OSRA_EXPECTED_SIGNER_SHA256: VALID_SIGNER },
+    ["BUILD_NUMBER"],
+    "::error::Set the APK versionCode",
+  ],
+  [
+    "wrong API_BASE (production)",
+    { API_BASE: "https://api.osratech.com", BUILD_NUMBER: "99", OSRA_EXPECTED_SIGNER_SHA256: VALID_SIGNER },
+    [],
+    "::error::API_BASE must be exactly https://api.staging.osratech.com for this staging build",
+  ],
+  [
+    "non-positive BUILD_NUMBER",
+    { API_BASE: "https://api.staging.osratech.com", BUILD_NUMBER: "0", OSRA_EXPECTED_SIGNER_SHA256: VALID_SIGNER },
+    [],
+    "::error::BUILD_NUMBER must be a positive integer",
+  ],
+  [
+    "missing signer digest",
+    { API_BASE: "https://api.staging.osratech.com", BUILD_NUMBER: "99" },
+    ["OSRA_EXPECTED_SIGNER_SHA256"],
+    "::error::Set the lab signer certificate digest for the real staging build",
+  ],
+  [
+    "malformed signer digest",
+    { API_BASE: "https://api.staging.osratech.com", BUILD_NUMBER: "99", OSRA_EXPECTED_SIGNER_SHA256: ".*" },
+    [],
+    "::error::OSRA_EXPECTED_SIGNER_SHA256 must be exactly 64 hexadecimal characters",
+  ],
 ];
 
 function runBehavioralSelftests() {
   let passed = 0;
-  for (const [name, overrides] of behavioralCases) {
+  for (const [name, overrides, unsetKeys, expectedError] of behavioralCases) {
     const env = { ...process.env, ...overrides };
     delete env.CI_SYNTHETIC;
-    if (name !== "malformed signer digest" && name !== "wrong API_BASE (production)") delete env.OSRA_EXPECTED_SIGNER_SHA256;
+    for (const key of unsetKeys) delete env[key];
     const result = spawnSync("bash", [BUILD_SCRIPT], { env, encoding: "utf8" });
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-    if (result.status !== 0 && !output.includes("Child Full staging APK verified")) {
+    if (result.status !== 0 && !output.includes("Child Full staging APK verified") && output.includes(expectedError)) {
       passed += 1;
     } else {
-      fail(`${name}: expected non-zero exit and no success line, got status=${result.status}`);
+      fail(`${name}: expected non-zero exit with "${expectedError}", got status=${result.status} output=${output.trim()}`);
     }
   }
   return passed;
