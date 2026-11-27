@@ -57,26 +57,29 @@ void main() {
           ),
       'GET /v1/devices/dev-2/apps': (_) => installedAppsPayload(apps: const []),
     });
+    // The boundary goes around the whole app, not around the screen: a dialog is painted in the app's overlay,
+    // above the screen, and a boundary on the screen alone photographs the screen and silently drops the dialog.
+    final app = RepaintBoundary(
+      key: const ValueKey('frameRoot'),
+      child: localizedTestApp(
+        MediaQuery(
+          data: MediaQueryData(
+            size: Size(width, width >= 380 ? 1400 : 1200),
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: home,
+        ),
+        locale: locale,
+        theme: withFrameFonts(dark ? AppTheme.dark : AppTheme.light),
+      ),
+    );
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
         p17SocialEnabledProvider.overrideWithValue(true),
         p22SettingsEnabledProvider.overrideWithValue(uxP22),
       ],
-      child: localizedTestApp(
-        RepaintBoundary(
-          key: const ValueKey('frameRoot'),
-          child: MediaQuery(
-            data: MediaQueryData(
-              size: Size(width, width >= 380 ? 1400 : 1200),
-              textScaler: TextScaler.linear(textScale),
-            ),
-            child: home,
-          ),
-        ),
-        locale: locale,
-        theme: withFrameFonts(dark ? AppTheme.dark : AppTheme.light),
-      ),
+      child: app,
     ));
     await tester.pumpAndSettle();
   }
