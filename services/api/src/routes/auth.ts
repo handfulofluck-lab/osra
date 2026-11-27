@@ -165,6 +165,11 @@ export async function authRoutes(app: FastifyInstance) {
     // ADR-0014 / ADR-0025: the live access tokens die with the sessions, not 7 days later. The
     // counter bump also covers a token minted in this same second (#117).
     await invalidateSessionsBefore(parentId);
+    // Retire every push registration of this parent in the same operation (never best-effort):
+    // runs after `invalidateSessionsBefore` so pre-revocation tokens are already invalid, and before
+    // the best-effort socket publish so a failed delete fails the revocation rather than leaving
+    // push registrations behind for signed-out sessions.
+    await prisma.parentPushToken.deleteMany({ where: { parentId } });
     // osra-security#4 item 3: every path that ends a parent's sessions (logout-all, password reset, MFA
     // enable / recover / reset, refresh-token theft) also closes that parent's open sockets now, instead of
     // after the gateway's five-second session cache. The gateway closes them on receipt and never forwards

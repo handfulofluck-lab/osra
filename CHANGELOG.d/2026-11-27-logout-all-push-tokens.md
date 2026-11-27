@@ -1,0 +1,2 @@
+### API — account-wide sign-out retires parent push registrations
+- `revokeAllRefreshTokens` (`POST /v1/auth/logout-all`, password reset, MFA verification/recovery/reset, and refresh-token reuse revocation) now deletes the parent's `ParentPushToken` registrations in the same operation after invalidating sessions, and `POST /v1/me/push-token` verifies the session remains live before returning `201`.

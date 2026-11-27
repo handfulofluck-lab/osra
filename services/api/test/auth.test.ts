@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import argon2 from "argon2";
 import { Prisma } from "@prisma/client";
 import { authRoutes } from "../src/routes/auth.js";
+import { meRoutes } from "../src/routes/me.js";
 import { decryptSecret, encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { setEmailSender, type EmailMessage, type EmailSender } from "../src/lib/email/index.js";
@@ -1172,5 +1173,231 @@ describe("auth routes", () => {
   it("#608: the demo fixture email is demo@osratech.com (no familyshield in the demo account)", () => {
     expect(registerBody.email).toBe("demo@osratech.com");
     expect(registerBody.email).not.toMatch(/familyshield/i);
+  });
+
+  it("account-wide session revocation retires the parent's push tokens in order, fails closed on delete error, and rejects late pre-revocation registrations", async () => {
+    // Mutant A: omit `prisma.parentPushToken.deleteMany({ where: { parentId } })` in `revokeAllRefreshTokens` ->
+    // signed-out installations keep their push-token rows after `/v1/auth/logout-all`.
+    // Mutant B: wrap `parentPushToken.deleteMany` in a best-effort catch -> `/logout-all` answers 200 while rows survive.
+    // Mutant C: omit post-upsert `isParentSessionLive` guard in `POST /v1/me/push-token` -> an in-flight pre-revocation
+    // registration that passed `requireParent` before `logout-all` puts a row back after the wipe.
+    const app = await buildApp(async (a) => {
+      await a.register(authRoutes, { prefix: "/v1/auth" });
+      await a.register(meRoutes, { prefix: "/v1/me" });
+    });
+    const { store } = wireRedisStore();
+    const passwordHash = await argon2.hash(PASSWORD);
+    let p1SessionVersion = 0;
+    prismaMock.parent.findUnique.mockImplementation(async ({ where }: { where: { id?: string; email?: string } }) => {
+      if (where.email === registerBody.email || where.id === "parent-1") {
+        return {
+          id: "parent-1",
+          familyId: "fam-1",
+          email: registerBody.email,
+          displayName: "Demo Parent",
+          role: "owner",
+          permissions: [],
+          passwordHash,
+          mfaEnabled: false,
+          mfaSecret: null,
+          sessionVersion: p1SessionVersion,
+        };
+      }
+      if (where.id === "parent-2") {
+        return {
+          id: "parent-2",
+          familyId: "fam-1",
+          email: "coparent@osratech.com",
+          displayName: "Co Parent",
+          role: "co-parent",
+          permissions: [],
+          passwordHash,
+          mfaEnabled: false,
+          mfaSecret: null,
+          sessionVersion: 0,
+        };
+      }
+      return null;
+    });
+
+    const stepOrder: string[] = [];
+    prismaMock.parent.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      if (where.id === "parent-1" && data.sessionVersion !== undefined) {
+        p1SessionVersion += 1;
+        stepOrder.push("invalidate_sessions");
+      }
+      return { id: where.id, familyId: "fam-1", sessionVersion: p1SessionVersion };
+    });
+
+    type PushRow = { id: string; parentId: string; token: string; platform: string; appVersion?: string; createdAt: Date; lastSeenAt: Date };
+    const pushRows = new Map<string, PushRow>();
+    let rowSeq = 0;
+    let onBeforeUpsertFinish: (() => Promise<void>) | null = null;
+
+    prismaMock.parentPushToken.upsert.mockImplementation(async ({ where, create, update }: {
+      where: { token: string };
+      create: { parentId: string; token: string; platform: string; appVersion?: string; lastSeenAt?: Date };
+      update: { parentId: string; platform: string; appVersion?: string; lastSeenAt: Date };
+    }) => {
+      if (onBeforeUpsertFinish) {
+        const hook = onBeforeUpsertFinish;
+        onBeforeUpsertFinish = null;
+        await hook();
+      }
+      const existing = pushRows.get(where.token);
+      if (existing) {
+        const next: PushRow = {
+          ...existing,
+          parentId: update.parentId,
+          platform: update.platform,
+          appVersion: update.appVersion,
+          lastSeenAt: update.lastSeenAt,
+        };
+        pushRows.set(where.token, next);
+        return next;
+      }
+      const createdAt = new Date("2026-11-27T05:00:00Z");
+      const created: PushRow = {
+        id: `pt-${++rowSeq}`,
+        parentId: create.parentId,
+        token: create.token,
+        platform: create.platform,
+        appVersion: create.appVersion,
+        createdAt,
+        lastSeenAt: create.lastSeenAt ?? createdAt,
+      };
+      pushRows.set(where.token, created);
+      return created;
+    });
+    prismaMock.parentPushToken.deleteMany.mockImplementation(async ({ where }: {
+      where: { parentId?: string; token?: string; id?: string; lastSeenAt?: Date };
+    }) => {
+      if (where.parentId && !where.token && !where.id) {
+        stepOrder.push(`delete_push_tokens:${where.parentId}`);
+      }
+      let removed = 0;
+      for (const [tok, row] of [...pushRows.entries()]) {
+        if (where.id !== undefined && row.id !== where.id) continue;
+        if (where.parentId !== undefined && row.parentId !== where.parentId) continue;
+        if (where.token !== undefined && row.token !== where.token) continue;
+        if (where.lastSeenAt !== undefined && row.lastSeenAt.getTime() !== where.lastSeenAt.getTime()) continue;
+        pushRows.delete(tok);
+        removed += 1;
+      }
+      return { count: removed };
+    });
+    prismaMock.parentPushToken.findMany.mockImplementation(async ({ where }: { where: { parentId: string } }) =>
+      [...pushRows.values()].filter((r) => r.parentId === where.parentId),
+    );
+
+    // Log in two sessions for parent-1 and register push tokens on both installs, plus one for parent-2.
+    const loginA = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+    const loginB = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+    expect(loginA.statusCode).toBe(200);
+    expect(loginB.statusCode).toBe(200);
+    const tokenA = loginA.json().token as string;
+    const tokenB = loginB.json().token as string;
+    const refreshB = loginB.json().refreshToken as string;
+
+    const regA = await app.inject({
+      method: "POST",
+      url: "/v1/me/push-token",
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { token: "a".repeat(32), platform: "android" },
+    });
+    const regB = await app.inject({
+      method: "POST",
+      url: "/v1/me/push-token",
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { token: "b".repeat(32), platform: "ios" },
+    });
+    const coJwt = app.jwt.sign({ sub: "parent-2", familyId: "fam-1", role: "parent", sv: 0 });
+    const regCo = await app.inject({
+      method: "POST",
+      url: "/v1/me/push-token",
+      headers: { authorization: `Bearer ${coJwt}` },
+      payload: { token: "c".repeat(32), platform: "android" },
+    });
+    expect(regA.statusCode).toBe(201);
+    expect(regB.statusCode).toBe(201);
+    expect(regCo.statusCode).toBe(201);
+    expect(pushRows.size).toBe(3);
+
+    // Single-session `/logout` leaves other sessions' push tokens untouched (client removes its own via DELETE /me/push-token).
+    const singleLogout = await app.inject({
+      method: "POST",
+      url: "/v1/auth/logout",
+      payload: { refreshToken: refreshB },
+    });
+    expect(singleLogout.statusCode).toBe(200);
+    expect([...pushRows.values()].filter((r) => r.parentId === "parent-1")).toHaveLength(2);
+
+    // Account-wide `/logout-all` retires all push registrations of parent-1 in the same operation and keeps `{ ok: true }`.
+    stepOrder.length = 0;
+    const logoutAll = await app.inject({
+      method: "POST",
+      url: "/v1/auth/logout-all",
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(logoutAll.statusCode).toBe(200);
+    expect(logoutAll.json()).toEqual({ ok: true });
+    expect(stepOrder).toEqual(["invalidate_sessions", "delete_push_tokens:parent-1"]);
+    expect([...pushRows.values()].filter((r) => r.parentId === "parent-1")).toHaveLength(0);
+    expect([...pushRows.values()].filter((r) => r.parentId === "parent-2")).toHaveLength(1);
+    expect(store.get("auth:session-version:parent-1")).toBe("1");
+
+    // Pre-revocation bearer token cannot register a push token afterwards (401 session_revoked).
+    const staleReg = await app.inject({
+      method: "POST",
+      url: "/v1/me/push-token",
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { token: "d".repeat(32), platform: "android" },
+    });
+    expect(staleReg.statusCode).toBe(401);
+    expect(staleReg.json()).toEqual({ error: "session_revoked" });
+    expect([...pushRows.values()].filter((r) => r.parentId === "parent-1")).toHaveLength(0);
+
+    // Fresh sign-in sees 0 tokens, can re-register cleanly, and an in-flight pre-revocation upsert completing
+    // after `logout-all` is rolled back with 401 instead of leaving a row behind.
+    const loginC = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+    const tokenC = loginC.json().token as string;
+    const listAfter = await app.inject({
+      method: "GET",
+      url: "/v1/me/push-tokens",
+      headers: { authorization: `Bearer ${tokenC}` },
+    });
+    expect(listAfter.statusCode).toBe(200);
+    expect(listAfter.json()).toEqual({ tokens: [] });
+
+    onBeforeUpsertFinish = async () => {
+      const concurrentLogoutAll = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout-all",
+        headers: { authorization: `Bearer ${tokenC}` },
+      });
+      expect(concurrentLogoutAll.statusCode).toBe(200);
+    };
+    const inFlightRace = await app.inject({
+      method: "POST",
+      url: "/v1/me/push-token",
+      headers: { authorization: `Bearer ${tokenC}` },
+      payload: { token: "e".repeat(32), platform: "android" },
+    });
+    expect(inFlightRace.statusCode).toBe(401);
+    expect(inFlightRace.json()).toEqual({ error: "session_revoked" });
+    expect([...pushRows.values()].filter((r) => r.parentId === "parent-1")).toHaveLength(0);
+
+    // Non-best-effort: if `parentPushToken.deleteMany` fails during `/logout-all`, the route fails closed (5xx) rather than returning `{ ok: true }`.
+    const loginD = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: registerBody.email, password: PASSWORD } });
+    const tokenD = loginD.json().token as string;
+    prismaMock.parentPushToken.deleteMany.mockRejectedValueOnce(new Error("db write failed"));
+    const failedLogoutAll = await app.inject({
+      method: "POST",
+      url: "/v1/auth/logout-all",
+      headers: { authorization: `Bearer ${tokenD}` },
+    });
+    expect(failedLogoutAll.statusCode).toBeGreaterThanOrEqual(500);
+
+    await app.close();
   });
 });
