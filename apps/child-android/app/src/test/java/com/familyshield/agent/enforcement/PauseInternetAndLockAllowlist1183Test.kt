@@ -242,10 +242,26 @@ class PauseInternetAndLockAllowlist1183Test {
             .substringBefore("private fun postPausedInternetNotification()")
         assertTrue("resumeInternet must cancel paused-internet notice", resumeFn.contains("cancelPausedInternetNotification(context)"))
         assertTrue(
-            "resumeInternet must only clear LockState if stored mode is MODE_PAUSED_INTERNET",
-            resumeFn.contains("LockState.mode(context) == LockActivity.MODE_PAUSED_INTERNET"),
+            "resumeInternet must clear legacy paused_internet overlay mode only via clearLegacyPausedOverlay",
+            resumeFn.contains("LockState.clearLegacyPausedOverlay(context)"),
         )
         assertTrue("DeviceUnlinker must cancel paused-internet notice", unlinker.contains("cancelPausedInternetNotification(context)"))
+
+        val appFile = File(root, "java/com/familyshield/agent/FamilyShieldApp.kt").readText()
+        assertTrue(
+            "FamilyShieldApp.onCreate must clear legacy paused_internet overlay on upgrade (#1240 B2)",
+            appFile.contains("LockState.clearLegacyPausedOverlay(this)"),
+        )
+        val lockStateFile = File(root, "java/com/familyshield/agent/enforcement/LockState.kt").readText()
+        assertFalse(
+            "LOCKING_MODES must not include retired paused_internet (#1240 B2)",
+            lockStateFile.substringAfter("private val LOCKING_MODES =").substringBefore("\n").contains("paused_internet"),
+        )
+        assertTrue(
+            "LockState.mode must clear legacy paused_internet on read (#1240 B2)",
+            lockStateFile.substringAfter("fun mode(context: Context)").substringBefore("fun isActive(")
+                .contains("isLegacyOverlayMode(raw)"),
+        )
 
         val enforceLockFn = service.substringAfter("private fun enforceLockState(")
             .substringBefore("private fun collectTexts(")

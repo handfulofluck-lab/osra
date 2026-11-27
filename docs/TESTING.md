@@ -1154,7 +1154,8 @@ adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNA
 adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
 adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
 adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
-# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+# pause-internet (#1183/#1240): POST /v1/devices/:id/command {"command":"pause_internet"} → network-only
+#   (non-blocking notification, no full-screen overlay; offline apps stay open) AND
 adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
 adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
 # resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"

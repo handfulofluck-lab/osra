@@ -27,7 +27,28 @@ object LockState {
         prefs(context).edit().putString(KEY_MODE, MODE_NONE).remove(KEY_SINCE).apply()
     }
 
-    fun mode(context: Context): String = prefs(context).getString(KEY_MODE, MODE_NONE) ?: MODE_NONE
+    /**
+     * #1240 (B2): upgrade migration for devices that held pre-#1183 `"paused_internet"` in
+     * `osra_lock_state`. Pause is network-only now, so drop the legacy overlay mode without
+     * touching an active `"locked"` or `"paused"` lock or the VPN sinkhole.
+     *
+     * @return true if a legacy `"paused_internet"` overlay state was present and cleared.
+     */
+    fun clearLegacyPausedOverlay(context: Context): Boolean {
+        val raw = prefs(context).getString(KEY_MODE, MODE_NONE)
+        if (!LockEnforcementPolicy.isLegacyOverlayMode(raw)) return false
+        clear(context)
+        return true
+    }
+
+    fun mode(context: Context): String {
+        val raw = prefs(context).getString(KEY_MODE, MODE_NONE)
+        if (LockEnforcementPolicy.isLegacyOverlayMode(raw)) {
+            clear(context)
+            return MODE_NONE
+        }
+        return LockEnforcementPolicy.normalizeStoredMode(raw)
+    }
 
     fun isActive(context: Context): Boolean = LockEnforcementPolicy.isLockingMode(mode(context))
 
@@ -40,7 +61,17 @@ object LockState {
  * emergency dialer, and never over our own windows (that would loop).
  */
 object LockEnforcementPolicy {
-    private val LOCKING_MODES = setOf("locked", "paused", "paused_internet")
+    /** Pre-#1183 overlay mode retired by network-only pause (#1183/#1240 B2). */
+    const val LEGACY_PAUSED_INTERNET_MODE = "paused_internet"
+
+    private val LOCKING_MODES = setOf("locked", "paused")
+
+    /** True when [mode] is the retired pre-#1183 full-screen pause-internet overlay mode. */
+    fun isLegacyOverlayMode(mode: String?): Boolean = mode == LEGACY_PAUSED_INTERNET_MODE
+
+    /** Normalizes persisted [LockState] values on upgrade: legacy `paused_internet` becomes `none`. */
+    fun normalizeStoredMode(raw: String?): String =
+        if (raw.isNullOrBlank() || isLegacyOverlayMode(raw)) LockState.MODE_NONE else raw
 
     /**
      * Packages the lock must never cover: in-call UI, the emergency dialer, the system UI itself.

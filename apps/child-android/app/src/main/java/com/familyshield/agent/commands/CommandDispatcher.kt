@@ -457,10 +457,9 @@ class CommandDispatcher @Inject constructor(
         if (com.familyshield.agent.vpn.VpnState.isEnabled(context)) {
             runCatching { com.familyshield.agent.vpn.FilterVpnService.start(context, com.familyshield.agent.vpn.FilterVpnService.MODE_DNS) }
         }
-        // #1183 backwards-compat cleanup: if an upgraded build still held MODE_PAUSED_INTERNET in
+        // #1183 / #1240 B2: if an upgraded build still held retired MODE_PAUSED_INTERNET in
         // LockState, clear and dismiss it — without ever touching an independent MODE_LOCKED/PAUSED lock.
-        if (com.familyshield.agent.enforcement.LockState.mode(context) == LockActivity.MODE_PAUSED_INTERNET) {
-            com.familyshield.agent.enforcement.LockState.clear(context)
+        if (com.familyshield.agent.enforcement.LockState.clearLegacyPausedOverlay(context)) {
             context.startActivity(
                 Intent(context, LockActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
