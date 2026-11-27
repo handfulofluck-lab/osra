@@ -224,6 +224,98 @@ void main() {
     expect(find.byKey(const ValueKey('p15OpenSocial')), findsNothing);
   });
 
+  // Mutant: dropping the `noPermission` branch in `AlertDetailP15Body` or removing the
+  // `availability != SocialPreviewAvailability.noPermission` guard on the feedback footer
+  // fails `PreviewUnavailableCard` or reveals `p15OpenSocial` / feedback buttons.
+  testWidgets('P-15 ON shows PreviewUnavailableCard on 403 noPermission and hides CTA + feedback',
+      (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(
+        familyMe: {
+          ...familyMeTwoChildren(),
+          'children': [
+            {'id': 'child-1', 'familyId': 'fam-1', 'displayName': 'Alex', 'birthYear': 2014},
+          ],
+          'devices': [
+            {'id': 'dev-1', 'childId': 'child-1', 'platform': 'android', 'model': 'Galaxy S23', 'status': 'online'},
+          ],
+        },
+      ),
+      'GET /v1/social/events': (_) => const FakeHttpError(
+            403,
+            {'error': 'permission_required', 'permission': 'social'},
+          ),
+    });
+    await tester.pumpWidget(_harness(api: api, p15Enabled: true));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PreviewUnavailableCard), findsOneWidget);
+    expect(find.byKey(const ValueKey('p15OpenSocial')), findsNothing);
+    expect(find.byKey(const ValueKey('alertFeedbackConcerning')), findsNothing);
+  });
+
+  // Mutant: removing wrapping/flex constraints inside PreviewRetryCard or PreviewUnavailableCard
+  // triggers a RenderFlex overflow at 320x568 @ 2.0x in EN or AR.
+  testWidgets(
+      'Bureau 320x568 @ 2.0x sweep covers PreviewRetryCard and PreviewUnavailableCard (expired + noPermission) in EN/AR light/dark',
+      (tester) async {
+    final baseFamily = {
+      ...familyMeTwoChildren(),
+      'children': [
+        {'id': 'child-1', 'familyId': 'fam-1', 'displayName': 'Alex', 'birthYear': 2014},
+      ],
+      'devices': [
+        {'id': 'dev-1', 'childId': 'child-1', 'platform': 'android', 'model': 'Galaxy S23', 'status': 'online'},
+      ],
+    };
+
+    final states = <(String, FakeRoute, Type)>[
+      ('transientError', (_) => throw FakeNetworkError(), PreviewRetryCard),
+      ('expired', (_) => {'items': <Map<String, dynamic>>[]}, PreviewUnavailableCard),
+      (
+        'noPermission',
+        (_) => const FakeHttpError(403, {'error': 'permission_required', 'permission': 'social'}),
+        PreviewUnavailableCard,
+      ),
+    ];
+
+    for (final (label, route, expectedCard) in states) {
+      final api = FakeApiClient({
+        ...standardRoutes(familyMe: baseFamily),
+        'GET /v1/social/events': route,
+      });
+      for (final locale in const [Locale('en'), Locale('ar')]) {
+        for (final mode in const [ThemeMode.light, ThemeMode.dark]) {
+          tester.view.physicalSize = const Size(320, 568);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.reset);
+
+          await tester.pumpWidget(_harness(
+            api: api,
+            p15Enabled: true,
+            locale: locale,
+            themeMode: mode,
+            textScale: 2.0,
+          ));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const ValueKey('p15AlertDetailScroll')), findsOneWidget);
+          await tester.scrollUntilVisible(
+            find.byType(expectedCard),
+            150,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: 'Overflow on $label ($locale $mode 320x568 @ 2.0x)',
+          );
+          expect(find.byType(expectedCard), findsOneWidget);
+        }
+      }
+    }
+  });
+
   // Mutant: ignoring `p15AlertDetailEnabledProvider` fails `alertDetailScroll` fallback.
   testWidgets('P-15 OFF falls back to legacy _SocialAlertDetailBody', (tester) async {
     final api = _makeApi();
