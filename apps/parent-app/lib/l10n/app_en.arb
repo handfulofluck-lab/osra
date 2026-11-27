@@ -2039,5 +2039,7 @@
   "p12BlockSiteTitle": "Block a site",
   "@p12BlockSiteTitle": {"description": "P-12: dialog title when adding a site to always block."},
   "p12AllowSiteTitle": "Allow a site",
-  "@p12AllowSiteTitle": {"description": "P-12: dialog title when adding a site to always allow, including from Allow site."}
+  "@p12AllowSiteTitle": {"description": "P-12: dialog title when adding a site to always allow, including from Allow site."},
+  "p14DayToday": "Today",
+  "p14DayYesterday": "Yesterday"
 }

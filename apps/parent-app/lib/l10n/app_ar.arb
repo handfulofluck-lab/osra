@@ -1230,5 +1230,7 @@
   "p12AllowSite": "السماح بالموقع",
   "p12RecentlyBlocked": "المواقع المحظورة مؤخرًا",
   "p12BlockSiteTitle": "حظر موقع",
-  "p12AllowSiteTitle": "السماح بموقع"
+  "p12AllowSiteTitle": "السماح بموقع",
+  "p14DayToday": "اليوم",
+  "p14DayYesterday": "أمس"
 }

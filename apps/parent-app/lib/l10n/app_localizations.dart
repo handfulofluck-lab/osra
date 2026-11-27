@@ -6207,6 +6207,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Allow a site'**
   String get p12AllowSiteTitle;
+
+  /// No description provided for @p14DayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get p14DayToday;
+
+  /// No description provided for @p14DayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get p14DayYesterday;
 }
 
 class _AppLocalizationsDelegate

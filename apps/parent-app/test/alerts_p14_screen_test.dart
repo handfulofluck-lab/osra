@@ -649,4 +649,60 @@ void main() {
     final unknownY = tester.getTopLeft(find.byKey(const ValueKey('p14-row-a-no-ts'))).dy;
     expect(datedY, lessThan(unknownY));
   });
+
+  // Mutant: reverting `formatP14DayHeader` to `formatDayHeader` prints the full
+  // year on today/yesterday/same-year dates; using `ltrIsolate` (`\u2066`) instead
+  // of `firstStrongIsolate` (`\u2068`) fails the Arabic FSI assertion.
+  testWidgets('U92 day headers show Today, Yesterday, same-year without year, prior-year with year, and Arabic FSI Western digits', (tester) async {
+    late AppLocalizations enL10n;
+    late AppLocalizations arL10n;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(builder: (ctx) {
+          enL10n = AppLocalizations.of(ctx);
+          return const SizedBox.shrink();
+        }),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ar'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(builder: (ctx) {
+          arL10n = AppLocalizations.of(ctx);
+          return const SizedBox.shrink();
+        }),
+      ),
+    );
+
+    final now = DateTime(2026, 11, 27, 13, 0);
+
+    // EN
+    expect(formatP14DayHeader(DateTime(2026, 11, 27), l10n: enL10n, localeName: 'en', now: now), 'Today');
+    expect(formatP14DayHeader(DateTime(2026, 11, 26), l10n: enL10n, localeName: 'en', now: now), 'Yesterday');
+    final enSameYear = formatP14DayHeader(DateTime(2026, 11, 25), l10n: enL10n, localeName: 'en', now: now);
+    expect(enSameYear, contains('Nov 25'));
+    expect(enSameYear, isNot(contains('2026')));
+    final enPriorYear = formatP14DayHeader(DateTime(2025, 11, 25), l10n: enL10n, localeName: 'en', now: now);
+    expect(enPriorYear, contains('2025'));
+
+    // AR
+    expect(formatP14DayHeader(DateTime(2026, 11, 27), l10n: arL10n, localeName: 'ar', now: now), 'اليوم');
+    expect(formatP14DayHeader(DateTime(2026, 11, 26), l10n: arL10n, localeName: 'ar', now: now), 'أمس');
+    final arSameYear = formatP14DayHeader(DateTime(2026, 11, 25), l10n: arL10n, localeName: 'ar', now: now);
+    expect(arSameYear.startsWith('\u2068'), isTrue);
+    expect(arSameYear.startsWith('\u2066'), isFalse);
+    expect(RegExp(r'[\u0660-\u0669]').hasMatch(arSameYear), isFalse);
+    expect(arSameYear, contains('25'));
+    expect(arSameYear, isNot(contains('2026')));
+    final arPriorYear = formatP14DayHeader(DateTime(2025, 11, 25), l10n: arL10n, localeName: 'ar', now: now);
+    expect(arPriorYear.startsWith('\u2068'), isTrue);
+    expect(arPriorYear, contains('2025'));
+    expect(RegExp(r'[\u0660-\u0669]').hasMatch(arPriorYear), isFalse);
+  });
 }

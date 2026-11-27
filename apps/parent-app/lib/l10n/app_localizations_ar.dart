@@ -4111,4 +4111,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get p12AllowSiteTitle => 'السماح بموقع';
+
+  @override
+  String get p14DayToday => 'اليوم';
+
+  @override
+  String get p14DayYesterday => 'أمس';
 }

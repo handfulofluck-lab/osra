@@ -3848,4 +3848,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p12AllowSiteTitle => 'Allow a site';
+
+  @override
+  String get p14DayToday => 'Today';
+
+  @override
+  String get p14DayYesterday => 'Yesterday';
 }
