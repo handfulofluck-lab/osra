@@ -209,7 +209,7 @@ void main() {
   });
 
   testWidgets(
-      'all thirteen grant keys get a human label, and the list matches the shared vocabulary',
+      'all fourteen grant keys get a human label, and the list matches the shared vocabulary',
       (tester) async {
     // #552 review, point 1: three keys (full_screen_intent, family_controls, background_refresh) reached the
     // screen as raw wire names. Looping the whole vocabulary is what makes a *future* grant fail here instead.
@@ -222,7 +222,7 @@ void main() {
         .allMatches(block)
         .map((m) => m.group(1)!)
         .toList();
-    expect(shared.length, 13,
+    expect(shared.length, 14,
         reason:
             'the vocabulary grew or shrank; update the widget and this row together');
     expect(PhoneSetupSection.grantKeys, shared,
@@ -235,7 +235,7 @@ void main() {
           reason: '$key has no human label');
     }
     // And each one is present as *something* meant for a parent, not silently dropped.
-    expect(find.textContaining('• '), findsNWidgets(13));
+    expect(find.textContaining('• '), findsNWidgets(14));
   });
 
   testWidgets('another space with no named kind still says there is one',

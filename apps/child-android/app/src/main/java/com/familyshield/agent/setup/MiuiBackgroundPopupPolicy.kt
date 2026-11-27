@@ -117,6 +117,21 @@ object MiuiBackgroundPopupPolicy {
         )
     }
 
+    /** Issue #1236: honest capability wire state for `grants.miui_popup` (`granted` / `missing` / `confirmed_unverified` / `not_applicable`). */
+    fun wireGrantState(context: Context): String {
+        if (!isXiaomiFamily(Build.MANUFACTURER)) {
+            return com.familyshield.agent.capabilities.CapabilitiesPolicy.NOT_APPLICABLE
+        }
+        val op10021 = checkOpMode(context, OP_BACKGROUND_START_ACTIVITY)
+        val op10020 = checkOpMode(context, OP_SHOW_WHEN_LOCKED)
+        return MiuiLaunchBackstopPolicy.miuiPopupWireState(
+            manufacturer = Build.MANUFACTURER,
+            op10021Mode = op10021,
+            op10020Mode = op10020,
+            parentConfirmed = isParentConfirmed(context),
+        )
+    }
+
     /**
      * Issue #1235: true when the onboarding OVERLAY step should offer the parent-confirmation
      * button (Xiaomi-family phone, AOSP overlay already granted, MIUI op 10021 unreadable, and

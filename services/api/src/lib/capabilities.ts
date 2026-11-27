@@ -279,6 +279,9 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
     const shown = shownFeatureState(client.app, client.flavour, feature as FeatureKey, state);
     if (shown) shownFeatures[feature as FeatureKey] = shown;
   }
+  const confirmedUnverified = (Object.entries(grants) as Array<[keyof typeof grants, string]>)
+    .filter(([, state]) => state === "confirmed_unverified")
+    .map(([key]) => key as DeviceSetup["missing"][number]);
   return {
     reportedAt: new Date(at).toISOString(),
     stale: nowMs - at > CAPABILITIES_MAX_AGE_MS,
@@ -286,6 +289,7 @@ export function setupFor(report: CapabilityReport, nowMs: number = Date.now()): 
     missing: (Object.entries(grants) as Array<[keyof typeof grants, string]>)
       .filter(([, state]) => state === "missing")
       .map(([key]) => key as DeviceSetup["missing"][number]),
+    ...(confirmedUnverified.length > 0 ? { confirmedUnverified } : {}),
     profiles: profiles ?? null,
     groups: groups ?? null,
   };

@@ -1,0 +1,1 @@
+- feat(child-android): [after] add default-off Xiaomi/MIUI accessibility-overlay backstop when Lock, Block, or Guard Activity starts are aborted, and report separate `capabilities.grants.miui_popup` (`confirmed_unverified`) state (#1236).

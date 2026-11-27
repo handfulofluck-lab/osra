@@ -174,6 +174,8 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
         const val TYPE_BLOCK_BYPASS = "block_bypass"
         /** Issue #1174: paired phone has not finished required onboarding permissions yet. */
         const val TYPE_SETUP_INCOMPLETE = "setup_incomplete_permissions"
+        /** Issue #1236: MIUI silently aborted Lock/Block/Guard Activity starts; fallback cover raised. */
+        const val TYPE_MIUI_LAUNCH_BLOCKED = "miui_launch_blocked"
         private const val KEY_TYPE = "type"
         private const val KEY_DETAIL = "detail"
         private const val KEY_EVENT_AT_MS = "event_at_ms"
@@ -192,6 +194,7 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_BLOCK_BYPASS to "A blocked app stayed on screen",
             TYPE_PIN_LOCKOUT to "Too many wrong parent-PIN tries",
             TYPE_SETUP_INCOMPLETE to "Setup is not finished yet",
+            TYPE_MIUI_LAUNCH_BLOCKED to "MIUI blocked a protection screen",
         )
         private val BODIES = mapOf(
             TYPE_ACCESSIBILITY_OFF to "The OSRA accessibility service was turned off on this device",
@@ -200,12 +203,17 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             TYPE_VPN_REVOKED to "OSRA's web filter (VPN) was disconnected on this device — another VPN app took over or it was turned off in Settings. Web filtering is off until it is reconnected.",
             TYPE_BLOCK_BYPASS to "A blocked app stayed visible in picture-in-picture or split screen after the block screen was shown twice.",
             TYPE_SETUP_INCOMPLETE to "Some required permissions are still missing on this device. Protection will start once setup finishes.",
+            TYPE_MIUI_LAUNCH_BLOCKED to "Xiaomi MIUI blocked OSRA from opening a protection screen. OSRA raised a fallback cover — check \"Display pop-up windows while running in the background\" in MIUI Other permissions.",
         )
 
         /** Issue #175: a block bypass also names the app and the layout, so the parent knows what stayed on screen. */
         internal fun metadataFor(type: String, app: String, layout: String): Map<String, String> = when (type) {
             TYPE_BLOCK_BYPASS -> mapOf("type" to type, "app" to app, "layout" to layout)
             TYPE_SETUP_INCOMPLETE -> mapOf("type" to type, "missingGrants" to app)
+            TYPE_MIUI_LAUNCH_BLOCKED -> mapOf(
+                "type" to type,
+                "surface" to com.familyshield.agent.setup.MiuiBackstopSurface.fromWire(app).wire,
+            )
             else -> mapOf("type" to type)
         }
 
@@ -232,6 +240,18 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             // and the count, so the next lockout is a new key and a retry of this one is not.
             TYPE_PIN_LOCKOUT -> TamperAlertDedupe.pinLockoutKey(deviceId, eventAtMs, attemptCount)
             TYPE_SETUP_INCOMPLETE -> deviceId?.takeIf { it.isNotBlank() }?.let { "setup_incomplete:$it" }
+            TYPE_MIUI_LAUNCH_BLOCKED -> {
+                val instantMs = if (eventAtMs > 0L) eventAtMs else System.currentTimeMillis()
+                val dayUtc = java.time.Instant.ofEpochMilli(instantMs)
+                    .atOffset(java.time.ZoneOffset.UTC)
+                    .toLocalDate()
+                    .toString()
+                com.familyshield.agent.setup.MiuiLaunchBackstopPolicy.dedupeKey(
+                    deviceId = deviceId,
+                    surface = com.familyshield.agent.setup.MiuiBackstopSurface.fromWire(app),
+                    dayUtc = dayUtc,
+                )
+            }
             else -> null
         }
 
@@ -271,6 +291,9 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
             type == TYPE_PIN_LOCKOUT && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
             // U1: one work item per unbind, so a second one cannot cancel the first one's retry.
             type == TYPE_ACCESSIBILITY_OFF && windowStartMs > 0L -> "tamper_alert_${type}_$windowStartMs"
+            // Issue #1236: keep Lock, Block, and Guard backstop alerts on independent work chains.
+            type == TYPE_MIUI_LAUNCH_BLOCKED ->
+                "tamper_alert_${type}_${com.familyshield.agent.setup.MiuiBackstopSurface.fromWire(app).wire}"
             else -> "tamper_alert_$type"
         }
 

@@ -5318,6 +5318,12 @@ abstract class AppLocalizations {
   /// **'Full-screen alerts'**
   String get grantFullScreenIntent;
 
+  /// No description provided for @grantMiuiPopup.
+  ///
+  /// In en, this message translates to:
+  /// **'Background pop-up windows'**
+  String get grantMiuiPopup;
+
   /// No description provided for @grantFamilyControls.
   ///
   /// In en, this message translates to:

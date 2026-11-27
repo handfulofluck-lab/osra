@@ -43,7 +43,11 @@ object CapabilitiesPolicy {
 
     const val GRANTED = "granted"
     const val MISSING = "missing"
+    const val CONFIRMED_UNVERIFIED = "confirmed_unverified"
     const val NOT_APPLICABLE = "not_applicable"
+
+    /** Issue #1236: separate Xiaomi background pop-up grant key so parent-confirmed unread states stay visible. */
+    const val GRANT_MIUI_POPUP = "miui_popup"
 
     const val READY = "ready"
     const val DEGRADED = "degraded"
@@ -78,6 +82,8 @@ object CapabilitiesPolicy {
          */
         val webFilter: com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState =
             com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState.NOT_APPLICABLE,
+        /** Issue #1236: optional `grants.miui_popup` wire state (`granted` / `missing` / `confirmed_unverified` / `not_applicable`). */
+        val miuiPopupState: String? = null,
     )
 
     /**
@@ -119,6 +125,7 @@ object CapabilitiesPolicy {
                 },
             )
         }
+        facts.miuiPopupState?.let { put(GRANT_MIUI_POPUP, it) }
     }
 
     /** One state per feature this build can do, in the vocabulary's order. */

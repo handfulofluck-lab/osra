@@ -265,6 +265,7 @@ class DeviceSetup {
   final bool stale;
   final Map<String, String> features;
   final List<String> missing;
+  final List<String> confirmedUnverified;
   final DeviceProfiles? profiles;
 
   /// ADR-0037: the iPhone's app groups, null until the phone has reported any (and always for Android).
@@ -275,6 +276,7 @@ class DeviceSetup {
     this.stale = false,
     this.features = const {},
     this.missing = const [],
+    this.confirmedUnverified = const [],
     this.profiles,
     this.groups,
   });
@@ -291,6 +293,12 @@ class DeviceSetup {
         missing: json['missing'] is List
             ? [
                 for (final v in json['missing'] as List)
+                  if (v is String) v
+              ]
+            : const [],
+        confirmedUnverified: json['confirmedUnverified'] is List
+            ? [
+                for (final v in json['confirmedUnverified'] as List)
                   if (v is String) v
               ]
             : const [],

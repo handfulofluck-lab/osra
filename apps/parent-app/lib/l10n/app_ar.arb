@@ -1074,6 +1074,7 @@
   "grantUsbDebugging": "إيقاف تصحيح USB",
   "grantNotificationListener": "الوصول إلى الإشعارات",
   "grantFullScreenIntent": "تنبيهات ملء الشاشة",
+  "grantMiuiPopup": "النوافذ المنبثقة في الخلفية",
   "grantFamilyControls": "وقت الشاشة (Family Controls)",
   "grantBackgroundRefresh": "تحديث التطبيقات في الخلفية",
   "appGroupsTitle": "مجموعات التطبيقات على آيفون الطفل",
