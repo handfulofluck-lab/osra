@@ -1992,6 +1992,8 @@
   "@accessRequestAllowLabel": { "placeholders": { "app": { "type": "String" } } },
   "accessRequestKeepBlockedLabel": "Keep {app} blocked",
   "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } },
+  "alertsOffBannerBody": "Alerts are off. You won't hear about urgent messages.",
+  "alertsOffTurnOnAction": "Turn on alerts",
   "pairP05Title": "Connect {child}'s phone",
   "@pairP05Title": { "placeholders": { "child": { "type": "String" } } },
   "pairP05TitleGeneric": "Connect your child's phone",

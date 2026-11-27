@@ -6016,6 +6016,18 @@ abstract class AppLocalizations {
   /// **'Keep {app} blocked'**
   String accessRequestKeepBlockedLabel(String app);
 
+  /// No description provided for @alertsOffBannerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts are off. You won\'t hear about urgent messages.'**
+  String get alertsOffBannerBody;
+
+  /// No description provided for @alertsOffTurnOnAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on alerts'**
+  String get alertsOffTurnOnAction;
+
   /// No description provided for @pairP05Title.
   ///
   /// In en, this message translates to:

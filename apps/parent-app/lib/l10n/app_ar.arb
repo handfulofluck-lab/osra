@@ -1196,6 +1196,8 @@
   "accessRequestKeptBlockedSnack": "بقي {app} محظورًا",
   "accessRequestAllowLabel": "السماح باستخدام {app}",
   "accessRequestKeepBlockedLabel": "إبقاء {app} محظورًا",
+  "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
+  "alertsOffTurnOnAction": "تفعيل التنبيهات",
   "pairP05Title": "ربط هاتف {child}",
   "@pairP05Title": { "placeholders": { "child": { "type": "String" } } },
   "pairP05TitleGeneric": "ربط هاتف الطفل",
