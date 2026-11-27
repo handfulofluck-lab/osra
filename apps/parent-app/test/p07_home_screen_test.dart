@@ -974,6 +974,20 @@ void main() {
                 MediaQuery.textScalerOf(badgeCtx).scale(1.0),
                 lessThanOrEqualTo(1.3),
               );
+              // Mutant: using bare const TextStyle(fontSize: 10, ...) on Badge.textStyle
+              // drops the app theme's fontFamily (null/platform default) and fails this check.
+              final badgeWidget = tester.widget<Badge>(badgeFinder);
+              final badgeLabelFinder = find.descendant(
+                of: badgeFinder,
+                matching: find.byType(Text),
+              );
+              expect(badgeLabelFinder, findsOneWidget);
+              final expectedFamily =
+                  Theme.of(badgeCtx).textTheme.labelSmall?.fontFamily;
+              expect(badgeWidget.textStyle?.fontFamily, equals(expectedFamily));
+              if (expectedFamily != null) {
+                expect(badgeWidget.textStyle?.fontFamily, isNotNull);
+              }
               if (framesDir != null && framesDir.isNotEmpty) {
                 final boundary = tester.renderObject<RenderRepaintBoundary>(
                   find.byKey(frameBoundaryKey),
