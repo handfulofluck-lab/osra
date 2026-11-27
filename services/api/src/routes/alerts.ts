@@ -8,6 +8,7 @@ import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } fr
 import { AWAIT_REPORT, raisePhoneSetupNotice } from "../lib/deviceSetupTransitions.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
+import { resolveTimeRequest, timeDecisionSchema, timeRequestMinutes } from "../lib/timeRequests.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
@@ -78,6 +79,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "desc" },
       skip: (query.page - 1) * query.limit,
       take: query.limit,
+      include: { timeRequestResolution: true },
     });
     // Issue #672 review (Fable B1, ADR-0014 amendment decision 3): a guardian may be given `alerts`
     // without `location`. The alert is theirs to read; the child's coordinates are not, so the five keys
@@ -90,8 +92,10 @@ export async function alertsRoutes(app: FastifyInstance) {
 
   /** Acknowledge an alert. */
   app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req, reply) => {
-    if ((req as unknown as { alert?: { heldDuringSetup?: boolean } }).alert?.heldDuringSetup) {
-      return reply.code(404).send({ error: "not_found" });
+    const target = (req as unknown as { alert?: { heldDuringSetup?: boolean; category: string; metadata: unknown } }).alert;
+    if (target?.heldDuringSetup) return reply.code(404).send({ error: "not_found" });
+    if (target && timeRequestMinutes(target) !== null) {
+      return reply.code(409).send({ error: "time_request_requires_decision" });
     }
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
@@ -99,6 +103,33 @@ export async function alertsRoutes(app: FastifyInstance) {
     // `location` would read the place here even though the list withholds it. Same rule, same helper.
     const perms = await guardianPermissions(req);
     return { alert: perms !== null && !perms.includes("location") ? withoutAlertLocation(alert) : alert };
+  });
+
+  /** Resolve a daily-limit request exactly once, with the bonus grant and acknowledgement together. */
+  app.post("/:id/time-decision", {
+    preHandler: [requireParent, requirePermission("alerts"), requirePermission("rules"), requireFamily({ model: "alert" })],
+  }, async (req, reply) => {
+    const decision = timeDecisionSchema.safeParse(req.body);
+    if (!decision.success) return reply.code(400).send({ error: "invalid_time_request_decision" });
+
+    const { id } = req.params as { id: string };
+    const { sub, familyId } = req.user as AuthedUser & { sub: string };
+    const result = await resolveTimeRequest(id, sub, familyId, decision.data);
+    switch (result.status) {
+      case "not_found":
+        return reply.code(404).send({ error: "not_found" });
+      case "forbidden":
+        return reply.code(403).send({ error: "forbidden" });
+      case "consent_required":
+        return reply.code(428).send({
+          error: result.reason ?? "parental_consent_required",
+          ...(result.jurisdiction ? { jurisdiction: result.jurisdiction } : {}),
+        });
+      case "already_resolved":
+        return reply.code(409).send({ error: "time_request_already_resolved", resolution: result.resolution });
+      case "resolved":
+        return { resolution: result.resolution };
+    }
   });
 
   /** HMAC-signed endpoint for device/AI-originated alerts (ai-engine, child agents). */
