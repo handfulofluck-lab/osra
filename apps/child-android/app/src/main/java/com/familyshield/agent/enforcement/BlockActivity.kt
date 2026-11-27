@@ -332,7 +332,13 @@ class BlockActivity : ComponentActivity() {
      */
     private fun reportBlockedAttempt(pkg: String, reason: String) {
         // Recovery has one incident alert from the VPN service, independent of app attempts.
+        // Issue #1174 / Ahmed acceptance (7200575366): no app_blocked alert before initial setup completes.
         if (reason == REASON_FILTER_LOST || consent.isPaused()) return
+        if (settings.isPairedSync()) {
+            val deviceId = settings.deviceIdSync()
+            com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(this, deviceId)
+            if (!com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(this, deviceId)) return
+        }
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
         val attempts = AttemptCounter.next(this, "app", pkg, day)
         val appLabelSnapshot = appLabel
