@@ -1,5 +1,6 @@
 package com.familyshield.agent.setup
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -74,5 +75,69 @@ class PairingServerFieldPolicyTest {
             "https://api.osratech.com",
             PairingServerFieldPolicy.field(scannedUrl = "  ", builtInUrl = " https://api.osratech.com ", typed = "").value,
         )
+    }
+
+    @Test
+    fun `C-05 code-only step runs only for preset builds or scanned QR and falls back to manual form when server is editable blank`() {
+        val presetBuild = PairingServerFieldPolicy.field(
+            scannedUrl = null,
+            builtInUrl = "https://api.osratech.com",
+            typed = "",
+        )
+        assertTrue(
+            "preset build must keep the C-05 code-only screen",
+            PairingServerFieldPolicy.useCodeOnlyC05Step(c05Enabled = true, field = presetBuild),
+        )
+        assertFalse(
+            "flag-off must keep the legacy form even on a preset build",
+            PairingServerFieldPolicy.useCodeOnlyC05Step(c05Enabled = false, field = presetBuild),
+        )
+
+        val scannedQr = PairingServerFieldPolicy.field(
+            scannedUrl = "https://api.staging.osratech.com",
+            builtInUrl = "",
+            typed = "",
+        )
+        assertTrue(
+            "scanned QR on an unconfigured build carries its server and may use the C-05 review screen",
+            PairingServerFieldPolicy.useCodeOnlyC05Step(c05Enabled = true, field = scannedQr),
+        )
+
+        for (blank in listOf("", "   ", null)) {
+            val unconfiguredBlank = PairingServerFieldPolicy.field(
+                scannedUrl = null,
+                builtInUrl = blank,
+                typed = "",
+            )
+            assertFalse(
+                "unconfigured build ($blank) with editable blank field must fall back to manual server entry",
+                PairingServerFieldPolicy.useCodeOnlyC05Step(c05Enabled = true, field = unconfiguredBlank),
+            )
+        }
+
+        val unconfiguredTyped = PairingServerFieldPolicy.field(
+            scannedUrl = null,
+            builtInUrl = "",
+            typed = "192.168.1.5:3000",
+        )
+        assertFalse(
+            "unconfigured build with an editable typed LAN address stays on the manual form so edits survive rotation/cancel",
+            PairingServerFieldPolicy.useCodeOnlyC05Step(c05Enabled = true, field = unconfiguredTyped),
+        )
+
+        val activity = locate("src/main/java/com/familyshield/agent/setup/PairingActivity.kt").readText()
+        val showFormBody = activity.substringAfter("private fun showForm(").substringBefore("private fun showC05PairingStep(")
+        assertTrue(
+            "PairingActivity.showForm must gate showC05PairingStep through PairingServerFieldPolicy.useCodeOnlyC05Step",
+            showFormBody.contains("PairingServerFieldPolicy.useCodeOnlyC05Step(ChildUxFlags.c05FirstRunEnabled, serverField)"),
+        )
+    }
+
+    private fun locate(relativeToModule: String): File {
+        val working = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        return generateSequence(working) { it.parentFile }
+            .flatMap { sequenceOf(File(it, relativeToModule), File(it, "app/$relativeToModule")) }
+            .firstOrNull { it.isFile }
+            ?: error("Could not find $relativeToModule from ${working.path}")
     }
 }
