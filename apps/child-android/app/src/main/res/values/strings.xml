@@ -368,4 +368,6 @@
     <string name="lock_paused_body">Your parent will resume it shortly. · أسرة</string>
     <string name="lock_paused_internet_title">Internet paused by your parent</string>
     <string name="lock_paused_internet_body">Educational apps still work. · أسرة</string>
+    <string name="miui_popup_confirm_hint">This phone does not report whether background pop-ups are turned on. Open Other permissions, turn on \"Display pop-up windows while running in the background\", then confirm below.</string>
+    <string name="miui_popup_confirm_button">I turned on background pop-ups</string>
 </resources>

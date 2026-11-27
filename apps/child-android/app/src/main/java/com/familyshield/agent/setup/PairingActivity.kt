@@ -1236,6 +1236,9 @@ class PairingActivity : ComponentActivity() {
             null
         }
         val c05 = ChildUxFlags.c05FirstRunEnabled
+        val showMiuiConfirm = g == OnboardingPolicy.Grant.OVERLAY &&
+            !row.granted &&
+            MiuiBackgroundPopupPolicy.needsParentConfirmation(this)
         val copy = PermissionStepCopy(
             brandLabel = brand,
             progressLine = progressLine(rows),
@@ -1249,6 +1252,8 @@ class PairingActivity : ComponentActivity() {
             optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
             oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
             restrictedSettingsGuide = restrictedGuide,
+            confirmHint = if (showMiuiConfirm) getString(R.string.miui_popup_confirm_hint) else null,
+            confirmButton = if (showMiuiConfirm) getString(R.string.miui_popup_confirm_button) else null,
             skipLabel = if (!g.required) getString(R.string.setup_skip) else null,
             checklistLabel = getString(R.string.setup_checklist_button),
         )
@@ -1258,6 +1263,14 @@ class PairingActivity : ComponentActivity() {
                 onGrant = { triggerGrant(g) },
                 onOpenAppInfo = if (restrictedGuide != null) {
                     { runCatching { startActivity(grants.appInfoIntent()) } }
+                } else {
+                    null
+                },
+                onConfirm = if (showMiuiConfirm) {
+                    {
+                        MiuiBackgroundPopupPolicy.confirmByParent(this@PairingActivity)
+                        onPermissionOrActionReturned()
+                    }
                 } else {
                     null
                 },

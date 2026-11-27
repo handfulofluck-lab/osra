@@ -172,6 +172,8 @@ data class PermissionStepCopy(
     val optionalBadge: String? = null,
     val oemHint: String? = null,
     val restrictedSettingsGuide: RestrictedSettingsGuideCopy? = null,
+    val confirmHint: String? = null,
+    val confirmButton: String? = null,
     val skipLabel: String? = null,
     val checklistLabel: String? = null,
 )
@@ -343,6 +345,7 @@ fun OnboardingPermissionStepScreen(
     copy: PermissionStepCopy,
     onGrant: () -> Unit,
     onOpenAppInfo: (() -> Unit)? = null,
+    onConfirm: (() -> Unit)? = null,
     onSkip: (() -> Unit)? = null,
     onOpenChecklist: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -526,6 +529,36 @@ fun OnboardingPermissionStepScreen(
                     ),
                     textAlign = TextAlign.Center,
                 )
+            }
+
+            if (onConfirm != null && copy.confirmButton != null) {
+                copy.confirmHint?.let { hint ->
+                    Text(
+                        text = hint,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.muted,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedButton(
+                    onClick = onConfirm,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                    shape = RoundedCornerShape(radii.control),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary),
+                ) {
+                    Text(
+                        text = copy.confirmButton,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
 
             if (onSkip != null && copy.skipLabel != null) {
