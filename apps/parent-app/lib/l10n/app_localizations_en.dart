@@ -1134,7 +1134,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get youtubeRestrictedDesc =>
-      'Filters out potentially mature content on YouTube across child devices.';
+      'Hides most mature videos. YouTube\'s own filter misses some, so to be sure, block YouTube or set a time limit in Apps.';
 
   @override
   String get strict => 'Strict';
@@ -3833,4 +3833,19 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get p12NotBlockingYet => 'Not blocking yet';
+
+  @override
+  String get p12AllowSite => 'Allow site';
+
+  @override
+  String get p12RecentlyBlocked => 'Recently blocked';
+
+  @override
+  String get p12BlockSiteTitle => 'Block a site';
+
+  @override
+  String get p12AllowSiteTitle => 'Allow a site';
 }

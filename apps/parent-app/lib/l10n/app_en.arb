@@ -654,7 +654,7 @@
   "blockedDomainsLabel": "Blocked domains (comma-separated)",
   "enforceSafeSearch": "Enforce SafeSearch",
   "youtubeRestrictedMode": "YouTube Restricted Mode",
-  "youtubeRestrictedDesc": "Filters out potentially mature content on YouTube across child devices.",
+  "youtubeRestrictedDesc": "Hides most mature videos. YouTube's own filter misses some, so to be sure, block YouTube or set a time limit in Apps.",
   "strict": "Strict",
   "moderate": "Moderate",
   "off": "Off",
@@ -2028,5 +2028,16 @@
   "p14FilterAll": "All",
   "p14NoRequestsYet": "No requests yet",
   "p14GroupedCount": "{count, plural, =1{1 time · last {time}} other{{count} times · last {time}}}",
-  "@p14GroupedCount": { "placeholders": { "count": { "type": "int" }, "time": { "type": "String" } } }
+  "@p14GroupedCount": { "placeholders": { "count": { "type": "int" }, "time": { "type": "String" } } },
+  "p12NotBlockingYet": "Not blocking yet",
+  "@p12NotBlockingYet": {"description": "P-12: pill on the enforcement banner when the filter is not applied on a device (UI/UX Bureau 7204314039)."},
+  "p12AllowSite": "Allow site",
+  "@p12AllowSite": {"description": "P-12: button on one recently blocked site; opens the prefilled Allow a site dialog."},
+  "p12RecentlyBlocked": "Recently blocked",
+  "@p12RecentlyBlocked": {"description": "P-12: card title over the recent blocks (hidden whole when the server withholds host names)."},
+  "@appsNotYetOnIphone": {"description": "P-12 (#1182 pair): browser coverage for an iPhone-only child."},
+  "p12BlockSiteTitle": "Block a site",
+  "@p12BlockSiteTitle": {"description": "P-12: dialog title when adding a site to always block."},
+  "p12AllowSiteTitle": "Allow a site",
+  "@p12AllowSiteTitle": {"description": "P-12: dialog title when adding a site to always allow, including from Allow site."}
 }
