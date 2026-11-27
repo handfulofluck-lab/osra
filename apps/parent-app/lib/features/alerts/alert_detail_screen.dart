@@ -22,8 +22,12 @@ import '../coach/coach_card_section.dart';
 import '../coach/coach_content.dart';
 import '../map/family_map_screen.dart'
     show FamilyMapScreen, MapFocus, mapIsAvailable;
+import '../rules/app_picker.dart' show AppIconBadge;
 import '../social/social_screen.dart' show socialAppIcon, socialAppLabel;
 import '../social/social_vote_controls.dart';
+import 'access_request_actions.dart';
+import 'app_alert_presentation.dart';
+import 'time_request_actions.dart';
 import 'sos_alert_actions.dart';
 
 /// Shared per-category localized body formatter used by both [AlertsScreen] and
@@ -235,10 +239,26 @@ class AlertDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final canPop = Navigator.of(context).canPop();
-    final alertAsync = initialAlert != null
+    final remoteAlert = ref.watch(alertByIdProvider(alertId));
+    final alertAsync = initialAlert != null &&
+            initialAlert!.category != 'app_blocked'
         ? AsyncValue<AlertLookupResult>.data(
             AlertLookupResult.found(initialAlert!))
-        : ref.watch(alertByIdProvider(alertId));
+        : remoteAlert.when(
+            data: (result) => AsyncValue<AlertLookupResult>.data(
+              initialAlert != null && result.status != AlertLookupStatus.found
+                  ? AlertLookupResult.found(initialAlert!)
+                  : result,
+            ),
+            loading: () => initialAlert == null
+                ? const AsyncValue<AlertLookupResult>.loading()
+                : AsyncValue<AlertLookupResult>.data(
+                    AlertLookupResult.found(initialAlert!)),
+            error: (error, stackTrace) => initialAlert == null
+                ? AsyncValue<AlertLookupResult>.error(error, stackTrace)
+                : AsyncValue<AlertLookupResult>.data(
+                    AlertLookupResult.found(initialAlert!)),
+          );
 
     void openAllAlerts() {
       if (canPop) {
@@ -744,6 +764,52 @@ class _PreviewRetryCard extends StatelessWidget {
   }
 }
 
+class AppAlertLeading extends StatelessWidget {
+  final Alert alert;
+  final AppAlertIdentity identity;
+
+  const AppAlertLeading(
+      {super.key, required this.alert, required this.identity});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    if (alert.requestedScreenTimeMinutes != null) {
+      return Icon(Icons.more_time, size: 36, color: tokens.severityInfoText);
+    }
+    final request = isAccessRequestAlert(alert);
+    final statusColor =
+        request ? tokens.severityInfoText : tokens.onSurfaceVariant;
+    final packageId = appAlertPackageId(alert);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: request
+                ? tokens.severityInfoText.withValues(alpha: 0.12)
+                : tokens.surfaceVariant,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          child: Icon(request ? Icons.pan_tool : Icons.block,
+              size: 21, color: statusColor),
+        ),
+        const SizedBox(width: AppSpace.xs),
+        AppIconBadge(
+          app: InstalledApp(
+            packageId: packageId,
+            label: identity.name,
+            iconUrl: identity.installed?.iconUrl,
+          ),
+          size: 36,
+        ),
+      ],
+    );
+  }
+}
+
 /// General full-screen presentation for non-social alerts opened via `/alerts/:id`
 /// (e.g., `app_blocked`, `tamper`, `web_blocked`). Never queries Social previews or shows
 /// the Social activity CTA.
@@ -771,19 +837,52 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
     final device = alert.deviceId != null
         ? overview?.devices.where((d) => d.id == alert.deviceId).firstOrNull
         : null;
+    final isAppBlocked = alert.category == 'app_blocked';
+    final isTimeRequest = alert.requestedScreenTimeMinutes != null;
+    final installed = isAppBlocked && !isTimeRequest
+        ? alertInstalledAppsReport(
+            ref.watch(installedAppsByDeviceProvider(alert.childId)).valueOrNull,
+            alert.deviceId,
+          )
+        : null;
+    final identity = resolveAppAlertIdentity(alert, installed,
+        fallbackName: l10n.unknownApp);
+    final childName = child?.displayName ?? l10n.childFallback;
 
-    final title = l10n.alertTitleFor(
-      alert.category,
-      alert.title,
-      isEnglish: isEnglish,
-      tamperType: alert.metadata['type']?.toString(),
-    );
+    final title = isAppBlocked
+        ? appAlertTitle(
+            alert: alert,
+            l10n: l10n,
+            childName: childName,
+            identity: identity,
+          )
+        : l10n.alertTitleFor(
+            alert.category,
+            alert.title,
+            isEnglish: isEnglish,
+            tamperType: alert.metadata['type']?.toString(),
+          );
     final sevDot = tokens.severityDot(alert.severity);
     final contextParts = <String>[
-      if (child != null && child.displayName.isNotEmpty) child.displayName,
+      if (child != null && child.displayName.isNotEmpty)
+        isAppBlocked
+            ? firstStrongIsolate(child.displayName)
+            : child.displayName,
       if (device != null && device.model.isNotEmpty) ltrIsolate(device.model),
     ];
     final coachCard = coachCardFor(alert.category, const []);
+    final body = isAppBlocked
+        ? appAlertBody(
+            alert: alert,
+            l10n: l10n,
+            childName: childName,
+          )
+        : formatGeneralAlertBody(
+            alert,
+            l10n: l10n,
+            localeName: context.localeName,
+            now: nowProvider?.call(),
+          );
     final voteEventId = socialVoteEventId(alert);
     final voteEventsAsync = voteEventId == null
         ? null
@@ -799,11 +898,14 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Icon(Icons.notifications_active_outlined,
-                  color: sevDot, size: 24),
-            ),
+            if (isAppBlocked)
+              AppAlertLeading(alert: alert, identity: identity)
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Icon(Icons.notifications_active_outlined,
+                    color: sevDot, size: 24),
+              ),
             const SizedBox(width: AppSpace.sm),
             Expanded(
               child: Text(
@@ -827,35 +929,43 @@ class _GeneralAlertDetailBody extends ConsumerWidget {
         ],
         if (alert.createdAt != null) ...[
           Text(
-            formatAlertLocalTime(
-              alert.createdAt!,
-              l10n: l10n,
-              localeName: context.localeName,
-              now: nowProvider?.call(),
-            ),
+            isTimeRequest
+                ? l10n.alertDetailSent(l10n.alertAtTime(
+                    formatTimeRequestTimestamp(
+                      context, alert.createdAt!, now: nowProvider?.call(),
+                    ),
+                  ))
+                : formatAlertLocalTime(
+                    alert.createdAt!,
+                    l10n: l10n,
+                    localeName: context.localeName,
+                    now: nowProvider?.call(),
+                  ),
             key: const ValueKey('alertDetailTime'),
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: tokens.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpace.md),
         ],
-        if (formatGeneralAlertBody(
-          alert,
-          l10n: l10n,
-          localeName: context.localeName,
-          now: nowProvider?.call(),
-        ).trim().isNotEmpty) ...[
+        if (body.trim().isNotEmpty) ...[
           Text(
-            formatGeneralAlertBody(
-              alert,
-              l10n: l10n,
-              localeName: context.localeName,
-              now: nowProvider?.call(),
-            ),
+            body,
             key: const ValueKey('alertDetailBody'),
             style: theme.textTheme.bodyLarge,
           ),
           const SizedBox(height: AppSpace.md),
+        ],
+        if (isAccessRequestAlert(alert)) ...[
+          AccessRequestActions(
+            alert: alert,
+            identity: identity,
+            nowProvider: nowProvider,
+          ),
+          const SizedBox(height: AppSpace.lg),
+        ],
+        if (timeRequestActionsEnabled && isTimeRequest) ...[
+          TimeRequestActions(key: ValueKey(alert.id), alert: alert),
+          const SizedBox(height: AppSpace.lg),
         ],
         if (alert.category == 'sos' && alert.location != null) ...[
           Builder(builder: (_) {

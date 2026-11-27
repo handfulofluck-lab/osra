@@ -167,6 +167,12 @@
          `grantAccessibility` … `grantNotificationListener`, so both phones name a permission the same way. -->
     <string name="onboarding_grant_accessibility_title">Accessibility service</string>
     <string name="onboarding_grant_accessibility_why">Blocks apps, enforces limits and guards the uninstall screens. Nothing works without it.</string>
+    <!-- Issue #1131: Android 13+ non-store install "Allow restricted settings" guide on the Accessibility step. -->
+    <string name="restricted_settings_step_1">Tap %1$s once. Android will say \"Restricted setting\". Tap OK.</string>
+    <string name="restricted_settings_open_app_info">Open app info</string>
+    <string name="restricted_settings_step_2">Tap ⋮ (top right), then \"Allow restricted settings\", then confirm.</string>
+    <string name="restricted_settings_step_3">Go back to Accessibility and switch %1$s on.</string>
+    <string name="restricted_settings_waiting">Waiting for %1$s to turn on…</string>
     <string name="onboarding_grant_usage_title">Usage access</string>
     <string name="onboarding_grant_usage_why">Counts screen time per app so daily limits and reports are right.</string>
     <string name="onboarding_grant_overlay_title">Display over other apps</string>
