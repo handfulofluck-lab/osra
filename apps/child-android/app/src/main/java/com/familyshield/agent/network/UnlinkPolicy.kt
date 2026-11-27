@@ -13,10 +13,31 @@ package com.familyshield.agent.network
  *
  * Pure, clock-injected, no Android types: the JVM suite pins every row (U1–U4).
  */
-class UnlinkPolicy(private val confirmAfterMs: Long = DEFAULT_CONFIRM_MS) {
+class UnlinkPolicy(
+    private val confirmAfterMs: Long = DEFAULT_CONFIRM_MS,
+    /**
+     * Issue #1073: a stored first answer older than this is treated as absent. Persistence must never let an
+     * old answer count as half of a new pair — that is the reason the rule wants two answers at all (Ahmed's
+     * security condition on this issue).
+     */
+    private val staleAfterMs: Long = DEFAULT_STALE_MS,
+    nowMs: Long = System.currentTimeMillis(),
+    persistedFirstRevokedAtMs: Long? = null,
+    /** Writes the pending timestamp (or null when it is cleared); a no-op keeps the JVM rows pure. */
+    private val persist: (Long?) -> Unit = {},
+) {
 
     private var firstRevokedAtMs: Long? = null
     private var unlinked = false
+
+    init {
+        val stored = persistedFirstRevokedAtMs
+        if (stored != null) {
+            val age = nowMs - stored
+            // Fresh enough to mean something: adopt. Otherwise drop it on disk rather than carry a stale clock.
+            if (age in 0..staleAfterMs) firstRevokedAtMs = stored else persist(null)
+        }
+    }
 
     /**
      * One `device_revoked` answer. Returns true when the unlink is now **confirmed** — the second answer,
@@ -29,10 +50,12 @@ class UnlinkPolicy(private val confirmAfterMs: Long = DEFAULT_CONFIRM_MS) {
         val first = firstRevokedAtMs
         if (first == null) {
             firstRevokedAtMs = nowMs
+            persist(nowMs)
             return false
         }
         if (nowMs - first < confirmAfterMs) return false
         unlinked = true
+        persist(null) // the unlink is done; the stored clock has no further use
         return true
     }
 
@@ -40,6 +63,7 @@ class UnlinkPolicy(private val confirmAfterMs: Long = DEFAULT_CONFIRM_MS) {
     fun onLinked() {
         if (unlinked) return
         firstRevokedAtMs = null
+        persist(null)
     }
 
     /** True once the unlink is confirmed: nothing may enforce, and no further poll is made. */
@@ -54,5 +78,8 @@ class UnlinkPolicy(private val confirmAfterMs: Long = DEFAULT_CONFIRM_MS) {
     companion object {
         /** The issue's interval: two answers at least a minute apart. */
         const val DEFAULT_CONFIRM_MS: Long = 60_000L
+
+        /** How old a persisted first answer may be and still count (#1073, Ahmed's ~10 minutes). */
+        const val DEFAULT_STALE_MS: Long = 600_000L
     }
 }

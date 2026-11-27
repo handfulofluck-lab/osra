@@ -14,8 +14,8 @@ import org.junit.Test
  * change while the previous rules are still in force — the parent's line would clear on exactly the state it
  * exists to warn about. So: `saveRulesJson` first, and the version only if that write succeeded.
  *
- * Mutants: move `saveAppliedRulesVersion` above the `saveRulesJson` call, or drop the `if (persisted)`
- * guard — each turns [the applied version moves only after the rules are persisted] red. Drop
+ * Mutants: move `saveAppliedRulesVersion` above the `saveRulesJson` call, or drop the early
+ * `if (!persisted) return@withLock cached` guard — each turns [the applied version moves only after the rules are persisted] red. Drop
  * `appliedRulesVersion` from the telemetry DTO and [every telemetry upload carries it] goes red.
  */
 class AppliedRulesVersionWiringTest {
@@ -33,7 +33,8 @@ class AppliedRulesVersionWiringTest {
         assertTrue("the version must not be stored before the rules are", saveVersion > saveRules)
         assertTrue(
             "and only when the rules were actually written",
-            repository.contains("if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }"),
+            repository.contains("if (!persisted) return@withLock cached") &&
+                repository.indexOf("\n            cached = updated") > repository.indexOf("if (!persisted) return@withLock cached"),
         )
         assertEquals(
             "one writer, so there is no second path to drift",
