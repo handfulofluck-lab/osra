@@ -1329,7 +1329,26 @@ class _AlertsTab extends ConsumerWidget {
             ref.invalidate(alertsProvider(AlertFilter(childId: childId))),
       ),
       data: (page) {
-        if (page.items.isEmpty) return Center(child: Text(l10n.noRecentAlerts));
+        Future<void> refreshAlerts() async {
+          final filter = AlertFilter(childId: childId);
+          ref.invalidate(alertsProvider(filter));
+          await ref.read(alertsProvider(filter).future);
+        }
+
+        if (page.items.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: refreshAlerts,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 120),
+                  child: Center(child: Text(l10n.noRecentAlerts)),
+                ),
+              ],
+            ),
+          );
+        }
         final items = [...page.items]..sort((a, b) {
             final aPinned = isParentDecisionAlert(a) && !a.acknowledged;
             final bPinned = isParentDecisionAlert(b) && !b.acknowledged;
@@ -1341,33 +1360,37 @@ class _AlertsTab extends ConsumerWidget {
             if (bTime == null) return -1;
             return bTime.compareTo(aTime);
           });
-        return ListView(
-          children: [
-            for (final a in items.take(10))
-              AlertTile(
-                alert: a,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        AlertDetailScreen(alertId: a.id, initialAlert: a),
+        return RefreshIndicator(
+          onRefresh: refreshAlerts,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              for (final a in items.take(10))
+                AlertTile(
+                  alert: a,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          AlertDetailScreen(alertId: a.id, initialAlert: a),
+                    ),
                   ),
+                  onAck: () async {
+                    try {
+                      await ref
+                          .read(apiClientProvider)
+                          .raw
+                          .post('/v1/alerts/${a.id}/ack');
+                      ref
+                          .read(alertsSeenProvider.notifier)
+                          .markAcknowledged(a.id);
+                      ref.invalidate(unacknowledgedAlertsProvider);
+                      ref.invalidate(unacknowledgedCountProvider);
+                    } catch (_) {}
+                    ref.invalidate(alertsProvider);
+                  },
                 ),
-                onAck: () async {
-                  try {
-                    await ref
-                        .read(apiClientProvider)
-                        .raw
-                        .post('/v1/alerts/${a.id}/ack');
-                    ref
-                        .read(alertsSeenProvider.notifier)
-                        .markAcknowledged(a.id);
-                    ref.invalidate(unacknowledgedAlertsProvider);
-                    ref.invalidate(unacknowledgedCountProvider);
-                  } catch (_) {}
-                  ref.invalidate(alertsProvider);
-                },
-              ),
-          ],
+            ],
+          ),
         );
       },
     );

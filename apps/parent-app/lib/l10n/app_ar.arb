@@ -1205,5 +1205,12 @@
   "timeRequestGrantedByYou": "سبق منح وقت إضافي اليوم بقرارك: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
   "timeRequestDeclinedBy": "سبق رفض هذا الطلب بقرار من {actor}",
   "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
-  "timeRequestDecidedAt": "وقت القرار: {time}"
+  "timeRequestDecidedAt": "وقت القرار: {time}",
+  "p14SegmentRequests": "الطلبات",
+  "p14LevelUrgent": "عاجل",
+  "p14LevelCheckSoon": "للمراجعة قريبًا",
+  "p14LevelInfo": "للعلم",
+  "p14FilterAll": "الكل",
+  "p14NoRequestsYet": "لا توجد طلبات بعد",
+  "p14GroupedCount": "{count, plural, =1{مرة واحدة · آخرها {time}} =2{مرتان · آخرها {time}} few{{count} مرات · آخرها {time}} many{{count} مرة · آخرها {time}} other{{count} مرة · آخرها {time}}}"
 }
