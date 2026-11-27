@@ -8,6 +8,8 @@ import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/locale_provider.dart';
+import '../../providers/theme_provider.dart';
 import '../../theme/app_tokens.dart';
 
 /// Feature switch for UX Final Decisions **P-22 Settings** (#1179).
@@ -80,12 +82,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// B1 (UI/UX Bureau, 00:53): the current language and theme, from the appearance screen's own labels.
+  String _languageValue(AppLocalizations l10n, Locale? locale) => switch (locale?.languageCode) {
+        'ar' => l10n.arabic,
+        'en' => l10n.english,
+        _ => l10n.system,
+      };
+
+  String _themeValue(AppLocalizations l10n, ThemeMode mode) => switch (mode) {
+        ThemeMode.light => l10n.light,
+        ThemeMode.dark => l10n.dark,
+        ThemeMode.system => l10n.system,
+      };
+
   /// A21: the family's offset in words, never a raw IANA id and never a raw number. The catalog's city is
   /// not reachable from the family snapshot (it carries , not the zone id), so this is the
   /// offset alone — which the Bureau allows.
   String _utcOffsetLabel(AppLocalizations l10n) {
     final minutes = ref.watch(familyProvider).valueOrNull?.family.utcOffsetMinutes;
-    if (minutes == null) return l10n.off;
+    // B2 (Arabic and UI/UX Bureaus, 00:53): a time zone is never 'off'. No clock means no value.
+    if (minutes == null) return '';
     final sign = minutes < 0 ? '-' : '+' ;
     final abs = minutes.abs();
     final hh = abs ~/ 60;
@@ -146,8 +162,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // and read as broken rather than as read-only.
           leading: Icon(icon, color: theme.colorScheme.onSurfaceVariant),
           title: Text(label),
-          trailing: Text(value,
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          trailing: value.isEmpty
+              ? null
+              : Text(value,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         );
 
     Widget group(String heading, List<Widget> children) => Column(
@@ -206,12 +224,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 key: const ValueKey('settingsRow-language'),
                 label: l10n.languageLabel,
                 icon: Icons.translate,
+                value: _languageValue(l10n, ref.watch(localeProvider)),
                 onTap: () => context.push('/settings/appearance'),
               ),
               row(
                 key: const ValueKey('settingsRow-appearance'),
                 label: l10n.appearanceTitle,
                 icon: Icons.palette_outlined,
+                value: _themeValue(l10n, ref.watch(themeModeProvider)),
                 onTap: () => context.push('/settings/appearance'),
               ),
               readOnlyRow(

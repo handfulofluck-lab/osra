@@ -80,6 +80,14 @@ void main() {
 
 
 
+
+  testWidgets('B1: language and appearance carry their current value', (tester) async {
+    await pump(tester);
+    // fixture locale is en and the theme defaults to system
+    expect(find.text('English'), findsOneWidget);
+    expect(find.text('System'), findsOneWidget);
+  });
+
   testWidgets('the time zone row is read-only and shows the family offset, never an IANA id', (tester) async {
     await pump(tester);
     expect(find.byKey(const ValueKey('settingsRow-timeZone')), findsOneWidget);
