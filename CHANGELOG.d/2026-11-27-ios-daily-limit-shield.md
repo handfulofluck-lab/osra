@@ -1,0 +1,1 @@
+- The iPhone block screen now says the child's daily time is up, when it resets, and offers to ask a parent for more time, in English and Arabic (#1179). The reset time stays in Latin digits and is isolated with FSI/PDI so the Arabic line does not reorder. The primary button still sends the existing access alert; the Android-style time request is not wired on iOS yet.
