@@ -541,6 +541,133 @@ void main() {
       expect(serverActiveTokens, isEmpty);
     });
 
+    /// Mutant A: overwrite `_registeredToken` on rotation without retaining prior session tokens ->
+    /// after a completed rotation (`tok1` -> `tok2`), `logout()` deletes only `tok2` and leaves `tok1` active.
+    /// Mutant B: allow an in-flight rotation (`tok2`) resuming after `_sessionEpoch` bumps to clear
+    /// `_registeredToken` (`tok1`) before `unregister()` snapshots cleanup -> `logout()` deletes only `tok2`
+    /// and leaves `tok1` active on the server.
+    test('sign-out after completed rotation or during in-flight rotation removes both initial and rotated registrations', () async {
+      // Case 1: sign-in -> initial registration -> completed token rotation -> sign-out
+      FlutterSecureStorage.setMockInitialValues({'refresh': 'rt-rot-1'});
+      SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
+      final activeOnServer1 = <String>{};
+      var revoked1 = false;
+
+      final api1 = FakeApiClient({
+        ...pushRoutes(),
+        'POST /v1/auth/login': (_) => {'token': 'jwt-token', 'refreshToken': 'rt-1'},
+        'POST /v1/auth/logout': (_) {
+          revoked1 = true;
+          return const {'ok': true};
+        },
+        'POST /v1/me/push-token': (req) {
+          if (revoked1) return const FakeHttpError(401, {'error': 'session_revoked'});
+          final tok = req.body['token'] as String;
+          activeOnServer1.add(tok);
+          return {'id': 'row-${activeOnServer1.length}', 'platform': 'android', 'registeredAt': '2026-11-27T00:00:00Z'};
+        },
+        'DELETE /v1/me/push-token': (req) {
+          if (revoked1) return const FakeHttpError(401, {'error': 'session_revoked'});
+          final tok = req.body['token'] as String;
+          return {'removed': activeOnServer1.remove(tok) ? 1 : 0};
+        },
+      });
+      final platform1 = _FakePermissionPlatform(enabled: true, requestResult: true);
+      final source1 = _FakePushSource()..currentToken = 'aaa111';
+      final container1 = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api1),
+          notificationPermissionPlatformProvider.overrideWithValue(platform1),
+          pushTokenSourceProvider.overrideWithValue(source1),
+        ],
+      );
+      addTearDown(() async {
+        container1.dispose();
+        await platform1.dispose();
+      });
+
+      container1.read(notificationLifecycleSyncProvider);
+      await container1.read(authProvider.notifier).login('p1@osratech.com', 'good-password');
+      await settleAsync(16);
+      expect(activeOnServer1, {'aaa111'});
+
+      platform1.refreshController.add('bbb222');
+      await settleAsync(16);
+      expect(activeOnServer1, {'aaa111', 'bbb222'});
+
+      await container1.read(authProvider.notifier).logout();
+      await settleAsync(10);
+      expect(activeOnServer1, isEmpty, reason: 'completed rotation must not leave initial token registered after sign-out');
+
+      // Case 2: sign-in -> initial registration -> rotation POST in-flight during sign-out
+      FlutterSecureStorage.setMockInitialValues({'refresh': 'rt-2'});
+      SharedPreferences.setMockInitialValues({kOnboardingCompleteKey: true});
+      final activeOnServer2 = <String>{};
+      var revoked2 = false;
+      final rotationGate = Completer<void>();
+
+      final api2 = FakeApiClient({
+        ...pushRoutes(),
+        'POST /v1/auth/login': (_) => {'token': 'jwt-token', 'refreshToken': 'rt-2'},
+        'POST /v1/auth/logout': (_) {
+          revoked2 = true;
+          return const {'ok': true};
+        },
+        'POST /v1/me/push-token': (req) {
+          final tok = req.body['token'] as String;
+          if (tok == 'ccc333') {
+            return FakeDeferred(
+              rotationGate.future.then((_) {
+                if (!revoked2) activeOnServer2.add(tok);
+                return {'id': 'row-2', 'platform': 'android', 'registeredAt': '2026-11-27T00:00:00Z'};
+              }),
+            );
+          }
+          if (revoked2) return const FakeHttpError(401, {'error': 'session_revoked'});
+          activeOnServer2.add(tok);
+          return {'id': 'row-1', 'platform': 'android', 'registeredAt': '2026-11-27T00:00:00Z'};
+        },
+        'DELETE /v1/me/push-token': (req) {
+          if (revoked2) return const FakeHttpError(401, {'error': 'session_revoked'});
+          final tok = req.body['token'] as String;
+          return {'removed': activeOnServer2.remove(tok) ? 1 : 0};
+        },
+      });
+      final platform2 = _FakePermissionPlatform(enabled: true, requestResult: true);
+      final source2 = _FakePushSource()..currentToken = 'aaa111';
+      final container2 = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api2),
+          notificationPermissionPlatformProvider.overrideWithValue(platform2),
+          pushTokenSourceProvider.overrideWithValue(source2),
+        ],
+      );
+      addTearDown(() async {
+        container2.dispose();
+        await platform2.dispose();
+      });
+
+      container2.read(notificationLifecycleSyncProvider);
+      await container2.read(authProvider.notifier).login('p1@osratech.com', 'good-password');
+      await settleAsync(16);
+      expect(activeOnServer2, {'aaa111'});
+
+      // Start rotation to tok-2 (suspended on wire), then trigger logout while rotation POST is in flight.
+      platform2.refreshController.add('ccc333');
+      await settleAsync(10);
+      expect(api2.calls('POST', '/v1/me/push-token'), hasLength(2));
+
+      final logoutFut = container2.read(authProvider.notifier).logout();
+      await settleAsync(4);
+      rotationGate.complete();
+      await logoutFut;
+      await settleAsync(10);
+
+      final deletedTokens = api2.calls('DELETE', '/v1/me/push-token').map((r) => r.body['token']).toSet();
+      expect(deletedTokens, {'aaa111', 'ccc333'});
+      expect(activeOnServer2, isEmpty, reason: 'in-flight rotation during sign-out must remove both deliveries');
+    });
+
     /// Mutant: skip `syncPushRegistration()` after `requestPermission()` grants
     /// on sign-in to an existing account, and `POST /v1/me/push-token` stays empty.
     test('sign-in to an existing account prompts once immediately, posts token, and does not re-prompt', () async {

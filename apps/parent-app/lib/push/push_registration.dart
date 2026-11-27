@@ -55,6 +55,12 @@ enum PushRegistrationOutcome {
   failed,
 }
 
+class _InFlightRegister {
+  _InFlightRegister(this.request, this.token);
+  final Future<void> request;
+  final String token;
+}
+
 /// Push registration over the interface the server already has.
 class PushRegistration {
   PushRegistration({
@@ -79,16 +85,20 @@ class PushRegistration {
   /// registration started before logout can never attach a token to a departed session.
   int _sessionEpoch = 0;
 
-  /// Tracks an in-flight `POST /v1/me/push-token` call so [unregister] can await
-  /// it (while the session bearer token is still valid) and remove that row too.
-  Future<void>? _inFlightRegister;
-  String? _inFlightToken;
+  /// All wire-in-flight `POST /v1/me/push-token` calls so [unregister] awaits
+  /// every outstanding delivery before `/v1/auth/logout` revokes the bearer token.
+  final List<_InFlightRegister> _inFlight = <_InFlightRegister>[];
 
-  /// The token this instance forwarded, so [unregister] removes only a row the
-  /// server is known to hold.
+  /// Every distinct token accepted by the server during the current session.
+  /// Because the server stores distinct token rows independently, sign-out must
+  /// remove all of them (both initial registration and any rotated tokens), and
+  /// in-flight completions during sign-out must never clear previously owned tokens.
+  final Set<String> _ownedTokens = <String>{};
+
+  /// Latest token registered in the active session.
   String? _registeredToken;
 
-  /// The token this instance registered, for [unregister].
+  /// The latest token this instance registered, for callers/tests inspecting state.
   String? get registeredToken => _registeredToken;
 
   /// Permission -> token -> forward. Never throws: a push token is not a
@@ -153,51 +163,60 @@ class PushRegistration {
       platform: _platform,
       appVersion: _appVersion,
     );
-    _inFlightRegister = req;
-    _inFlightToken = token;
+    final entry = _InFlightRegister(req, token);
+    _inFlight.add(entry);
     try {
       await req;
+      // Record ownership as soon as the server accepts the POST, even if sign-out
+      // bumped [_sessionEpoch] while the request was in flight, and NEVER clear
+      // [_registeredToken] or [_ownedTokens] here — [unregister] owns cleanup.
+      _ownedTokens.add(token);
     } catch (_) {
       return PushRegistrationOutcome.failed;
     } finally {
-      if (identical(_inFlightRegister, req)) {
-        _inFlightRegister = null;
-        _inFlightToken = null;
-      }
+      _inFlight.remove(entry);
     }
     if (_sessionEpoch != epoch) {
-      _registeredToken = null;
       return PushRegistrationOutcome.unavailable;
     }
     _registeredToken = token;
     return PushRegistrationOutcome.registered;
   }
 
-  /// Removes this instance's token. Call it **before** the session is cleared:
-  /// the route authenticates as the parent it is removing the token for.
+  /// Removes every token owned by this session. Call it **before** the session is
+  /// cleared: the route authenticates as the parent it is removing the token for.
   Future<bool> unregister() async {
-    _sessionEpoch += 1;
-    final pendingReq = _inFlightRegister;
-    final pendingTok = _inFlightToken;
-    if (pendingReq != null) {
-      try {
-        await pendingReq;
-      } catch (_) {}
-    }
-    final tokens = <String>{
+    final cleanupEpoch = ++_sessionEpoch;
+
+    // Snapshot already-owned tokens BEFORE awaiting any in-flight request so an
+    // awaiting rotation can never drop a previously registered identifier.
+    final cleanupTokens = <String>{
+      ..._ownedTokens,
       if (_registeredToken != null && _registeredToken!.isNotEmpty)
         _registeredToken!,
-      if (pendingTok != null && pendingTok.isNotEmpty) pendingTok,
     };
-    if (tokens.isEmpty) {
-      _registeredToken = null;
-      _inFlightRegister = null;
-      _inFlightToken = null;
+
+    while (_inFlight.isNotEmpty) {
+      final snapshot = List<_InFlightRegister>.of(_inFlight);
+      for (final entry in snapshot) {
+        try {
+          await entry.request;
+          cleanupTokens.add(entry.token);
+        } catch (_) {}
+      }
+    }
+    cleanupTokens.addAll(_ownedTokens);
+
+    if (cleanupTokens.isEmpty) {
+      if (_sessionEpoch == cleanupEpoch) {
+        _registeredToken = null;
+      }
       return false;
     }
+
     var removedAny = false;
     try {
-      for (final token in tokens) {
+      for (final token in cleanupTokens) {
         try {
           final removed = await _api.remove(token);
           if (removed > 0) removedAny = true;
@@ -205,9 +224,12 @@ class PushRegistration {
       }
       return removedAny;
     } finally {
-      _registeredToken = null;
-      _inFlightRegister = null;
-      _inFlightToken = null;
+      // Clear local session state so a subsequent sign-in on the same app run
+      // re-registers cleanly even if the sign-out happened offline.
+      _ownedTokens.removeAll(cleanupTokens);
+      if (_sessionEpoch == cleanupEpoch || _ownedTokens.isEmpty) {
+        _registeredToken = null;
+      }
     }
   }
 }
