@@ -5,6 +5,7 @@ import 'package:familyshield_parent/features/pairing/pair_p05_screen.dart';
 import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
+import 'package:familyshield_parent/providers/pairing_session_provider.dart';
 import 'package:familyshield_parent/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +28,11 @@ void main() {
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
   });
+
+  /// Mutant: drop the `activePairingSessionProvider` writes in P-05 and these reads fail.
+  ActivePairingSession? activeSession(WidgetTester tester) =>
+      ProviderScope.containerOf(tester.element(find.byType(PairingQrScreen)))
+          .read(activePairingSessionProvider);
 
   FakeApiClient buildApi({
     String code = '482913',
@@ -94,6 +100,9 @@ void main() {
     expect(find.byKey(const ValueKey('p05QrCodeCard')), findsOneWidget);
     expect(find.byKey(const ValueKey('p05QrImage')), findsOneWidget);
     expect(find.textContaining('482 · 913'), findsOneWidget);
+    // A10 (UI/UX 1190 send-back): Home's approval card needs this session while P-05 is open.
+    expect(activeSession(tester)?.code, '482913');
+    expect(activeSession(tester)?.childId, 'child-1');
     expect(find.text('Android'), findsNothing);
     expect(find.text('iPhone'), findsNothing);
     expect(find.text('Copy code'), findsNothing);
@@ -125,6 +134,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.byKey(const ValueKey('p05ConnectedCard')), findsOneWidget);
     expect(find.byKey(const ValueKey('p05ContinueButton')), findsOneWidget);
+    expect(activeSession(tester), isNull, reason: 'paired: nothing left for Home to approve');
   });
 
   testWidgets('#1179 P-05 B3: Decline hides dead QR and waiting line and offers New code', (tester) async {
@@ -165,6 +175,7 @@ void main() {
     expect(find.byKey(const ValueKey('p05DeniedNewCodeButton')), findsOneWidget);
     expect(find.byKey(const ValueKey('p05QrCodeCard')), findsNothing);
     expect(find.byKey(const ValueKey('p05WaitingLine')), findsNothing);
+    expect(activeSession(tester), isNull, reason: 'denied: Home must not offer a burned code');
   });
 
   testWidgets('#1179 P-05 B5: polling error shows honest retry while keeping QR visible, and 409 approve does not say No connection', (tester) async {

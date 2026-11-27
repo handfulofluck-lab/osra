@@ -12,6 +12,7 @@ import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/pairing_session_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'pair_qr_payload.dart';
 import 'pair_qr_screen.dart' show pairClaimDeviceLabel;
@@ -159,6 +160,10 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
         _pollError = null;
         _loading = false;
       });
+      // A10: Home's "a phone wants to join" card reads this session, so a parent who backs out of P-05
+      // while the phone is claiming still has something to approve (mirrors PairingQrScreen).
+      ref.read(activePairingSessionProvider.notifier).state =
+          ActivePairingSession(code: code, childId: widget.childId, expiresAt: expiresAt);
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted || generation != _generation) return;
         if (_remaining == Duration.zero) _timer?.cancel();
@@ -234,10 +239,12 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
       if (incomingStatus == 'paired') {
         _claimTimer?.cancel();
         if (mounted && generation == _generation) {
+          _clearActiveSession(code);
           ref.invalidate(familyProvider);
         }
       } else if (incomingStatus == 'denied') {
         _claimTimer?.cancel();
+        _clearActiveSession(code);
       }
     } catch (e) {
       if (!mounted ||
@@ -253,6 +260,14 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
       }
       _latestAppliedClaimReadSeq = readSeq;
       setState(() => _pollError = e);
+    }
+  }
+
+  /// Clears Home's pairing session only when it is still this screen's [code], so a newer code from
+  /// another screen is never wiped (same guard as PairingQrScreen).
+  void _clearActiveSession(String code) {
+    if (ref.read(activePairingSessionProvider)?.code == code) {
+      ref.read(activePairingSessionProvider.notifier).state = null;
     }
   }
 
@@ -286,6 +301,7 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
         }
       } else {
         _claimTimer?.cancel();
+        _clearActiveSession(code);
       }
     } catch (e) {
       if (!mounted ||
