@@ -21,7 +21,7 @@ const ALL_REQUIRED = {
 } as const;
 const COMPLETE = {
   client: { app: "child-android", version: "0.2.0", build: 42, flavour: "full" },
-  grants: { ...ALL_REQUIRED, battery: "missing", notification_listener: "missing" },
+  grants: { ...ALL_REQUIRED, battery: "missing", notification_listener: "granted" },
   features: {},
 };
 
@@ -43,6 +43,9 @@ describe("setup completion and timeout transitions (#1127)", () => {
   beforeEach(() => {
     resetPrismaMock();
     prismaMock.alert.create.mockImplementation(async ({ data }) => ({ id: "alert-created", ...data }));
+    // #1230: the setup-notice write holds the Device row; the lock read sees an open setup.
+    prismaMock.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
+      Array.from(strings ?? []).join("").includes("FOR NO KEY UPDATE") ? [{ setupCompletedAt: null }] : []);
   });
 
   afterEach(() => {
@@ -112,7 +115,17 @@ describe("setup completion and timeout transitions (#1127)", () => {
 
   it("dedupes the timeout across evaluations and names the last reported missing steps", async () => {
     const row = device({ capabilities: { ...COMPLETE, grants: { ...COMPLETE.grants, overlay: "missing", accessibility: "missing" } } });
-    prismaMock.alert.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "existing-incomplete", attemptCount: 1 });
+    // First evaluation: no row under the shared key (checked by the transition, then by raiseAlertOnce).
+    // Second evaluation: the row exists with the same missing steps, so nothing is rewritten or paged.
+    prismaMock.alert.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "existing-incomplete",
+        attemptCount: 1,
+        heldDuringSetup: false,
+        metadata: { serverReminder: true, missing: ["accessibility", "overlay"] },
+      });
     const first = await evaluateDeviceSetupIncomplete(row, EXPIRY);
     const second = await evaluateDeviceSetupIncomplete(row, EXPIRY);
     expect(first).toEqual({ due: true, deduplicated: false });
@@ -120,7 +133,7 @@ describe("setup completion and timeout transitions (#1127)", () => {
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.alert.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        dedupeKey: `setup_incomplete|dev-1|${START.toISOString()}`,
+        dedupeKey: "setup_incomplete:dev-1",
         metadata: expect.objectContaining({
           type: "setup_incomplete",
           bodyKey: "alertBodySetupIncomplete",
@@ -136,13 +149,16 @@ describe("setup completion and timeout transitions (#1127)", () => {
     const result = await runDeviceSilenceCheck(EXPIRY, { DEVICE_SILENT_MINUTES: "30" } as NodeJS.ProcessEnv);
     expect(result).toEqual({ checked: 0, alerted: [] });
     expect(prismaMock.alert.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ dedupeKey: `setup_incomplete|dev-1|${START.toISOString()}` }),
+      data: expect.objectContaining({ dedupeKey: "setup_incomplete:dev-1" }),
     });
   });
 
   it("returns only newly alerted ids from the standalone setup check", async () => {
     prismaMock.device.findMany.mockResolvedValue([device()]);
-    prismaMock.alert.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "existing", attemptCount: 1 });
+    prismaMock.alert.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "existing", attemptCount: 1, heldDuringSetup: false, metadata: { serverReminder: true, missing: [] } });
     expect(await runDeviceSetupCheck(EXPIRY)).toEqual({ checked: 1, alerted: ["dev-1"] });
     expect(await runDeviceSetupCheck(EXPIRY)).toEqual({ checked: 1, alerted: [] });
   });
@@ -169,13 +185,14 @@ describe("setup completion and timeout transitions (#1127)", () => {
     prismaMock.device.findUnique.mockResolvedValue(device({
       capabilities: { ...COMPLETE, grants: { ...COMPLETE.grants, accessibility: "missing" } },
     }));
-    prismaMock.$queryRaw.mockResolvedValue([]);
+    prismaMock.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
+      Array.from(strings ?? []).join("").includes("FOR NO KEY UPDATE") ? [{ setupCompletedAt: null }] : []);
     const logWarn = vi.spyOn(app.log, "warn");
     const poll = await app.inject({ method: "GET", url: "/v1/devices/dev-1/commands", headers: deviceHeader(app) });
     expect(poll.statusCode).toBe(200);
     expect(logWarn).not.toHaveBeenCalled();
     expect(prismaMock.alert.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ dedupeKey: `setup_incomplete|dev-1|${START.toISOString()}` }),
+      data: expect.objectContaining({ dedupeKey: "setup_incomplete:dev-1" }),
     });
     await app.close();
   });
