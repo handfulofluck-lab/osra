@@ -8,7 +8,7 @@ import 'features/children/command_history_screen.dart';
 import 'features/children/consent_screen.dart';
 import 'api/models.dart';
 import 'features/alerts/alert_detail_screen.dart';
-import 'features/alerts/alerts_screen.dart';
+import 'features/alerts/alerts_p14_screen.dart';
 import 'features/auth/mfa_reset_approval_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
@@ -22,6 +22,7 @@ import 'features/pairing/pair_qr_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
+import 'features/rules/web_filter_p12_screen.dart' show WebFilterP12Route;
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/settings/privacy_screen.dart';
@@ -64,7 +65,12 @@ final List<RouteBase> appRoutes = [
     routes: [
       GoRoute(
         path: 'alerts',
-        builder: (_, __) => const AlertsScreen(),
+        builder: (_, s) => AlertsRouteEntry(
+          initialChildId: s.uri.queryParameters['childId'],
+          initialSegment: s.uri.queryParameters['segment'] == 'requests'
+              ? P14Segment.requests
+              : P14Segment.alerts,
+        ),
         routes: [
           GoRoute(
             path: ':id',
@@ -114,6 +120,12 @@ final List<RouteBase> appRoutes = [
     ),
   ),
   GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
+  // #1229 P-12: one entry point for the web filter. The switch decides between the
+  // P-12 screen and the legacy web-filter tab, so a link never dead-ends.
+  GoRoute(
+    path: '/child/:id/web-filter',
+    builder: (_, s) => WebFilterP12Route(childId: s.pathParameters['id']!),
+  ),
   GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
   GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
   GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),

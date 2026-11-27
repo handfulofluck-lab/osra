@@ -1134,7 +1134,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get youtubeRestrictedDesc =>
-      'Filters out potentially mature content on YouTube across child devices.';
+      'Hides most mature videos. YouTube\'s own filter misses some, so to be sure, block YouTube or set a time limit in Apps.';
 
   @override
   String get strict => 'Strict';
@@ -3804,6 +3804,50 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p15IphoneNotYet => 'Not yet available on iPhone';
+
+  @override
+  String get p14SegmentRequests => 'Requests';
+
+  @override
+  String get p14LevelUrgent => 'Urgent';
+
+  @override
+  String get p14LevelCheckSoon => 'Check soon';
+
+  @override
+  String get p14LevelInfo => 'Info';
+
+  @override
+  String get p14FilterAll => 'All';
+
+  @override
+  String get p14NoRequestsYet => 'No requests yet';
+
+  @override
+  String p14GroupedCount(int count, String time) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count times · last $time',
+      one: '1 time · last $time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get p12NotBlockingYet => 'Not blocking yet';
+
+  @override
+  String get p12AllowSite => 'Allow site';
+
+  @override
+  String get p12RecentlyBlocked => 'Recently blocked';
+
+  @override
+  String get p12BlockSiteTitle => 'Block a site';
+
+  @override
+  String get p12AllowSiteTitle => 'Allow a site';
 
   @override
   String get privacyMenu => 'Privacy and data';
