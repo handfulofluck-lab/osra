@@ -1436,6 +1436,8 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
         if (deviceRunsControl(d, 'lock_screen')) d,
     ];
     final iosLockReady = iosOnly && lockableDevices.isNotEmpty;
+    // U104: +15/+30 on an iPhone needs #1278 proven on a device first; flip once its row passes.
+    const iosBonusReady = false;
     final iosInternetReady =
         iosOnly && devices.any((d) => deviceRunsControl(d, 'pause_internet'));
     final primaryDevice = nonIosDevices.firstOrNull ?? devices.firstOrNull;
@@ -1593,9 +1595,11 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
               ),
             ],
             const SizedBox(height: AppSpace.md),
-            // U104: bonus +15/+30 is never live on an iPhone yet, so a faded button always remains and the
-            // banner stays as its visible reason even when Lock or Pause internet is ready.
-            if (iosOnly) ...[
+            // U104 (UI/UX 7223975287): the banner names only what is unready and hides once everything is
+            // ready. Bonus +15/+30 is not live on an iPhone yet (`iosBonusReady`), so for now it always shows:
+            // "Extra time isn't available on iPhone yet." once Lock and Pause internet are ready, otherwise the
+            // generic "Not yet available on iPhone".
+            if (iosOnly && !(iosLockReady && iosInternetReady && iosBonusReady)) ...[
               Container(
                 key: ValueKey('homeIosControlsNotYet-${child.id}'),
                 padding: const EdgeInsetsDirectional.symmetric(
@@ -1614,7 +1618,9 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
                     const SizedBox(width: AppSpace.xs),
                     Expanded(
                       child: Text(
-                        l10n.homeNotYetOnIphone,
+                        iosLockReady && iosInternetReady
+                            ? l10n.homeIosExtraTimeNotYet
+                            : l10n.homeNotYetOnIphone,
                         style: text.bodySmall?.copyWith(
                           color: tokens.onSurfaceVariant,
                         ),

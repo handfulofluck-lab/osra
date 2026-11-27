@@ -811,6 +811,14 @@ void main() {
 
       expect(find.byKey(const ValueKey('homeIosTimeNotYet-child-ios')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')),
+          matching: find.text('Not yet available on iPhone'),
+        ),
+        findsOneWidget,
+        reason: 'U104: with Lock and Pause not ready, the generic line stays',
+      );
       expect(find.byKey(const ValueKey('homeIosAutoLiftNote-child-ios')), findsNothing,
           reason: 'no live Lock or Pause, so no auto-lift line');
 
@@ -880,6 +888,14 @@ void main() {
 
       // U104: the banner stays, as the visible reason for the still-faded bonus buttons.
       expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsOneWidget);
+      // U104: with Lock and Pause internet ready, the banner names only extra time.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')),
+          matching: find.text("Extra time isn't available on iPhone yet."),
+        ),
+        findsOneWidget,
+      );
       // #1275: the 24-hour auto-lift line shows while Lock or Pause is live on the iPhone.
       expect(find.byKey(const ValueKey('homeIosAutoLiftNote-child-ios')), findsOneWidget);
 

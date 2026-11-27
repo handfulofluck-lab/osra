@@ -6760,6 +6760,12 @@ abstract class AppLocalizations {
   /// **'Not yet available on iPhone'**
   String get homeNotYetOnIphone;
 
+  /// No description provided for @homeIosExtraTimeNotYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra time isn't available on iPhone yet.'**
+  String get homeIosExtraTimeNotYet;
+
   /// No description provided for @homeIosAutoLiftNote.
   ///
   /// In en, this message translates to:

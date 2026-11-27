@@ -1466,6 +1466,7 @@
   "homeUnlockAllDevices": "إلغاء القفل",
   "homeNotYetAvailable": "غير متاح بعد",
   "homeNotYetOnIphone": "غير متاح بعد على آيفون",
+  "homeIosExtraTimeNotYet": "الوقت الإضافي غير متاح بعد على آيفون.",
   "homeIosAutoLiftNote": "على هاتف آيفون، ينتهي القفل وإيقاف الإنترنت تلقائيًا بعد أربع وعشرين ساعة. أعِد تفعيلهما إذا احتجت إلى مدة أطول.",
   "homeKeepBlocked": "إبقاء الحظر",
   "homeNotToday": "ليس اليوم",
