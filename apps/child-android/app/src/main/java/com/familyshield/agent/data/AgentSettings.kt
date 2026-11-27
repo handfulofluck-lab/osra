@@ -298,6 +298,7 @@ class AgentSettings @Inject constructor(
         childIdCache = null
         tokenLoaded = true // loaded, and known to be null
         com.familyshield.agent.setup.SetupCompletionStore.clear(context)
+        com.familyshield.agent.ui.request.AskParentActivity.clearPendingRequest(context)
         com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
     }
 

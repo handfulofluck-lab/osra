@@ -163,7 +163,15 @@ String formatDurationMmSs(int seconds) {
   return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
-/// Section (a): per-app monitoring switches, initialized from
+/// Feature switch for UX Final Decisions **P-17** (#1179). Enable with
+/// `--dart-define=OSRA_UX_P17=true`, or override [p17SocialEnabledProvider] in tests. When it is false the
+/// section keeps the per-app switches it shipped with, which is the fallback the Bureau's build condition asks
+/// for: a screen can be turned off on the morning of a test without a revert.
+const bool kEnableUxP17Social = bool.fromEnvironment('OSRA_UX_P17', defaultValue: false);
+
+final p17SocialEnabledProvider = Provider<bool>((ref) => kEnableUxP17Social);
+
+/// Section (a): per-app monitoring rows, initialized from
 /// RuleSet.socialMonitoring (absent = ON); Save PUTs the full ruleset with
 /// the merged socialMonitoring map.
 class MonitoringTogglesSection extends ConsumerStatefulWidget {
@@ -248,7 +256,8 @@ class _MonitoringTogglesSectionState
     }
   }
 
-  Widget _appTile(SocialAppInfo app, InstalledApp? installed) {
+  /// The shape this section shipped with, kept as the switch-off fallback (`OSRA_UX_P17=false`).
+  Widget _legacyAppTile(SocialAppInfo app, InstalledApp? installed) {
     final l10n = context.l10n;
     final value = _draft![app.appKey] ?? true;
     return SwitchListTile(
@@ -266,8 +275,84 @@ class _MonitoringTogglesSectionState
           ? Icon(socialAppIcon(app.appKey))
           : AppIconBadge(app: installed, size: 32),
       value: value,
-      onChanged:
-          _saving ? null : (v) => setState(() => _draft![app.appKey] = v),
+      onChanged: _saving ? null : (v) => setState(() => _draft![app.appKey] = v),
+    );
+  }
+
+  /// P-17 (`#1179`, Bureau row): the parent reads the **device-reported state** of each app in words —
+  /// «جاهز» / «محدود» / «غير متاح» / «غير موجود في هذا الإصدار» from the capability report, and `Off` when the
+  /// parent turned that app off. There is no switch: a switch claims instant coverage the phone has not
+  /// reported. Tapping the row opens the two choices instead (on / off).
+  Widget _appTile(SocialAppInfo app, InstalledApp? installed, {required String? scanState}) {
+    final l10n = context.l10n;
+    final value = _draft![app.appKey] ?? true;
+    final state = value
+        ? switch (scanState) {
+            // Ahmed's point 1 (14:16) and Claude's ruling at 14:18: a phone that reports `ready` said so, and
+            // the changelog promises the word. "Checking" stays for a phone that has not reported at all.
+            'ready' => l10n.phoneSetupStateReady,
+            'degraded' => l10n.phoneSetupStateDegraded,
+            'unavailable' => l10n.phoneSetupStateUnavailable,
+            'not_supported' => l10n.phoneSetupStateNotSupported,
+            _ => l10n.socialChecking,
+          }
+        : l10n.socialOff;
+    return ListTile(
+      key: ValueKey('socialAppRow-${app.appKey}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      horizontalTitleGap: AppSpace.sm,
+      title: Text(app.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(state, key: ValueKey('socialAppState-${app.appKey}')),
+          if (value && app.appKey == 'youtube') Text(l10n.socialCommentsAndChats),
+        ],
+      ),
+      leading: installed == null
+          ? Icon(socialAppIcon(app.appKey))
+          : AppIconBadge(app: installed, size: 32),
+      trailing: const Icon(Icons.chevron_right, size: 20),
+      enabled: !_saving,
+      onTap: _saving ? null : () => _chooseFor(app),
+    );
+  }
+
+  /// The two choices, in a sheet rather than on a switch. Nothing is saved here: the section keeps its own
+  /// Save button, so a parent can change several apps before anything reaches the phone.
+  Future<void> _chooseFor(SocialAppInfo app) async {
+    final l10n = context.l10n;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final value = _draft![app.appKey] ?? true;
+        Widget choice(String key, String label, bool selected, bool on) => ListTile(
+              key: ValueKey(key),
+              title: Text(label),
+              trailing: selected ? const Icon(Icons.check) : null,
+              onTap: () {
+                Navigator.of(ctx).pop();
+                setState(() => _draft![app.appKey] = on);
+              },
+            );
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(socialAppIcon(app.appKey)),
+                title: Text(app.label, style: Theme.of(ctx).textTheme.titleMedium),
+              ),
+              const Divider(height: 1),
+              choice('socialAppOn-${app.appKey}', l10n.socialChecking, value, true),
+              choice('socialAppOff-${app.appKey}', l10n.socialOff, !value, false),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -279,29 +364,63 @@ class _MonitoringTogglesSectionState
         kSocialApps.where((app) => installed.containsKey(app.appKey)));
     final absent = sortedSocialApps(
         kSocialApps.where((app) => !installed.containsKey(app.appKey)));
-    final child = ref
-        .read(familyProvider)
-        .valueOrNull
-        ?.children
-        .where((c) => c.id == widget.childId)
-        .firstOrNull;
+    final family = ref.watch(familyProvider).valueOrNull;
+    final devices = family?.devicesFor(widget.childId) ?? const <Device>[];
+    final child = family?.children.where((c) => c.id == widget.childId).firstOrNull;
+    // P-17 (Fix 8): an iPhone child's apps are not scanned for messages yet, and the section must say so
+    // rather than show a list of "Checking" rows nothing is checking.
+    // P-17 sits behind its own switch: off restores the rows this screen shipped with, which is the fallback
+    // the Bureau's build condition asks for.
+    final uxP17 = ref.watch(p17SocialEnabledProvider);
+    final iphoneOnly =
+        uxP17 && devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
+    // The server's word for the notification access this section depends on (ADR-0034): `ready`, `degraded`,
+    // `unavailable`, `not_supported`. Absent means the phone never reported, and the row stays "Checking".
+    // With more than one phone the row shows the **weakest** reported state — never "Ready" while another of
+    // the child's phones cannot scan (Ahmed's point 2, Claude's ruling at 14:18: not_supported < unavailable <
+    // degraded < ready). A state this build does not know ranks weakest, so it can never read as Ready.
+    const stateRank = {'not_supported': 0, 'unavailable': 1, 'degraded': 2, 'ready': 3};
+    final scanState = devices
+        .map((d) => d.setup?.feature('notification_scan'))
+        .whereType<String>()
+        .fold<String?>(
+          null,
+          (worst, state) => worst == null ||
+                  (stateRank[state] ?? 0) < (stateRank[worst] ?? 0)
+              ? state
+              : worst,
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final app in present) _appTile(app, installed[app.appKey]),
-        if (absent.isNotEmpty)
-          ExpansionTile(
-            key: const ValueKey('socialNotInstalledGroup'),
-            tilePadding: EdgeInsets.zero,
-            title: Text(l10n.socialNotOnChildPhone(
-                context.localeName == 'ar'
-                    ? '\u{2068}${child?.displayName ?? l10n.unknown}\u{2069}'
-                    : child?.displayName ?? l10n.unknown,
-                absent.length)),
-            children: [
-              for (final app in absent) _appTile(app, null),
-            ],
+        if (iphoneOnly)
+          Card(
+            key: const ValueKey('socialIphoneNotYet'),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpace.lg),
+              child: Text(l10n.appsNotYetOnIphone),
+            ),
           ),
+        if (!iphoneOnly) ...[
+          for (final app in present)
+            uxP17
+                ? _appTile(app, installed[app.appKey], scanState: scanState)
+                : _legacyAppTile(app, installed[app.appKey]),
+          if (absent.isNotEmpty)
+            ExpansionTile(
+              key: const ValueKey('socialNotInstalledGroup'),
+              tilePadding: EdgeInsets.zero,
+              title: Text(l10n.socialNotOnChildPhone(
+                  context.localeName == 'ar'
+                      ? '\u{2068}${child?.displayName ?? l10n.unknown}\u{2069}'
+                      : child?.displayName ?? l10n.unknown,
+                  absent.length)),
+              children: [
+                for (final app in absent)
+                  uxP17 ? _appTile(app, null, scanState: scanState) : _legacyAppTile(app, null),
+              ],
+            ),
+        ],
         Padding(
           padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
           child: Text(l10n.socialPrivacyLine,
@@ -310,7 +429,8 @@ class _MonitoringTogglesSectionState
         Align(
           alignment: AlignmentDirectional.centerEnd,
           child: FilledButton(
-            onPressed: _saving ? null : _save,
+            key: const ValueKey('socialSaveMonitoring'),
+            onPressed: _saving || iphoneOnly ? null : _save,
             child: Text(_saving ? l10n.saving : l10n.saveMonitoring),
           ),
         ),
@@ -331,6 +451,9 @@ class _MonitoringTogglesSectionState
             key: const ValueKey('socialNewAppsBanner'),
             content: Text(l10n.socialNewAppsBanner),
             leading: const Icon(Icons.new_releases_outlined),
+            // UI/UX Bureau, 14:09: at 320 px and 200% text, an action beside the content squeezed it into a
+            // seven-line column. On its own row the text keeps its width.
+            forceActionsBelow: true,
             actions: [
               TextButton(
                 onPressed: _dismissNewAppsBanner,
