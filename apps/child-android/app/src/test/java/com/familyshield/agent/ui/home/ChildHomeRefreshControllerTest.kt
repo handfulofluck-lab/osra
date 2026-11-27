@@ -99,26 +99,37 @@ class ChildHomeRefreshControllerTest {
             assertTrue(controller.isRunning)
             assertEquals(1, listeners.size)
 
+            // Immediate-render ordering: once ON_RESUME arrives, rule changes and ticks refresh immediately.
+            listeners.forEach { it() }
+            assertEquals(1, refreshes.get())
+
+            // Pausing suppresses any in-flight listener callback and stops on stop().
             resumed = false
             listeners.forEach { it() }
-            assertEquals("Paused listener callback must not refresh UI", 0, refreshes.get())
+            assertEquals("Paused listener callback must not refresh UI", 1, refreshes.get())
             controller.stop()
+            assertFalse(controller.isRunning)
+            assertEquals(0, listeners.size)
         } finally {
             scope.cancel()
         }
     }
 
     @Test
-    fun `PairingActivity starts ChildHomeRefreshController on Child Home and stops it in onPause (#1283)`() {
-        // Mutant: removing `activityResumed = false` / `stopChildHomeRefresh()` from `onPause()`,
-        // `activityResumed = true` from `onResume()`, or `isChildHomeResumed()` guard fails these checks.
+    fun `PairingActivity binds ChildHomeRefreshController to repeatOnLifecycle(RESUMED) and stops in onPause (#1283)`() {
+        // Mutant 1: gating startChildHomeRefresh() on Lifecycle.State.RESUMED before repeatOnLifecycle
+        //           drops inline renders inside onResume() before ON_RESUME dispatches.
+        // Mutant 2: removing repeatOnLifecycle(RESUMED) or stopChildHomeRefresh() in onPause() lets a
+        //           suspended showStatus() register while paused or leak past onPause().
         assertEquals(60_000L, ChildHomeRefreshController.REFRESH_INTERVAL_MS)
         val activityFile = File(findAppSrcRoot(), "java/com/familyshield/agent/setup/PairingActivity.kt")
         val code = activityFile.readText()
         assertTrue(code.contains("override fun onPause() {\n        activityResumed = false\n        stopChildHomeRefresh()"))
         assertTrue(code.contains("override fun onResume() {\n        super.onResume()\n        activityResumed = true"))
-        assertTrue(code.contains("lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)"))
-        assertTrue(code.contains("if (!isChildHomeResumed()) {"))
+        assertTrue(code.contains("lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED)"))
+        assertTrue(code.contains("controller.start(this)"))
+        assertTrue(code.contains("kotlinx.coroutines.awaitCancellation()"))
+        assertTrue(code.contains("} finally {\n                    controller.stop()\n                }"))
         assertTrue(code.contains("childHomeCopyState.value = initialCopy\n                startChildHomeRefresh()"))
         assertTrue(code.contains("addRulesChangedListener = { listener -> rules.addRulesChangedListener(listener) }"))
         assertTrue(code.contains("removeRulesChangedListener = { listener -> rules.removeRulesChangedListener(listener) }"))
