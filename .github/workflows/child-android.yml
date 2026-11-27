@@ -11,11 +11,15 @@ on:
     paths:
       - "apps/child-android/**"
       - "scripts/check-merged-manifest-gate.mjs"
+      - "scripts/build-child-staging-apk.sh"
+      - "scripts/check-child-staging-build.mjs"
       - ".github/workflows/child-android.yml"
   pull_request:
     paths:
       - "apps/child-android/**"
       - "scripts/check-merged-manifest-gate.mjs"
+      - "scripts/build-child-staging-apk.sh"
+      - "scripts/check-child-staging-build.mjs"
       - ".github/workflows/child-android.yml"
   schedule:
     - cron: "11 2 * * 1"
@@ -246,3 +250,72 @@ jobs:
           "$AS" verify --print-certs app/build/outputs/apk/full/release/app-full-release.apk | grep -q 'CN=CI-full' || { echo "::error::the Full release is not signed with the Full key (ADR-0039 D2)"; exit 1; }
           "$AS" verify --print-certs app/build/outputs/apk/play/release/app-play-release.apk | grep -q 'CN=CI-upload' || { echo "::error::the Play release is not signed with the upload key (ADR-0039 D2)"; exit 1; }
           echo "each flavour signed with its own key"
+
+      # Issue #1217 (sibling of #1216): prove the Full-only Firebase guard rejects missing
+      # app/google-services.json with the expected reason, then prove the installable Child Full
+      # staging APK with synthetic Firebase resources without publishing it. Runs AFTER all
+      # artifact uploads and signing checks above, so real secrets and lab keys stay on the
+      # private channel and no staging APK artifact is uploaded publicly.
+      - name: Prove Full-only keystore refuses missing google-services.json (#1217)
+        run: |
+          rm -f app/google-services.json
+          T="$RUNNER_TEMP/full-guard"; rm -rf "$T"; mkdir -p "$T"
+          keytool -genkeypair -keystore "$T/full.jks" -storetype PKCS12 -storepass ci-full-key -keypass ci-full-key -alias full -dname "CN=CI-full-guard" -keyalg RSA -keysize 2048 -validity 1
+          unset OSRA_UPLOAD_KEYSTORE OSRA_UPLOAD_KEYSTORE_PASSWORD OSRA_UPLOAD_KEY_ALIAS OSRA_UPLOAD_KEY_PASSWORD
+          export OSRA_FULL_KEYSTORE="$T/full.jks" OSRA_FULL_KEYSTORE_PASSWORD=ci-full-key OSRA_FULL_KEY_ALIAS=full OSRA_FULL_KEY_PASSWORD=ci-full-key
+          OUT="$T/guard.log"
+          if ./gradlew :app:help --console=plain > "$OUT" 2>&1; then
+            echo "::error::Full-only keystore configured without app/google-services.json (expected GradleException)"
+            cat "$OUT"
+            exit 1
+          fi
+          grep -Fq "google-services.json is missing for a signed release build (a release or Full keystore is configured)" "$OUT" || {
+            echo "::error::Full-only keystore failed without the expected Firebase guard reason"
+            cat "$OUT"
+            exit 1
+          }
+          rm -rf "$T"
+          echo "Full-only keystore refused missing google-services.json with expected reason"
+      - name: Prepare synthetic staging Firebase config
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config = {
+              "project_info": {"project_number": "100000000000", "project_id": "osra-synthetic-child"},
+              "client": [
+                  {
+                      "client_info": {
+                          "mobilesdk_app_id": "1:100000000000:android:0000000000000000000001",
+                          "android_client_info": {"package_name": "com.osratech.child"},
+                      },
+                      "oauth_client": [{"client_id": "synthetic-play", "client_type": 3}],
+                      "api_key": [{"current_key": "synthetic-api-key-not-a-secret"}],
+                  },
+                  {
+                      "client_info": {
+                          "mobilesdk_app_id": "1:100000000000:android:0000000000000000000002",
+                          "android_client_info": {"package_name": "com.osratech.child.full"},
+                      },
+                      "oauth_client": [{"client_id": "synthetic-full", "client_type": 3}],
+                      "api_key": [{"current_key": "synthetic-api-key-not-a-secret"}],
+                  },
+              ],
+          }
+          Path("app/google-services.json").write_text(json.dumps(config), encoding="utf-8")
+          print("Synthetic Child Firebase config written; no real configuration is used or uploaded")
+          PY
+      - name: Prove staging Child Full APK without publishing it
+        env:
+          CI_SYNTHETIC: "1"
+          API_BASE: https://api.staging.osratech.com
+          BUILD_NUMBER: ${{ github.run_number }}
+          OSRA_UPLOAD_KEYSTORE: ""
+          OSRA_UPLOAD_KEYSTORE_PASSWORD: ""
+          OSRA_UPLOAD_KEY_ALIAS: ""
+          OSRA_UPLOAD_KEY_PASSWORD: ""
+          OSRA_FULL_KEYSTORE: ""
+          OSRA_FULL_KEYSTORE_PASSWORD: ""
+          OSRA_FULL_KEY_ALIAS: ""
+          OSRA_FULL_KEY_PASSWORD: ""
+        run: bash ../../scripts/build-child-staging-apk.sh

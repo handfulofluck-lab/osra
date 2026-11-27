@@ -5369,7 +5369,7 @@ abstract class AppLocalizations {
   /// No description provided for @grantWebFilter.
   ///
   /// In en, this message translates to:
-  /// **'Web filter (VPN consent)'**
+  /// **'Web filter'**
   String get grantWebFilter;
 
   /// No description provided for @grantLocation.
@@ -6183,6 +6183,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Possible concern — automatic checks can be wrong.'**
   String get p15CanBeWrong;
+
+  /// No description provided for @p15PreviewLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the preview. Check your connection and try again.'**
+  String get p15PreviewLoadFailed;
 
   /// No description provided for @p15ActionsHeader.
   ///

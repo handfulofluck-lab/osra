@@ -300,7 +300,9 @@ void main() {
     final pill = find.byKey(const ValueKey('p12-not-blocked-pill'));
     expect(pill, findsOneWidget);
     expect(find.descendant(of: pill, matching: find.text('Not blocking yet')), findsOneWidget);
-    expect(find.textContaining('Web filter (VPN consent)'), findsOneWidget);
+    // U87 (#650): the fix bullet names the parent's choice, not our mechanism.
+    expect(find.text('• Web filter'), findsOneWidget);
+    expect(find.textContaining('VPN consent'), findsNothing);
   });
 
   testWidgets(

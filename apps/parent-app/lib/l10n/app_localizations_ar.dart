@@ -1079,7 +1079,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get tabScreenTime => 'وقت الشاشة';
 
   @override
-  String get tabWebFilter => 'تصفية الويب';
+  String get tabWebFilter => 'تصفية المواقع';
 
   @override
   String get tabRoutines => 'الروتين';
@@ -3407,7 +3407,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantDeviceAdmin => 'مسؤول الجهاز';
 
   @override
-  String get grantWebFilter => 'تصفية المواقع (موافقة VPN)';
+  String get grantWebFilter => 'تصفية المواقع';
 
   @override
   String get grantLocation => 'الموقع (السماح دائمًا)';
@@ -4083,6 +4083,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get p15CanBeWrong => 'مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.';
+
+  @override
+  String get p15PreviewLoadFailed =>
+      'تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.';
 
   @override
   String get p15ActionsHeader => 'ما يمكنك فعله';
