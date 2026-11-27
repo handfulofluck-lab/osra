@@ -74,11 +74,11 @@ class VpnAppPolicyTest {
     }
 
     @Test
-    fun `pause and routines still apply before a per-app allow`() {
-        // Mutant: allowing a VPN exception before checking the active pause or routine.
+    fun `routines still apply before a per-app allow while network-only pause leaves apps open (#1183)`() {
+        // Mutant: allowing a VPN exception before checking an active routine.
         val allowed = RuleSetDto(appRules = listOf(AppRuleDto(packageId = candidate, action = "allow")))
         assertEquals(
-            Decision.BLOCK,
+            Decision.ALLOW,
             engine.evaluate(allowed, candidate, noon, pausedInternet = true, declaresVpnService = { true }),
         )
         val routine = RoutineDto(

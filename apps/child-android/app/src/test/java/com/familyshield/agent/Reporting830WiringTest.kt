@@ -50,6 +50,18 @@ class Reporting830WiringTest {
         assertTrue(dispatcher.contains("type = \"lock_period\""))
     }
 
+    @Test
+    fun `SafeSearch rewrite logs only the normalized DNS host and decision`() {
+        val vpn = source("apps/child-android/app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt")
+        val rewrite = vpn.substringAfter("DnsFilterPolicy.Action.REWRITE -> {")
+            .substringBefore("rewrite(query, q, d.target!!)")
+        // Removing the diagnostic or logging the raw DNS question instead must fail this row.
+        assertTrue(rewrite.contains("if (d.reason == \"safesearch\")"))
+        assertTrue(rewrite.contains("val host = DnsFilterPolicy.normalize(q.name)"))
+        val logLines = rewrite.lineSequence().map(String::trim).filter { it.startsWith("Log.") }.toList()
+        assertTrue(logLines == listOf("Log.i(TAG, \"rewrite host=\$host decision=REWRITE\")"))
+    }
+
     /**
      * osra-security#39 S1: the collector that #830/#841 added is the one that has to honour the consent
      * pause itself. Every guard is pinned by name, and the two that write to disk before uploading are
