@@ -53,8 +53,17 @@ object RingPolicy {
  * be a location rather than a memory.
  */
 object LocatePolicy {
-    /** How long the agent waits for a fresh high-accuracy fix before falling back. */
+    /** Overall fresh-fix budget (kept at 30 s for compatibility with callers and tests). */
     const val FRESH_FIX_TIMEOUT_MS: Long = 30_000
+
+    /** Issue #1054 Stage 1: high-accuracy GPS/GNSS attempt before falling back to balanced accuracy. */
+    const val HIGH_ACCURACY_TIMEOUT_MS: Long = 15_000
+
+    /** Issue #1054 Stage 2: network/Wi-Fi/cell balanced-power fallback when GPS cannot lock indoors/locked. */
+    const val BALANCED_FALLBACK_TIMEOUT_MS: Long = 10_000
+
+    /** Issue #1054: bounded PARTIAL_WAKE_LOCK safety cap covering two-stage acquisition plus upload. */
+    const val WAKE_LOCK_TIMEOUT_MS: Long = 45_000
 
     /** A cached fix older than this is not reported for locate_now (the parent asked where the phone *is*). */
     const val MAX_CACHED_AGE_MS: Long = 5 * 60 * 1000

@@ -21,6 +21,8 @@ import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.security.EnforceabilityPolicy
 import com.familyshield.agent.services.AccessibilityMonitorService
+import com.familyshield.agent.services.LocateWakeLock
+import com.familyshield.agent.services.LocationFixFetcher
 import com.familyshield.agent.services.LocationService
 import com.familyshield.agent.services.LocationStartPolicy
 import com.familyshield.agent.sos.SosActivity
@@ -639,6 +641,9 @@ class CommandDispatcher @Inject constructor(
             )
             return CommandOutcome.Refused(reason)
         }
+        // Issue #1054: acquire a bounded PARTIAL_WAKE_LOCK synchronously before starting
+        // LocationService so Doze cannot suspend the CPU across the FCM/poll -> service handoff.
+        val wakeLockHeld = LocateWakeLock.acquire(context)
         return try {
             // NOTE: must be startForegroundService — LocationService calls startForeground() in
             // onStartCommand, and a plain startService() from the background (FCM/worker context)
@@ -647,14 +652,35 @@ class CommandDispatcher @Inject constructor(
                 context,
                 Intent(context, LocationService::class.java)
                     .setAction(LocationService.ACTION_PING_NOW)
-                    .putExtra(LocationService.EXTRA_COMMAND_ID, commandId),
+                    .putExtra(LocationService.EXTRA_COMMAND_ID, commandId)
+                    .putExtra(LocationService.EXTRA_HOLDS_WAKE_LOCK, wakeLockHeld),
             )
             CommandOutcome.Deferred
         } catch (e: Exception) {
-            // The OS refused the start after the grants looked right (API 31+ background-start
-            // restriction, or permission revoked in between). Say so rather than swallow it.
-            Log.w(TAG, "locate_now: the OS refused to start LocationService", e)
-            CommandOutcome.Refused("foreground_service_start_failed")
+            // Issue #1054: on API 31+ in background (locked/dozing phone), the OS can throw
+            // ForegroundServiceStartNotAllowedException / IllegalStateException even when the
+            // background location grant is held. Fall back to a direct one-shot fix on scope
+            // under the held PARTIAL_WAKE_LOCK rather than failing immediately.
+            Log.w(TAG, "locate_now: startForegroundService refused; running direct one-shot fallback", e)
+            try {
+                scope.launch {
+                    try {
+                        LocationFixFetcher.runDirectLocate(
+                            context = context,
+                            api = api,
+                            consentState = consent,
+                            onComplete = { fix, uploaded -> ackLocateNow(commandId, fix, uploaded) },
+                        )
+                    } finally {
+                        if (wakeLockHeld) LocateWakeLock.release()
+                    }
+                }
+                CommandOutcome.Deferred
+            } catch (launchError: Exception) {
+                if (wakeLockHeld) LocateWakeLock.release()
+                Log.w(TAG, "locate_now: direct one-shot fallback failed to launch", launchError)
+                CommandOutcome.Refused("foreground_service_start_failed")
+            }
         }
     }
 

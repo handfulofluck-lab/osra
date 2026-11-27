@@ -32,6 +32,8 @@ class FamilyShieldApp : Application() {
         val entry = EntryPointAccessors.fromApplication(this, WorkerEntryPoint::class.java)
         appScope.launch {
             if (entry.agentSettings().unlinkPending()) entry.deviceUnlinker().unlink()
+            // Issue #1054: proactively hydrate the FCM token at startup when DataStore holds none.
+            com.familyshield.agent.push.PushTokenHydrator.hydrateIfMissing(entry.agentSettings())
         }
     }
 }
