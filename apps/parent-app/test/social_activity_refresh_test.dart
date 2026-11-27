@@ -101,6 +101,14 @@ void main() {
     expect(
         api.calls('GET', '/v1/social/events'), hasLength(requestsBefore + 1));
     expect(find.text('Recent sender'), findsOneWidget);
+
+    // #1056: the wake also schedules the bounded count read, and a push that arrives while the app is
+    // foregrounded may leave the fallback poll running. Both have their own rows in
+    // alerts_badge_refresh_test.dart; here, stop the poll and let the bounded read fire before the test ends.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('returning to the foreground refreshes the open concerns',
@@ -118,6 +126,14 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(find.text('Recent sender'), findsOneWidget);
+
+    // #1056: the resume read has its own row in alerts_badge_refresh_test.dart; here it leaves a poll and a
+    // bounded read running, so take the app out of the foreground (stopping the poll) and let the bounded read
+    // fire before the test ends.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('opening a generic notification clears the stale concerns cache',
