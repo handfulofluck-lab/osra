@@ -1,7 +1,10 @@
 package com.familyshield.agent.commands
 
+import android.content.Context
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.WorkScheduler
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.familyshield.agent.network.DeviceRevoked
 import com.familyshield.agent.network.dto.DeviceCommandDto
 import com.familyshield.agent.network.DeviceUnlinker
@@ -25,6 +28,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class CommandPoller @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val api: ApiService,
     private val settings: AgentSettings,
     private val dispatcher: CommandDispatcher,
@@ -78,7 +82,13 @@ class CommandPoller @Inject constructor(
         // must never unlink a phone, so the decision reads the status and the body's error code.
         val code = DeviceRevoked.codeFromBody(runCatching { response.errorBody()?.string() }.getOrNull())
         if (!DeviceRevoked.isRevoked(response.code(), code)) return false
-        if (unlinkPolicy.onDeviceRevoked(System.currentTimeMillis())) unlinker.unlink()
+        if (unlinkPolicy.onDeviceRevoked(System.currentTimeMillis())) {
+            unlinker.unlink()
+            return true
+        }
+        // Issue #1073: the first answer is not a confirmation, so ask again shortly. Without this the second
+        // answer waits for the worker's ~15-minute clamp and the phone stays linked up to ~30 minutes.
+        WorkScheduler.pollCommandsSoon(context)
         return true
     }
 
