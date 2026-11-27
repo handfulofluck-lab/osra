@@ -133,6 +133,7 @@ class ConsentState @Inject constructor(
             resumedAtMs = System.currentTimeMillis()
             paused = false // after the time: a harvest seeing paused == false also sees the new resumedAtMs
         }
+        runCatching { com.familyshield.agent.vpn.FilterVpnService.onConsentChanged(next) }
         Log.i(TAG, if (next) "consent withdrawn — monitoring paused ($reason)" else "consent active — monitoring resumed ($reason)")
         listeners.forEach { it(next) }
         scope.launch { runCatching { settings.saveConsentState(next, pauseEpoch, resumedAtMs) } }
