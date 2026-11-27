@@ -12,7 +12,10 @@ import '../../providers/family_provider.dart';
 import '../../theme/app_tokens.dart';
 import 'app_alert_presentation.dart';
 
-const timeRequestActionsEnabled = bool.fromEnvironment('OSRA_UX_P20');
+const timeRequestActionsEnabled = bool.fromEnvironment(
+  'OSRA_UX_P20',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 const _actionSize = ButtonStyle(
   minimumSize: WidgetStatePropertyAll(Size(48, 48)),
 );
