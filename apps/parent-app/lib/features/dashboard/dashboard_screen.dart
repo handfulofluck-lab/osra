@@ -24,6 +24,7 @@ import '../auth/mfa_reset_approval_screen.dart';
 import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
 import '../map/child_location_view.dart';
+import '../settings/settings_screen.dart' show p22SettingsEnabledProvider;
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -63,8 +64,11 @@ class DashboardScreen extends ConsumerWidget {
             ),
           ),
           PopupMenuButton<String>(
+            // P-22: when the grouped Settings screen is on, one entry replaces the four links it now holds —
+            // otherwise the screen exists but nothing reaches it (Claude, 10:12 UAE: the flag gated nothing).
             onSelected: (v) => context.push(switch (v) {
               'family' => '/family',
+              'settings' => '/settings',
               'appearance' => '/settings/appearance',
               'mfa' => '/settings/mfa',
               'delete-account' => '/settings/delete-account',
@@ -72,10 +76,18 @@ class DashboardScreen extends ConsumerWidget {
             }),
             itemBuilder: (_) => [
               PopupMenuItem(value: 'family', child: Text(l10n.familyMembersMenu)),
-              PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
-              PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
-              PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
-              PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
+              if (ref.watch(p22SettingsEnabledProvider))
+                PopupMenuItem(
+                  key: const ValueKey('dashboardMenu-settings'),
+                  value: 'settings',
+                  child: Text(l10n.settingsTitle),
+                )
+              else ...[
+                PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
+                PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
+                PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
+                PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
+              ],
             ],
           ),
           IconButton(

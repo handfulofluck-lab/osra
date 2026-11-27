@@ -530,6 +530,96 @@ abstract class AppLocalizations {
   /// **'Digest preferences'**
   String get digestPreferencesMenu;
 
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @settingsGroupLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Language and appearance'**
+  String get settingsGroupLanguage;
+
+  /// No description provided for @settingsGroupSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get settingsGroupSecurity;
+
+  /// No description provided for @settingsGroupAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get settingsGroupAccount;
+
+  /// No description provided for @settingsSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get settingsSignOut;
+
+  /// No description provided for @settingsSignOutAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices'**
+  String get settingsSignOutAll;
+
+  /// No description provided for @settingsValueOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get settingsValueOn;
+
+  /// No description provided for @settingsValueOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get settingsValueOff;
+
+  /// No description provided for @settingsSignOutAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices?'**
+  String get settingsSignOutAllTitle;
+
+  /// No description provided for @settingsSignOutAllBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will have to sign in again on every device that uses your account, including this one.'**
+  String get settingsSignOutAllBody;
+
+  /// No description provided for @settingsSignOutAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get settingsSignOutAllConfirm;
+
+  /// No description provided for @settingsSecurityCardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish securing your account'**
+  String get settingsSecurityCardTitle;
+
+  /// No description provided for @settingsSecurityCardLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is off'**
+  String get settingsSecurityCardLine;
+
+  /// No description provided for @settingsSecurityCardButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get settingsSecurityCardButton;
+
+  /// No description provided for @settingsTimeZone.
+  ///
+  /// In en, this message translates to:
+  /// **'Time zone'**
+  String get settingsTimeZone;
+
   /// No description provided for @signOutTooltip.
   ///
   /// In en, this message translates to:

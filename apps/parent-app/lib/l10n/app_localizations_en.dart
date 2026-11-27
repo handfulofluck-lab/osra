@@ -252,6 +252,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get digestPreferencesMenu => 'Digest preferences';
 
   @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsGroupLanguage => 'Language and appearance';
+
+  @override
+  String get settingsGroupSecurity => 'Security';
+
+  @override
+  String get settingsGroupAccount => 'Account';
+
+  @override
+  String get settingsSignOut => 'Sign out';
+
+  @override
+  String get settingsSignOutAll => 'Sign out of all devices';
+
+  @override
+  String get settingsValueOn => 'On';
+
+  @override
+  String get settingsValueOff => 'Off';
+
+  @override
+  String get settingsSignOutAllTitle => 'Sign out of all devices?';
+
+  @override
+  String get settingsSignOutAllBody =>
+      'You will have to sign in again on every device that uses your account, including this one.';
+
+  @override
+  String get settingsSignOutAllConfirm => 'Sign out everywhere';
+
+  @override
+  String get settingsSecurityCardTitle => 'Finish securing your account';
+
+  @override
+  String get settingsSecurityCardLine => 'Two-step verification is off';
+
+  @override
+  String get settingsSecurityCardButton => 'Turn on';
+
+  @override
+  String get settingsTimeZone => 'Time zone';
+
+  @override
   String get signOutTooltip => 'Sign out';
 
   @override

@@ -23,6 +23,7 @@ import 'features/reports/reports_screen.dart';
 import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
 import 'features/settings/appearance_screen.dart';
+import 'features/settings/settings_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
 import 'features/settings/delete_account_screen.dart';
 import 'features/settings/mfa_settings_screen.dart';
@@ -113,6 +114,8 @@ final List<RouteBase> appRoutes = [
     ),
   ),
   GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
+  // P-22 (#1179): the grouped Settings list, behind `OSRA_UX_P22`.
+  GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
   GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
   GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
   GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
