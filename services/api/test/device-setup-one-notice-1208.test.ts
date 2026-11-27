@@ -4,7 +4,13 @@ import type { PushProvider } from "../src/lib/push/types.js";
 import { setPushProviders } from "../src/lib/push/notify.js";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { incompleteDedupeKey, legacyIncompleteDedupeKey } from "../src/lib/deviceSetup.js";
-import { completeDeviceSetupIfReady, evaluateDeviceSetupIncomplete } from "../src/lib/deviceSetupTransitions.js";
+import {
+  completeDeviceSetupIfReady,
+  evaluateDeviceSetupIncomplete,
+  SETUP_NOTICE_REPORT_WAIT_MS,
+  setupNoticeWaitKey,
+} from "../src/lib/deviceSetupTransitions.js";
+import { getRedis } from "../src/redis.js";
 import { alertsRoutes } from "../src/routes/alerts.js";
 import { buildApp, MockRedis, prismaMock, resetPrismaMock } from "./helpers.js";
 
@@ -38,6 +44,7 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
   const provider: PushProvider = { platform: "android", send };
   let alerts: Row[];
   let deviceRow: Record<string, unknown>;
+  let kv: Map<string, string>;
 
   const setupNotices = () => alerts.filter((a) =>
     a.dedupeKey === incompleteDedupeKey("dev-1") || a.dedupeKey === legacyIncompleteDedupeKey("dev-1", START));
@@ -65,6 +72,17 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     setPushProviders([provider]);
     send.mockClear();
     for (const redis of MockRedis.instances) redis.publish.mockClear();
+    // A small key-value store for the pending-notice wait key (SET NX EX, GET, DEL).
+    kv = new Map();
+    const redis = getRedis() as unknown as MockRedis;
+    redis.get.mockImplementation(async (key: string) => kv.get(key) ?? null);
+    redis.set.mockImplementation(async (...args: unknown[]) => {
+      const [key, value] = args as [string, string];
+      if (args.includes("NX") && kv.has(key)) return null;
+      kv.set(key, value);
+      return "OK";
+    });
+    redis.del.mockImplementation(async (...keys: string[]) => keys.filter((key) => kv.delete(key)).length);
     alerts = [];
     deviceRow = {
       id: "dev-1",
@@ -91,7 +109,7 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     // The Device row lock read (#1230) sees the committed completion state, not a caller's snapshot.
     prismaMock.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
       Array.from(strings ?? []).join("").includes("FOR NO KEY UPDATE")
-        ? [{ setupCompletedAt: deviceRow.setupCompletedAt, capabilities: deviceRow.capabilities }]
+        ? [{ setupCompletedAt: deviceRow.setupCompletedAt, capabilities: deviceRow.capabilities, capabilitiesReportedAt: deviceRow.capabilitiesReportedAt ?? null }]
         : []);
     prismaMock.alert.findFirst.mockImplementation(async ({ where }) =>
       alerts.find((a) =>
@@ -180,7 +198,12 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     expect(setupNotices()[0]).toEqual(expect.objectContaining({
       dedupeKey: incompleteDedupeKey("dev-1"),
       title: "Setup is not finished yet",
-      metadata: expect.objectContaining({ type: "setup_incomplete_permissions", missingGrants: "notification_listener" }),
+      metadata: expect.objectContaining({
+        type: "setup_incomplete_permissions",
+        missingGrants: "notification_listener",
+        pushDeliveryId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        pushDeliverySeq: 1,
+      }),
     }));
     expect(send).toHaveBeenCalledTimes(1);
     expect(deviceRow.setupCompletedAt).toBe(completedAt);
@@ -210,22 +233,102 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     expect(posted.statusCode).toBe(201);
     expect(setupNotices()).toHaveLength(1);
     expect(setupNotices()[0]).toEqual(expect.objectContaining({ id: "first-setup", acknowledged: false, title: "Setup is not finished yet" }));
+    // Codex 7204850059 point 2: the re-raised row carries its own server-issued delivery identity.
+    const meta = setupNotices()[0].metadata as Record<string, unknown>;
+    expect(meta.pushDeliveryId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(meta.pushDeliverySeq).toBe(1);
+    expect(meta.pushDeliveries).toEqual([expect.objectContaining({ id: meta.pushDeliveryId, seq: 1 })]);
     expect(prismaMock.alert.create).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledTimes(1);
     expect(deviceRow.setupCompletedAt).toBe(completedAt);
     await app.close();
   });
 
-  it("stale first-setup retry: a completed pairing with every required grant writes nothing", async () => {
+  it("upgrade after a pre-#1208 reminder under the legacy key: that row is raised again in place, no second row (Codex 7205450617 point 2)", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    alerts.push({
+      id: "legacy-first", childId: CHILD.id, deviceId: "dev-1", severity: "warning", category: "tamper",
+      title: "Phone setup needs attention", heldDuringSetup: false, attemptCount: 1, acknowledged: true,
+      dedupeKey: legacyIncompleteDedupeKey("dev-1", START), createdAt: new Date(START.getTime() + 1_000),
+      metadata: { type: "setup_incomplete", missing: ["location"], pairedAt: START.toISOString() },
+    });
+    const completedAt = new Date(START.getTime() + 5_000);
+    deviceRow.setupCompletedAt = completedAt;
+    deviceRow.capabilities = caps({ ...SEVEN, notification_listener: "missing" });
+
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(posted.statusCode).toBe(201);
+    expect(setupNotices()).toHaveLength(1);
+    expect(setupNotices()[0]).toEqual(expect.objectContaining({
+      id: "legacy-first",
+      dedupeKey: legacyIncompleteDedupeKey("dev-1", START),
+      acknowledged: false,
+      title: "Setup is not finished yet",
+    }));
+    expect((setupNotices()[0].metadata as Record<string, unknown>).pushDeliverySeq).toBe(1);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // A retry of the same upgrade notice is quiet: same row, no second push, completion kept.
+    const again = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(again.statusCode).toBe(200);
+    expect(setupNotices()).toHaveLength(1);
+    expect(setupNotices()[0].id).toBe("legacy-first");
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(deviceRow.setupCompletedAt).toBe(completedAt);
+    await app.close();
+  });
+
+  it("notice ahead of its telemetry: retryable until the report lands, then one upgrade notice (Codex 7204850059 point 1)", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    const completedAt = new Date(START.getTime() + 5_000);
+    deviceRow.setupCompletedAt = completedAt;
+    deviceRow.capabilities = caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"])));
+    deviceRow.capabilitiesReportedAt = new Date(Date.now() - 60_000);
+    const first = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(first.statusCode).toBe(409);
+    expect(first.json()).toEqual({ retry: "awaiting_report" });
+    expect(first.headers["retry-after"]).toBe("30");
+    expect(alerts).toHaveLength(0);
+    expect(send).not.toHaveBeenCalled();
+
+    // The telemetry reporting the missing grant is stored; the phone's retry is now the upgrade notice.
+    deviceRow.capabilities = caps({ ...SEVEN, notification_listener: "missing" });
+    deviceRow.capabilitiesReportedAt = new Date(Date.now() + 1_000);
+    const retried = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(retried.statusCode).toBe(201);
+    expect(setupNotices()).toHaveLength(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(deviceRow.setupCompletedAt).toBe(completedAt);
+    expect(kv.has(setupNoticeWaitKey("dev-1"))).toBe(false);
+    await app.close();
+  });
+
+  it("stale first-setup retry: retryable until a report shows every grant, then dropped for good", async () => {
     const app = await buildApp(alertsRoutes, "/v1/alerts");
     deviceRow.setupCompletedAt = new Date(START.getTime() + 5_000);
     deviceRow.capabilities = caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"])));
-    const { raw, headers } = phoneNotice();
-    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
+    deviceRow.capabilitiesReportedAt = new Date(Date.now() - 60_000);
+    expect((await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw })).statusCode).toBe(409);
+    deviceRow.capabilitiesReportedAt = new Date(Date.now() + 1_000); // a report after the notice: still all granted
+    const again = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ dropped: "setup_complete" });
+    expect(alerts).toHaveLength(0);
+    expect(send).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("no report within the wait: the notice is treated as stale and dropped", async () => {
+    const app = await buildApp(alertsRoutes, "/v1/alerts");
+    deviceRow.setupCompletedAt = new Date(START.getTime() + 5_000);
+    deviceRow.capabilities = caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"])));
+    deviceRow.capabilitiesReportedAt = new Date(Date.now() - 60 * 60_000);
+    kv.set(setupNoticeWaitKey("dev-1"), String(Date.now() - SETUP_NOTICE_REPORT_WAIT_MS - 1_000));
+    const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers: phoneNotice().headers, payload: phoneNotice().raw });
     expect(posted.statusCode).toBe(200);
     expect(posted.json()).toEqual({ dropped: "setup_complete" });
     expect(alerts).toHaveLength(0);
-    expect(send).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -240,11 +343,26 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
         update: vi.fn((...args: unknown[]) => (prismaMock.alert.update as (...a: unknown[]) => unknown)(...args)),
       },
     };
-    prismaMock.$transaction.mockImplementation(async (fn: (client: unknown) => Promise<unknown>) => {
-      const result = await fn(tx);
-      order.push("commit");
-      return result;
-    });
+    const notifyTx = {
+      parent: {
+        findMany: vi.fn((...args: unknown[]) => (prismaMock.parent.findMany as (...a: unknown[]) => unknown)(...args)),
+      },
+      parentPushToken: {
+        findMany: vi.fn((...args: unknown[]) => (prismaMock.parentPushToken.findMany as (...a: unknown[]) => unknown)(...args)),
+      },
+    };
+    prismaMock.$transaction.mockImplementation(
+      async (fn: (client: unknown) => Promise<unknown>, opts?: { isolationLevel?: string }) => {
+        if (opts?.isolationLevel === "RepeatableRead") {
+          // Post-commit push recipient snapshot (`notifyParentsOfAlert`): must only run after the setup notice committed.
+          expect(order).toContain("commit");
+          return fn(notifyTx);
+        }
+        const result = await fn(tx);
+        order.push("commit");
+        return result;
+      },
+    );
     send.mockImplementation(async () => { order.push("push"); return { ok: true }; });
     const { raw, headers } = phoneNotice();
     const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
@@ -316,8 +434,9 @@ describe("#1208 / osra-security#82: one setup notice per pairing, protection onl
     await completeDeviceSetupIfReady(transitionDevice(), caps(Object.fromEntries(FULL_STEPS.map((k) => [k, "granted"]))), new Date());
     const { raw, headers } = phoneNotice();
     const posted = await app.inject({ method: "POST", url: "/v1/alerts/internal", headers, payload: raw });
-    expect(posted.statusCode).toBe(200);
-    expect(posted.json()).toEqual({ dropped: "setup_complete" });
+    // No report has arrived since this notice was first seen, so the answer keeps it queued, never an alert.
+    expect(posted.statusCode).toBe(409);
+    expect(posted.json()).toEqual({ retry: "awaiting_report" });
     expect(setupNotices()).toHaveLength(0);
     expect(send).toHaveBeenCalledTimes(1); // the completion push only
     await app.close();

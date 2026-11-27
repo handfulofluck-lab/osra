@@ -14,7 +14,10 @@ import 'rules_editor_screen.dart' show RulesEditorScreen, kLegacyWebCategories;
 /// Defaults to `false` so the legacy `RulesEditorScreen` web-filter tab remains
 /// the fallback unless `--dart-define=OSRA_UX_P12=true` or a test overrides
 /// [p12WebFilterEnabledProvider].
-const bool kP12WebFilterDefault = bool.fromEnvironment('OSRA_UX_P12', defaultValue: false);
+const bool kP12WebFilterDefault = bool.fromEnvironment(
+  'OSRA_UX_P12',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 
 /// Feature switch for P-12 Web filter (#1179).
 final p12WebFilterEnabledProvider = Provider<bool>((ref) => kP12WebFilterDefault);

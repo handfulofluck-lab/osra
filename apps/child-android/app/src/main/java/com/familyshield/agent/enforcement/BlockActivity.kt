@@ -58,6 +58,7 @@ import com.familyshield.agent.sos.SosActivity
 import com.familyshield.agent.ui.block.BlockedAppCopy
 import com.familyshield.agent.ui.block.BlockedAppScreen
 import com.familyshield.agent.ui.block.StillOpenAppUi
+import com.familyshield.agent.ui.request.AskParentActivity
 import com.familyshield.agent.ui.theme.ChildUxFlags
 import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.vpn.FilterVpnService
@@ -180,8 +181,13 @@ class BlockActivity : ComponentActivity() {
                         val copy = buildC02Copy(appLabel, explanation)
                         BlockedAppScreen(
                             copy = copy,
+                            opensExternalAskScreen = explanation.canAskForMoreTime,
                             onPrimaryRequest = {
-                                sendChildRequest(session.requestAccessPackage(), explanation, request.reason)
+                                if (explanation.canAskForMoreTime) {
+                                    openAskParent()
+                                } else {
+                                    sendChildRequest(session.requestAccessPackage(), explanation, request.reason)
+                                }
                             },
                             onOpenAllowedApp = { pkg -> openStillOpenTarget(pkg) },
                             onCallParent = { openDialer() },
@@ -326,7 +332,13 @@ class BlockActivity : ComponentActivity() {
      */
     private fun reportBlockedAttempt(pkg: String, reason: String) {
         // Recovery has one incident alert from the VPN service, independent of app attempts.
+        // Issue #1174 / Ahmed acceptance (7200575366): no app_blocked alert before initial setup completes.
         if (reason == REASON_FILTER_LOST || consent.isPaused()) return
+        if (settings.isPairedSync()) {
+            val deviceId = settings.deviceIdSync()
+            com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(this, deviceId)
+            if (!com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(this, deviceId)) return
+        }
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
         val attempts = AttemptCounter.next(this, "app", pkg, day)
         val appLabelSnapshot = appLabel
@@ -426,18 +438,27 @@ class BlockActivity : ComponentActivity() {
         }
     }
 
+    /** C-03 (#1179, K31 #1196 finding 1): opens the dedicated Ask-a-parent screen for daily-limit time requests. */
+    private fun openAskParent() {
+        runCatching {
+            startActivity(AskParentActivity.intent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
     private fun formatDurationWords(totalMinutes: Int): String {
         val safe = totalMinutes.coerceAtLeast(0)
         val hours = safe / 60
         val mins = safe % 60
+        val hoursText = String.format(java.util.Locale.US, "%d", hours)
+        val minsText = String.format(java.util.Locale.US, "%d", mins)
         return when {
             hours > 0 && mins > 0 -> getString(
                 R.string.c02_hours_and_minutes,
-                resources.getQuantityString(R.plurals.c02_hours, hours, hours),
-                resources.getQuantityString(R.plurals.c02_minutes, mins, mins),
+                resources.getQuantityString(R.plurals.c02_hours, hours, hoursText),
+                resources.getQuantityString(R.plurals.c02_minutes, mins, minsText),
             )
-            hours > 0 -> resources.getQuantityString(R.plurals.c02_hours, hours, hours)
-            else -> resources.getQuantityString(R.plurals.c02_minutes, mins, mins)
+            hours > 0 -> resources.getQuantityString(R.plurals.c02_hours, hours, hoursText)
+            else -> resources.getQuantityString(R.plurals.c02_minutes, mins, minsText)
         }
     }
 

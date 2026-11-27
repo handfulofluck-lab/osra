@@ -54,7 +54,10 @@ const kAppLimitChoices = [15, 30, 60, 120];
 /// `--dart-define=OSRA_UX_P09=true`, or override [p09AppsEnabledProvider] in tests. When it is false the
 /// list keeps the switch row and the choice sheet it shipped with, so a screen can be turned off on the
 /// morning of a test without a revert.
-const bool kEnableUxP09Apps = bool.fromEnvironment('OSRA_UX_P09', defaultValue: false);
+const bool kEnableUxP09Apps = bool.fromEnvironment(
+  'OSRA_UX_P09',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 
 final p09AppsEnabledProvider = Provider<bool>((ref) => kEnableUxP09Apps);
 

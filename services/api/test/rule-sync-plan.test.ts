@@ -33,6 +33,13 @@ describe("agent rule sync with no enforceable plan", () => {
     }
   });
 
+  it("preserves an empty or omitted socialMonitoring map as {} without backfilling keys (#1024)", () => {
+    expect(toApiRuleSet({ id: "rs-1", childId: "child-1", socialMonitoring: {} }).socialMonitoring).toEqual({});
+    expect(toApiRuleSet({ id: "rs-2", childId: "child-1", socialMonitoring: undefined }).socialMonitoring).toEqual({});
+    expect(toApiRuleSet({ id: "rs-3", childId: "child-1", socialMonitoring: { whatsapp: false } }).socialMonitoring)
+      .toEqual({ whatsapp: false });
+  });
+
   it("maps legacy x to canonical twitter when twitter is absent without overwriting explicit twitter (#1036)", () => {
     expect(toApiRuleSet({ id: "rs-1", childId: "child-1", socialMonitoring: { x: false } }).socialMonitoring.twitter).toBe(false);
     expect(toApiRuleSet({ id: "rs-2", childId: "child-1", socialMonitoring: { x: true } }).socialMonitoring.twitter).toBe(true);

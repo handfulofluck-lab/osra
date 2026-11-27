@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_RULESET, defaultRuleSetRow } from "../src/lib/defaultRules.js";
 import { stagingQaDeadline, stagingQaModel } from "../src/lib/stagingQaModel.js";
 
 const now = Date.parse("2026-11-21T03:35:00Z");
@@ -113,6 +114,21 @@ describe("staging model request budget", () => {
       expect(stagingQaDeadline(qa, now - 1, now)).toBeLessThan(now);
     }
     expect(stagingQaDeadline({ ...qa, expiresAt: now + 100 }, Infinity, now)).toBe(now + 100);
+  });
+});
+
+describe("socialMonitoring missing-key contract (#1024)", () => {
+  it("fails closed on missing keys ({}) while server-default (#1142) and explicit true enable staging cross-app mode", () => {
+    expect(DEFAULT_RULESET.socialMonitoring.whatsapp).toBe(true);
+    const row = defaultRuleSetRow(paired.childId);
+    expect(row.socialMonitoring.whatsapp).toBe(true);
+
+    const crossAppEnv = { ...env, OSRA_STAGING_QA_ANDROID_SOURCES: "1", OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: "1" };
+    // Missing key (empty map) still fails closed on the staging private-analyzer gate.
+    expect(stagingQaModel({ ...capture, socialMonitoring: {} }, crossAppEnv, now)).toBeNull();
+    // Server-default map (#1142) and explicit true both enable the staging gate for that app.
+    expect(stagingQaModel({ ...capture, socialMonitoring: row.socialMonitoring }, crossAppEnv, now)).not.toBeNull();
+    expect(stagingQaModel({ ...capture, socialMonitoring: { whatsapp: true } }, crossAppEnv, now)).not.toBeNull();
   });
 });
 

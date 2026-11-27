@@ -100,6 +100,7 @@ fun BlockedAppScreen(
     onCallParent: () -> Unit,
     onSendSos: () -> Unit,
     onExitHome: () -> Unit,
+    opensExternalAskScreen: Boolean = false,
 ) {
     val palette = OsraTheme.LocalOsraPalette.current
     val radii = OsraTheme.LocalOsraRadii.current
@@ -328,7 +329,9 @@ fun BlockedAppScreen(
                         Button(
                             onClick = {
                                 onPrimaryRequest()
-                                requestSent = true
+                                if (!opensExternalAskScreen) {
+                                    requestSent = true
+                                }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
