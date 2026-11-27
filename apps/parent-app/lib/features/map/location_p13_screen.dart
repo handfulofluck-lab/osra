@@ -28,7 +28,7 @@ import 'family_map_screen.dart'
 /// falls back to the legacy map view.
 const bool kEnableUxP13Location = bool.fromEnvironment(
   'OSRA_UX_P13',
-  defaultValue: false,
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
 );
 
 final p13LocationEnabledProvider = Provider<bool>(
