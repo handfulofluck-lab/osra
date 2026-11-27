@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
 import '../../api/permission_errors.dart';
+import '../../core/command_in_flight.dart';
 import '../../core/digits.dart';
 import '../../core/ltr_isolate.dart';
 import '../../widgets/error_retry_view.dart';
@@ -839,8 +840,19 @@ class _WindDownCard extends ConsumerWidget {
 /// reason}` instead of queueing them — a `locate_now` the phone's last
 /// telemetry says it cannot answer. Reporting "queued" there would be the same
 /// silent failure the refusal exists to remove, so the reason is shown instead.
-Future<void> _sendCommand(
-    BuildContext context, WidgetRef ref, Device device, String command) async {
+Future<void> _sendCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
+  // PA06 (#738): the same command tapped twice is one intent, so the second tap while the first POST is
+  // still outstanding sends nothing. The guard is keyed by device and command, not device alone — a fast
+  // lock then unlock is two intents and must reach the child as two.
+  if (!beginCommandSend(device.id, command)) return;
+  try {
+    await _postCommand(context, ref, device, command);
+  } finally {
+    endCommandSend(device.id, command);
+  }
+}
+
+Future<void> _postCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
   final l10n = context.l10n;
   try {
     final response = await ref
