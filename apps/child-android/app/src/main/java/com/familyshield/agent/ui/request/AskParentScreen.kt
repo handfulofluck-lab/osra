@@ -1,12 +1,10 @@
 package com.familyshield.agent.ui.request
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,13 +12,17 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,34 +30,46 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
+import com.familyshield.agent.R
 import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.ui.theme.OsraTokens
 
 /** One selectable duration tile on C-03 (+15 min or +30 min). */
 data class AskDurationOptionUi(
     val minutes: Int,
-    val eyebrow: String,
     val amountLabel: String,
     val previewSentence: String,
 )
+
+/** U84 (#650): pure visual and TalkBack-semantics contract for a C-03 duration chip. */
+internal data class DurationTilePresentation(
+    val showCheckIcon: Boolean,
+    val announceSelected: Boolean,
+)
+
+internal fun durationTilePresentation(selected: Boolean): DurationTilePresentation =
+    DurationTilePresentation(
+        showCheckIcon = selected,
+        announceSelected = selected,
+    )
 
 /** Localised copy for C-03 Ask a parent (#1179). Every string is resolved from XML resources. */
 data class AskParentCopy(
     val title: String,
     val closeLabel: String,
     val questionLabel: String,
-    val selectedBadge: String,
     val options: List<AskDurationOptionUi>,
     val previewEyebrow: String,
     val goesToLine: String,
@@ -241,14 +255,15 @@ fun AskParentScreen(
                         // Big selectable tiles (+15 min, +30 min; stacks cleanly at 320px/200%).
                         if (compact) {
                             Column(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .selectableGroup(),
                                 verticalArrangement = Arrangement.spacedBy(spaces.sm),
                             ) {
                                 copy.options.forEach { option ->
                                     DurationTile(
                                         option = option,
                                         selected = option.minutes == selectedMinutes,
-                                        selectedBadge = copy.selectedBadge,
                                         shape = cardShape,
                                         modifier = Modifier.fillMaxWidth(),
                                         onClick = { selectedMinutes = option.minutes },
@@ -257,14 +272,15 @@ fun AskParentScreen(
                             }
                         } else {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .selectableGroup(),
                                 horizontalArrangement = Arrangement.spacedBy(spaces.md),
                             ) {
                                 copy.options.forEach { option ->
                                     DurationTile(
                                         option = option,
                                         selected = option.minutes == selectedMinutes,
-                                        selectedBadge = copy.selectedBadge,
                                         shape = cardShape,
                                         modifier = Modifier.weight(1f),
                                         onClick = { selectedMinutes = option.minutes },
@@ -387,13 +403,13 @@ fun AskParentScreen(
 private fun DurationTile(
     option: AskDurationOptionUi,
     selected: Boolean,
-    selectedBadge: String,
     shape: RoundedCornerShape,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     val palette = OsraTheme.LocalOsraPalette.current
     val spaces = OsraTokens.spaces
+    val presentation = durationTilePresentation(selected)
     val border = if (selected) {
         BorderStroke(2.dp, palette.primary)
     } else {
@@ -402,27 +418,32 @@ private fun DurationTile(
 
     Surface(
         modifier = modifier
-            .heightIn(min = 84.dp)
+            .heightIn(min = 68.dp)
             .clip(shape)
-            .clickable(onClick = onClick),
+            .selectable(
+                selected = presentation.announceSelected,
+                role = Role.RadioButton,
+                onClick = onClick,
+            ),
         shape = shape,
         color = if (selected) palette.tint else palette.card,
         border = border,
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(spaces.lg),
-            verticalArrangement = Arrangement.spacedBy(spaces.xs),
+            horizontalArrangement = Arrangement.spacedBy(spaces.sm, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = if (selected) selectedBadge else option.eyebrow,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    textDirection = TextDirection.Content,
-                ),
-                color = if (selected) palette.primary else palette.muted,
-            )
+            if (presentation.showCheckIcon) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_check_24),
+                    contentDescription = null,
+                    tint = palette.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
             Text(
                 text = option.amountLabel,
                 style = MaterialTheme.typography.titleLarge.copy(

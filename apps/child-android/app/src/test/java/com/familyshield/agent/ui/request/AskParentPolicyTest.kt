@@ -135,6 +135,33 @@ class AskParentPolicyTest {
         assertTrue(arStrings.contains("سيصل طلبك إلى %1\$s"))
         assertTrue(arStrings.contains("بانتظار الرد"))
         assertTrue(arStrings.contains("إرسال الطلب"))
+
+        // U84 (#650): small chip labels ("Selected", "A little more", "More time") removed in both locales;
+        // chosen chip uses outline/fill + check icon + TalkBack selected semantics.
+        for (removedKey in listOf("c03_selected_badge", "c03_option_15_eyebrow", "c03_option_30_eyebrow")) {
+            assertFalse("U84: EN strings must remove unused $removedKey", enStrings.contains("name=\"$removedKey\""))
+            assertFalse("U84: AR strings must remove unused $removedKey", arStrings.contains("name=\"$removedKey\""))
+        }
+        assertTrue("U84: check icon drawable must exist", File(root, "res/drawable/ic_check_24.xml").isFile)
+        val tileFn = screen.substringAfter("private fun DurationTile(")
+        assertTrue("U84: DurationTile must use durationTilePresentation(selected)", tileFn.contains("durationTilePresentation(selected)"))
+        assertTrue("U84: DurationTile must use Modifier.selectable for TalkBack", tileFn.contains(".selectable("))
+        assertTrue("U84: DurationTile must show ic_check_24 when selected", tileFn.contains("R.drawable.ic_check_24"))
+        assertTrue("U84: check icon must be decorative (contentDescription = null)", tileFn.contains("contentDescription = null"))
+        assertFalse("U84: DurationTile must not render selectedBadge or eyebrow text", tileFn.contains("selectedBadge") || tileFn.contains("eyebrow"))
+        assertTrue("U84: options group must use selectableGroup()", screen.contains(".selectableGroup()"))
+    }
+
+    @Test
+    fun `U84 durationTilePresentation toggles check icon and TalkBack selected semantics together`() {
+        assertEquals(
+            DurationTilePresentation(showCheckIcon = true, announceSelected = true),
+            durationTilePresentation(selected = true),
+        )
+        assertEquals(
+            DurationTilePresentation(showCheckIcon = false, announceSelected = false),
+            durationTilePresentation(selected = false),
+        )
     }
 
     private fun findAppSrcRoot(): File {
