@@ -62,6 +62,19 @@ final class DeviceRevocationTests: XCTestCase {
         XCTAssertEqual(shieldsCleared, 0, file: file, line: line)
     }
 
+    func testUnpairAndANewPairingClearBothCommandStores() {
+        // osra-security#93: a Lock or Pause from the old relationship must not survive it.
+        let platformClearAll = ShieldSet.clearAllStores
+        defer { ShieldSet.clearAllStores = platformClearAll }
+        var cleared = 0
+        ShieldSet.clearAllStores = { cleared += 1 }
+        pairWithRules()
+        DeviceRevocation.unpair()
+        XCTAssertEqual(cleared, 1, "revocation clears the Lock and Pause stores")
+        XCTAssertTrue(AgentIdentityStore.saveNewPairing(identity))
+        XCTAssertEqual(cleared, 2, "a new pairing clears them too")
+    }
+
     func testOnlyTheServersDeviceRevokedAnswerCounts() {
         XCTAssertTrue(DeviceRevocation.isRevoked(status: 401, body: json(["error": "device_revoked"])))
         XCTAssertFalse(DeviceRevocation.isRevoked(status: 401, body: json(["error": "session_revoked"])))

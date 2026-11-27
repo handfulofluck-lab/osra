@@ -195,6 +195,8 @@ public final class ScreenTimeController {
         ManagedSettingsStore(named: Self.rulesStoreName).clearAllSettings()
         // Consent withdrawn stops every enforcement, the groups' shields included (the groups stay saved).
         ManagedSettingsStore(named: Self.groupsStoreName).clearAllSettings()
+        // osra-security#93: and the parent's Lock and Pause, which live in their own stores.
+        ShieldSet.clearAllStores()
         RuleStore.recordUnscheduled([])
     }
 

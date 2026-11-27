@@ -45,11 +45,15 @@ final class CapabilityReportTests: XCTestCase {
         XCTAssertEqual(on["screen_time"], "ready")
         XCTAssertEqual(on["web_filter"], "degraded")
         XCTAssertEqual(on["location"], "ready")
-        for key in ["lock_screen", "pause_screen", "pause_internet", "uninstall_guard", "notification_scan", "call_sms_log"] {
+        for key in ["uninstall_guard", "notification_scan", "call_sms_log"] {
             XCTAssertEqual(on[key], "not_supported", key)
+        }
+        for key in ["lock_screen", "pause_screen", "pause_internet"] {
+            XCTAssertEqual(on[key], "ready", key)
         }
         let off = try XCTUnwrap(report(screenTime: .notDetermined, location: .whileInUse).json["features"] as? [String: String])
         XCTAssertEqual(off["app_blocking"], "unavailable")
+        XCTAssertEqual(off["lock_screen"], "unavailable")
         XCTAssertEqual(off["location"], "degraded")
         XCTAssertEqual(try XCTUnwrap(report(location: .noAccess).json["features"] as? [String: String])["location"], "unavailable")
     }

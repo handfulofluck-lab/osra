@@ -33,10 +33,20 @@ describe("ADR-0034 A1 — the not_supported table", () => {
     expect(isNotSupported("child-android", "full", "notification_scan")).toBe(false);
   });
 
-  it("iOS cannot lock, pause, uninstall-guard or read calls, in every flavour", () => {
+  it("iOS cannot uninstall-guard or read calls, in every flavour", () => {
     for (const flavour of ["dev", "testflight", "appstore"]) {
-      for (const feature of ["lock_screen", "pause_screen", "pause_internet", "uninstall_guard", "notification_scan", "call_sms_log"] as const) {
+      for (const feature of ["uninstall_guard", "notification_scan", "call_sms_log"] as const) {
         expect(isNotSupported("child-ios", flavour, feature), `child-ios/${flavour} ${feature}`).toBe(true);
+      }
+    }
+  });
+
+  // #1089: the iPhone enforces Lock, Pause and Pause internet through Screen Time stores, so none of the three
+  // is a "cannot" any more. A row that still said so would grey out a control the phone now honours.
+  it("iOS can lock, pause and pause the internet since #1089", () => {
+    for (const flavour of ["dev", "testflight", "appstore"]) {
+      for (const feature of ["lock_screen", "pause_screen", "pause_internet"] as const) {
+        expect(isNotSupported("child-ios", flavour, feature), `child-ios/${flavour} ${feature}`).toBe(false);
       }
     }
   });

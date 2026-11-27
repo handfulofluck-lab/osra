@@ -33,10 +33,13 @@ const NOT_SUPPORTED: Record<CapabilityApp, Partial<Record<CapabilityFlavour, rea
   },
   // A6: no public iOS API for any of these. `notification_scan` and `call_sms_log` are Android words here
   // too — iOS has silent push, so notification access is not a grant it asks for.
+  // A6: commands no feature describes that a build still cannot run. Since #1089 the iPhone runs `lock`,
+  // `unlock`, `pause`, `resume` and the internet pair through Screen Time stores, so only `ring` has no
+  // implementation there (#750 carries it).
   "child-ios": {
-    dev: ["lock_screen", "pause_screen", "pause_internet", "uninstall_guard", "notification_scan", "call_sms_log"],
-    testflight: ["lock_screen", "pause_screen", "pause_internet", "uninstall_guard", "notification_scan", "call_sms_log"],
-    appstore: ["lock_screen", "pause_screen", "pause_internet", "uninstall_guard", "notification_scan", "call_sms_log"],
+    dev: ["uninstall_guard", "notification_scan", "call_sms_log"],
+    testflight: ["uninstall_guard", "notification_scan", "call_sms_log"],
+    appstore: ["uninstall_guard", "notification_scan", "call_sms_log"],
   },
   // The desktop agent runs the Windows web filter proxy; it cannot lock a phone's screen, and it has no
   // call or SMS log at all. Filled in when roadmap 5.4 has a build to name; an empty row is the honest
@@ -46,12 +49,13 @@ const NOT_SUPPORTED: Record<CapabilityApp, Partial<Record<CapabilityFlavour, rea
 };
 
 /**
- * A6: commands no feature describes that a build still cannot run. `lock`, `unlock`, `ring` and
- * `pause_internet` to an iPhone are recorded failed at once; `lock` and `pause_internet` come through
- * their features above, and these two have no feature to carry them.
+ * A6: commands no feature describes that a build still cannot run. Before #1089 `lock`, `unlock`, `ring` and
+ * `pause_internet` to an iPhone were recorded failed at once; the lock, pause and internet commands are now
+ * carried by their features above and enforced by the agent's Screen Time stores, so only `ring` is left.
  */
 const NOT_SUPPORTED_COMMANDS: Partial<Record<CapabilityApp, readonly string[]>> = {
-  "child-ios": ["unlock", "ring"],
+  // #1089: `unlock` is enforceable now (it clears the lock store). `ring` is not — #750 carries it.
+  "child-ios": ["ring"],
 };
 
 /** True when this app cannot run [command] at all, whatever its features say (A6). */

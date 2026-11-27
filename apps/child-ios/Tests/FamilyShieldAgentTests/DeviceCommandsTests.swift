@@ -40,7 +40,14 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertEqual(CommandAction.forType("rules_updated"), .syncRules)
         XCTAssertEqual(CommandAction.forType("consent_revoked"), .syncRules)
         XCTAssertEqual(CommandAction.forType("consent_granted"), .syncRules)
-        for type in ["lock", "unlock", "ring", "pause_internet", "show_reset_code", "something_new"] {
+        // #1089: the device lock and the internet pause are Screen Time stores on iOS now.
+        XCTAssertEqual(CommandAction.forType("lock"), .shield(.lock))
+        XCTAssertEqual(CommandAction.forType("pause"), .shield(.lock), "pause shares the lock store")
+        XCTAssertEqual(CommandAction.forType("unlock"), .unshield(.lock))
+        XCTAssertEqual(CommandAction.forType("resume"), .unshield(.lock))
+        XCTAssertEqual(CommandAction.forType("pause_internet"), .shield(.internet))
+        XCTAssertEqual(CommandAction.forType("resume_internet"), .unshield(.internet))
+        for type in ["ring", "stop_ring", "show_reset_code", "something_new"] {
             XCTAssertEqual(CommandAction.forType(type), .unsupported, type)
         }
     }
@@ -52,7 +59,7 @@ final class DeviceCommandsTests: XCTestCase {
         StubProtocol.responder = { request in
             if request.url?.path.hasSuffix("/commands") == true {
                 return (200, self.json([["id": "c1", "type": "rules_updated"], ["id": "c2", "type": "rules_updated"],
-                                        ["id": "c3", "type": "lock"]]))
+                                        ["id": "c3", "type": "ring"]]))
             }
             return (200, self.json(["command": [:]]))
         }
@@ -63,7 +70,7 @@ final class DeviceCommandsTests: XCTestCase {
         }
         XCTAssertEqual(syncs, 1, "two rules_updated in one drain cost one fetch")
         XCTAssertEqual(result.handled, ["rules_updated", "rules_updated"])
-        XCTAssertEqual(result.refused, ["lock"])
+        XCTAssertEqual(result.refused, ["ring"])
 
         let poll = StubProtocol.requests.first?.request
         XCTAssertEqual(poll?.url?.path, "/v1/devices/dev-1/commands")
@@ -74,8 +81,57 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertEqual(acks.count, 3, "every command is acked")
         XCTAssertEqual(acks.map { $0["status"] as? String }, ["ok", "ok", "failed"])
         XCTAssertEqual((acks[2]["detail"] as? [String: String])?["reason"], "not_supported",
-                       "a parent sees why the iPhone did not lock, not a silent delivered")
+                       "a parent sees why the iPhone did not ring, not a silent delivered")
         XCTAssertEqual(StubProtocol.requests[3].request.url?.path, "/v1/devices/dev-1/commands/c3/ack")
+    }
+
+    // #1089 recovery: a Lock must never shield OSRA Kids itself. A force-quit stops background delivery, so
+    // the child has to be able to reopen OSRA to let the parent's Unlock through. Phone stays reachable too.
+    func testALockKeepsOSRAAndPhoneOpenable() {
+        let allowed = ShieldSet.alwaysAllowedBundleIdentifiers
+        XCTAssertTrue(allowed.contains("com.osratech.child"))
+        XCTAssertTrue(allowed.contains("com.apple.mobilephone"))
+        XCTAssertEqual(Set(allowed).count, allowed.count, "a bundle id appears once")
+    }
+
+    // #1089: a lock reaches a real Screen Time store, and a store that did not take the policy is acked
+    // failed with its reason — the parent sees why the phone did not lock.
+    func testALockAndAPauseInternetAckTheStoresOutcome() async {
+        pair()
+        StubProtocol.responder = { request in
+            request.url?.path.hasSuffix("/commands") == true
+                ? (200, self.json([["id": "c1", "type": "lock"],
+                                   ["id": "c2", "type": "pause_internet"],
+                                   ["id": "c3", "type": "unlock"]]))
+                : (200, self.json([:]))
+        }
+        let shield = FakeShield(outcomes: [.applied, .failed("shield_not_applied"), .cleared])
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                                   shield: shield) { .notPaired }
+
+        XCTAssertEqual(result.handled, ["lock", "pause_internet", "unlock"])
+        XCTAssertEqual(shield.calls, ["shield lock", "shield internet", "unshield lock"])
+        let acks = ackBodies()
+        XCTAssertEqual(acks.map { $0["status"] as? String }, ["ok", "failed", "ok"])
+        XCTAssertEqual((acks[1]["detail"] as? [String: String])?["reason"], "shield_not_applied",
+                       "a store that did not take the shield is never a silent success")
+        XCTAssertNil(acks[0]["detail"], "a lock that took carries no failure detail")
+    }
+
+    func testALockWithoutThePhoneExemptionAcksOkWithANote() async {
+        pair()
+        StubProtocol.responder = { request in
+            request.url?.path.hasSuffix("/commands") == true
+                ? (200, self.json([["id": "c1", "type": "lock"]])) : (200, self.json([:]))
+        }
+        let shield = FakeShield(outcomes: [.appliedWithNote("phone_exception_missing")])
+        _ = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session),
+                                          shield: shield) { .notPaired }
+
+        let ack = ackBodies().first
+        XCTAssertEqual(ack?["status"] as? String, "ok", "the lock took, so the parent sees it as locked")
+        XCTAssertEqual((ack?["detail"] as? [String: String])?["note"], "phone_exception_missing",
+                       "a missing Phone exemption is reported, never hidden behind a plain ok (#1275)")
     }
 
     func testAFailedSyncIsAckedFailed() async {
@@ -253,5 +309,23 @@ final class DeviceCommandsTests: XCTestCase {
 
     func testTheWakeDeadlineIsUnderIOSsThirtySeconds() {
         XCTAssertLessThan(CommandDrainer.wakeDeadlineSeconds, 30)
+    }
+}
+
+/// #1089: records the store calls the drain made and replays the outcomes the test asked for, in order.
+final class FakeShield: DeviceShielding, @unchecked Sendable {
+    private(set) var calls: [String] = []
+    private let outcomes: [ShieldOutcome]
+
+    init(outcomes: [ShieldOutcome]) { self.outcomes = outcomes }
+
+    func shield(_ set: ShieldSet) async -> ShieldOutcome {
+        calls.append("shield \(set == .lock ? "lock" : "internet")")
+        return outcomes.count >= calls.count ? outcomes[calls.count - 1] : .applied
+    }
+
+    func unshield(_ set: ShieldSet) async -> ShieldOutcome {
+        calls.append("unshield \(set == .lock ? "lock" : "internet")")
+        return outcomes.count >= calls.count ? outcomes[calls.count - 1] : .cleared
     }
 }

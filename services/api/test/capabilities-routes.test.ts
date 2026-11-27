@@ -117,7 +117,7 @@ describe("ADR-0034 claim 9 — a bad report costs the field, not the upload", ()
 describe("ADR-0034 claim 13 — a command the build cannot run is failed, not queued", () => {
   beforeEach(() => resetPrismaMock());
 
-  it("a lock to an iPhone is recorded failed with not_supported, whatever the report's age", async () => {
+  it("a ring to an iPhone is recorded failed with not_supported, whatever the report's age", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({
       ...DEVICE,
@@ -130,13 +130,13 @@ describe("ADR-0034 claim 13 — a command the build cannot run is failed, not qu
       method: "POST",
       url: "/v1/devices/dev-1/command",
       headers: authHeader(app),
-      payload: { command: "lock" },
+      payload: { command: "ring" },
     });
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ published: false, status: "failed", reason: "not_supported" });
     expect(prismaMock.deviceCommand.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: "lock", status: "failed" }) }),
+      expect.objectContaining({ data: expect.objectContaining({ type: "ring", status: "failed" }) }),
     );
   });
 
@@ -247,7 +247,29 @@ describe("ADR-0034 A1/A6/decision 3 — verifier rows (#527)", () => {
     expect(written.capabilities).toMatchObject({ client: { app: "child-android" } });
   });
 
-  for (const command of ["unlock", "ring"]) {
+  // #1089: lock and unlock now run on iPhone through ManagedSettings shields; ring is still refused.
+  for (const command of ["unlock", "lock"]) {
+    it(`#1089 — ${command} to an iPhone is queued, whatever the report's age`, async () => {
+      const app = await buildApp(deviceRoutes, "/v1/devices");
+      prismaMock.device.findUnique.mockResolvedValue({
+        ...DEVICE,
+        platform: "ios",
+        capabilities: capabilities({ client: { app: "child-ios", version: "0.1.0", build: 1, flavour: "testflight" }, features: {} }),
+        capabilitiesReportedAt: new Date(Date.now() - 10 * 60 * 60 * 1000),
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/command",
+        headers: authHeader(app),
+        payload: { command },
+      });
+
+      expect(res.json()).toMatchObject({ published: true, status: "pending" });
+    });
+  }
+
+  for (const command of ["ring"]) {
     it(`A6 — ${command} to an iPhone is failed with not_supported at once, whatever the report's age`, async () => {
       const app = await buildApp(deviceRoutes, "/v1/devices");
       prismaMock.device.findUnique.mockResolvedValue({
