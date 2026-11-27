@@ -22,7 +22,7 @@ const RUN_MARKER = process.env.OSRA_TEST_RUN_MARKER ?? "";
 // What IntegrationTests/LiveAPITests.swift case 6 expects to sync. Keep the two in step.
 const LIVE_RULES = {
   screenTime: {
-    dailyLimitMinutes: 120, weekendLimitMinutes: 240, bedtimeStart: "21:30", bedtimeEnd: "06:45",
+    dailyLimitMinutes: 120, weekendLimitMinutes: 240, bedtimeEnabled: true, bedtimeStart: "21:30", bedtimeEnd: "06:45",
     schoolHours: { start: "08:00", end: "15:00", days: [1, 2, 3, 4, 5] },
   },
   webFilter: { blockedCategories: ["gambling"], allowedDomains: [], blockedDomains: ["blocked.example"], safeSearchEnforced: true },

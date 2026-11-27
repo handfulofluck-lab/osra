@@ -409,6 +409,8 @@ model RuleSet {
   weekendLimitMinutes Int      @default(300)
   bedtimeStart        String   @default("21:00")
   bedtimeEnd          String   @default("07:00")
+  /// #1172: Bedtime only applies when the parent switched it on. Rows from before the column keep it on.
+  bedtimeEnabled      Boolean  @default(true)
   schoolHoursStart    String   @default("08:00")
   schoolHoursEnd      String   @default("15:00")
   schoolDays          Int[]    @default([1,2,3,4,5])

@@ -25,6 +25,8 @@ const ScreenTimeSchema = z.object({
   weekendLimitMinutes: z.number().int().min(0).max(MINUTES_PER_DAY),
   bedtimeStart: z.string().regex(HHMM),
   bedtimeEnd: z.string().regex(HHMM),
+  // #1172: optional so an older parent app that sends a full ruleset without it leaves the stored value alone.
+  bedtimeEnabled: z.boolean().optional(),
   schoolHours: z.object({
     start: z.string().regex(HHMM),
     end: z.string().regex(HHMM),
@@ -136,6 +138,7 @@ function toRow(data: z.infer<typeof RuleSetInputSchema>, childId: string) {
     weekendLimitMinutes: data.screenTime.weekendLimitMinutes,
     bedtimeStart: data.screenTime.bedtimeStart,
     bedtimeEnd: data.screenTime.bedtimeEnd,
+    ...(data.screenTime.bedtimeEnabled === undefined ? {} : { bedtimeEnabled: data.screenTime.bedtimeEnabled }),
     schoolHoursStart: data.screenTime.schoolHours.start,
     schoolHoursEnd: data.screenTime.schoolHours.end,
     schoolDays: data.screenTime.schoolHours.days,
@@ -167,6 +170,8 @@ function overlapError(data: z.infer<typeof RuleSetInputSchema>): ScheduleOverlap
   if (data.allowOverlap) return null;
   const { bedtimeStart, bedtimeEnd, schoolHours } = data.screenTime;
   if (schoolHours.days.length === 0) return null;
+  // #1172: a Bedtime that is switched off cannot collide with anything.
+  if (data.screenTime.bedtimeEnabled === false) return null;
   if (!windowsOverlap(bedtimeStart, bedtimeEnd, schoolHours.start, schoolHours.end)) return null;
   return {
     error: "schedule_overlap",
@@ -240,7 +245,8 @@ export async function rulesRoutes(app: FastifyInstance) {
     // Only validate when the patch actually changes a bedtime/school window.
     const sp = parsed.data.screenTime;
     const windowsTouched =
-      sp?.bedtimeStart !== undefined || sp?.bedtimeEnd !== undefined || sp?.schoolHours !== undefined;
+      sp?.bedtimeStart !== undefined || sp?.bedtimeEnd !== undefined || sp?.schoolHours !== undefined ||
+      sp?.bedtimeEnabled !== undefined;
     if (windowsTouched) {
       const overlap = overlapError(validated.data);
       if (overlap) return reply.code(400).send(overlap);

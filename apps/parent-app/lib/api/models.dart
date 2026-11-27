@@ -407,6 +407,9 @@ class ScreenTimeRule {
   final int weekendLimitMinutes;
   final String bedtimeStart;
   final String bedtimeEnd;
+
+  /// #1172: Bedtime applies only when on. Missing from the server means on (rules saved before the switch).
+  final bool bedtimeEnabled;
   final String schoolStart;
   final String schoolEnd;
   final List<int> schoolDays;
@@ -416,6 +419,7 @@ class ScreenTimeRule {
     this.weekendLimitMinutes = 240,
     this.bedtimeStart = '21:00',
     this.bedtimeEnd = '07:00',
+    this.bedtimeEnabled = true,
     this.schoolStart = '08:00',
     this.schoolEnd = '15:00',
     this.schoolDays = const [1, 2, 3, 4, 5],
@@ -434,6 +438,7 @@ class ScreenTimeRule {
       weekendLimitMinutes: _int(json['weekendLimitMinutes'], 240),
       bedtimeStart: _str(json['bedtimeStart'], '21:00'),
       bedtimeEnd: _str(json['bedtimeEnd'], '07:00'),
+      bedtimeEnabled: json['bedtimeEnabled'] != false,
       schoolStart: _str(school['start'], '08:00'),
       schoolEnd: _str(school['end'], '15:00'),
       schoolDays: hasSchoolDays ? days : const [1, 2, 3, 4, 5],
@@ -445,6 +450,7 @@ class ScreenTimeRule {
         'weekendLimitMinutes': weekendLimitMinutes,
         'bedtimeStart': bedtimeStart,
         'bedtimeEnd': bedtimeEnd,
+        'bedtimeEnabled': bedtimeEnabled,
         'schoolHours': {
           'start': schoolStart,
           'end': schoolEnd,

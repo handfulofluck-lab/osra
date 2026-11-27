@@ -99,7 +99,9 @@ describe("bedtime and school-hours overlap", () => {
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
 
     const res = await app.inject({
-      method: "PATCH", url: `/v1/rules/${CHILD_ID}`, headers: authHeader(app), payload: payload([1, 3, 5]),
+      // #1172: with no stored row the defaults have Bedtime off, so this PATCH switches it on to collide.
+      method: "PATCH", url: `/v1/rules/${CHILD_ID}`, headers: authHeader(app),
+      payload: { ...payload([1, 3, 5]), screenTime: { ...payload([1, 3, 5]).screenTime, bedtimeEnabled: true } },
     });
 
     expect(res.statusCode).toBe(400);

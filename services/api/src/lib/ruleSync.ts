@@ -4,8 +4,21 @@ import { enqueueDeviceCommand } from "./deviceCommands.js";
 import { hasEnforcingPlan, PREMIUM_FEATURES } from "./planGate.js";
 import { siteNamesEnabled } from "./siteNames.js";
 
+/**
+ * #1172: what an agent receives for a Bedtime the parent switched off. The times are blanked, because every
+ * agent build already ignores a bedtime it cannot parse (Android `parseHhMm`, Windows `TryTime`, iOS
+ * `parseHHMM`), so an older build that has never heard of `bedtimeEnabled` stops enforcing it too. The parent
+ * keeps the stored times, so switching Bedtime back on restores them.
+ */
+export function agentBedtime<T extends Record<string, unknown>>(ruleSet: T): T {
+  const st = ruleSet.screenTime as Record<string, unknown> | undefined;
+  if (!st || st.bedtimeEnabled !== false) return ruleSet;
+  return { ...ruleSet, screenTime: { ...st, bedtimeStart: "", bedtimeEnd: "" } };
+}
+
 /** Parents keep their stored rules after a lapse; only the agent's enforcement projection is filtered. */
-export async function filterAgentRules<T extends Record<string, unknown>>(childId: string, ruleSet: T): Promise<T> {
+export async function filterAgentRules<T extends Record<string, unknown>>(childId: string, input: T): Promise<T> {
+  const ruleSet = agentBedtime(input);
   const features = Object.keys(PREMIUM_FEATURES);
   if (!features.length) return ruleSet;
   const child = await prisma.child.findUnique({ where: { id: childId }, select: { familyId: true } });
@@ -35,6 +48,8 @@ export function toApiRuleSet(row: Record<string, unknown>) {
       weekendLimitMinutes: row.weekendLimitMinutes,
       bedtimeStart: row.bedtimeStart,
       bedtimeEnd: row.bedtimeEnd,
+      // #1172: rows from before the column read true, the migration's default.
+      bedtimeEnabled: (row.bedtimeEnabled as boolean | undefined) ?? true,
       schoolHours: {
         start: row.schoolHoursStart,
         end: row.schoolHoursEnd,

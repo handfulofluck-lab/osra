@@ -290,6 +290,8 @@ describe("rules routes", () => {
       weekendLimitMinutes: 240,
       bedtimeStart: "20:30",
       bedtimeEnd: "06:30",
+      // #1172: a row from before the column reads Bedtime on.
+      bedtimeEnabled: true,
       schoolHours: { start: "08:30", end: "14:30", days: [1, 3, 5] },
     });
     expect(body.webFilter).toEqual({
@@ -484,7 +486,13 @@ describe("rules routes", () => {
   it("still rejects a PATCH that changes windows into an overlap (400)", async () => {
     const app = await buildApp(rulesRoutes, "/v1/rules");
     prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
-    prismaMock.ruleSet.findUnique.mockResolvedValue(null); // defaults: no overlap
+    // #1172: new-child defaults have no school days, so this uses an existing child with School hours on.
+    prismaMock.ruleSet.findUnique.mockResolvedValue({
+      id: "rs-1", childId: CHILD_ID, dailyLimitMinutes: 180, weekendLimitMinutes: 300,
+      bedtimeStart: "21:00", bedtimeEnd: "07:00", schoolHoursStart: "08:00", schoolHoursEnd: "15:00",
+      schoolDays: [1, 2, 3, 4, 5], blockedCategories: [], allowedDomains: [], blockedDomains: [],
+      safeSearchEnforced: true, appRules: [], routines: [],
+    });
 
     const res = await app.inject({
       method: "PATCH",

@@ -29,6 +29,8 @@ export interface RuleSet { id: UUID; childId: UUID; screenTime: ScreenTimeRule;
 export interface AppGroupRule { groupId: UUID; action: "block"; }
 export interface ScreenTimeRule { dailyLimitMinutes: number; weekendLimitMinutes: number;
   bedtimeStart: string; bedtimeEnd: string;
+  /** #1172: Bedtime applies only when true. Missing means on (rules saved before the switch existed). */
+  bedtimeEnabled?: boolean;
   schoolHours: { start: string; end: string; days: number[] }; }
 export interface WebFilterRule { blockedCategories: string[]; allowedDomains: string[];
   blockedDomains: string[]; safeSearchEnforced: boolean; }
