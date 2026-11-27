@@ -668,8 +668,12 @@ void main() {
       await flushFakeHttp(tester);
 
       await reveal(tester, find.byTooltip('Mark as concerning'));
-      expect(tester.getSize(find.byTooltip('Mark as concerning')),
-          const Size(48, 48));
+      final voteButtonSize = tester.getSize(find.byTooltip('Mark as concerning'));
+      expect(voteButtonSize.width, greaterThanOrEqualTo(48));
+      expect(voteButtonSize.height, greaterThanOrEqualTo(48));
+      expect(find.widgetWithText(OutlinedButton, 'Concerning'), findsOneWidget);
+      expect(
+          find.widgetWithText(OutlinedButton, 'Not concerning'), findsOneWidget);
       await tester.tap(find.byTooltip('Mark as concerning'));
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
