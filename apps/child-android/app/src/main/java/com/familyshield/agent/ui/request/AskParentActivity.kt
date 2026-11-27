@@ -53,7 +53,9 @@ class AskParentActivity : ComponentActivity() {
     private var uiCopy by mutableStateOf<AskParentCopy?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         uiCopy = buildCopy()

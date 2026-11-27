@@ -112,6 +112,10 @@ class AskParentPolicyTest {
         assertTrue(activity.contains("AskParentPolicy.ltrIsolate(\"30\")"))
         assertTrue(activity.contains("AskParentPolicy.ltrIsolate((pendingMinutes ?: 15).toString())"))
 
+        // UI/UX Bureau #1196 B1 + B2: no native title bar and footer clears system navigation/gesture bar.
+        assertTrue(activity.contains("FEATURE_NO_TITLE"))
+        assertTrue(screen.contains("navigationBarsPadding()"))
+
         for (key in listOf(
             "c03_title",
             "c03_question_label",

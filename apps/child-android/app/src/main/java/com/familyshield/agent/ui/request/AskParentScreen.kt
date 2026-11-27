@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -120,7 +122,9 @@ fun AskParentScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .statusBarsPadding()
+                .navigationBarsPadding(),
         ) {
             val compact = maxWidth < 360.dp || fontScale >= 1.5f
             val viewportHeight = maxHeight
@@ -130,12 +134,12 @@ fun AskParentScreen(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .heightIn(min = viewportHeight)
-                    .padding(horizontal = spaces.lg, vertical = spaces.lg),
+                    .padding(horizontal = spaces.lg, vertical = if (compact) spaces.md else spaces.lg),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(spaces.lg),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) spaces.md else spaces.lg),
                 ) {
                     // Top bar: title + close button (>= 48 dp).
                     Row(
@@ -309,11 +313,16 @@ fun AskParentScreen(
                     }
                 }
 
-                // Bottom CTA + honest footer.
+                // Bottom CTA + honest footer (B2 #1196: navigationBarsPadding + bottom clearance so
+                // the second line of footerHonestNote always clears the gesture bar at 320 px / 200%).
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = spaces.xl),
+                        .navigationBarsPadding()
+                        .padding(
+                            top = if (compact) spaces.md else spaces.xl,
+                            bottom = spaces.lg,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(spaces.sm),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
