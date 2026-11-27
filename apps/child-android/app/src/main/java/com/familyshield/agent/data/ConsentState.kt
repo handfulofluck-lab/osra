@@ -75,6 +75,11 @@ class ConsentState @Inject constructor(
      */
     @Volatile private var pauseEpoch: Long = settings.consentPauseEpochSync()
     @Volatile private var resumedAtMs: Long = settings.consentResumedAtSync()
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(Boolean) -> Unit>()
+
+    fun addListener(listener: (Boolean) -> Unit) {
+        listeners += listener
+    }
 
     /** True while the parent has withdrawn consent; collection and enforcement must stop. */
     fun isPaused(): Boolean = paused
@@ -130,6 +135,7 @@ class ConsentState @Inject constructor(
         }
         runCatching { com.familyshield.agent.vpn.FilterVpnService.onConsentChanged(next) }
         Log.i(TAG, if (next) "consent withdrawn — monitoring paused ($reason)" else "consent active — monitoring resumed ($reason)")
+        listeners.forEach { it(next) }
         scope.launch { runCatching { settings.saveConsentState(next, pauseEpoch, resumedAtMs) } }
     }
 
