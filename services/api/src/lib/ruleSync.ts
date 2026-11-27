@@ -5,14 +5,44 @@ import { hasEnforcingPlan, PREMIUM_FEATURES } from "./planGate.js";
 import { siteNamesEnabled } from "./siteNames.js";
 
 /** Parents keep their stored rules after a lapse; only the agent's enforcement projection is filtered. */
+/** F7: at most this many adults' names reach a child device, each cut to this many characters. */
+export const AGENT_ADULT_NAMES_MAX = 4;
+export const AGENT_ADULT_NAME_CHARS = 40;
+
+/**
+ * F7 (child screens C-01 / C-03): the family adults' display names the child app may show, such as
+ * "Ask Karim". Owner first, then in join order. Names only, never ids, emails or roles. An empty list
+ * means the client uses its "your parents" fallback; the client picks the wording with ICU plural/select.
+ */
+export async function agentAdultNames(familyId: string): Promise<string[]> {
+  const parents = await prisma.parent.findMany({
+    where: { familyId },
+    select: { displayName: true, role: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return [...(parents ?? [])]
+    .sort((a, b) => (a.role === "owner" ? 0 : 1) - (b.role === "owner" ? 0 : 1))
+    .map((p) => (typeof p.displayName === "string" ? p.displayName.trim().slice(0, AGENT_ADULT_NAME_CHARS).trim() : ""))
+    .filter((name) => name.length > 0)
+    .slice(0, AGENT_ADULT_NAMES_MAX);
+}
+
+/**
+ * The agent's view of a ruleset: premium features dropped when the family has no enforcing plan, and
+ * (F7) `adultNames` added. Every device-facing path (GET as a device, the Redis publish) goes through here.
+ */
 export async function filterAgentRules<T extends Record<string, unknown>>(childId: string, ruleSet: T): Promise<T> {
   const features = Object.keys(PREMIUM_FEATURES);
-  if (!features.length) return ruleSet;
   const child = await prisma.child.findUnique({ where: { id: childId }, select: { familyId: true } });
-  if (child && await hasEnforcingPlan(child.familyId)) return ruleSet;
-  const filtered = { ...ruleSet };
-  for (const feature of features) delete filtered[feature];
-  return filtered;
+  const filtered: Record<string, unknown> = { ...ruleSet };
+  if (child?.familyId) {
+    // A names lookup that fails must not stop rules reaching the phone: the client falls back to "your parents".
+    filtered.adultNames = await agentAdultNames(child.familyId).catch(() => []);
+  }
+  if (features.length && !(child && await hasEnforcingPlan(child.familyId))) {
+    for (const feature of features) delete filtered[feature];
+  }
+  return filtered as T;
 }
 
 /** Normalize legacy `"x"` socialMonitoring key to canonical `"twitter"` when `"twitter"` is absent (#1036). */

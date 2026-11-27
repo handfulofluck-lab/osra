@@ -719,3 +719,95 @@ describe("parent rule-write fan-out with no enforceable plan", () => {
     }
   });
 });
+
+describe("F7 adults' names in the child device config", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  const parents = [
+    { displayName: "  Sara  ", role: "member", createdAt: new Date("2026-11-01T00:00:00Z") },
+    { displayName: "Karim", role: "owner", createdAt: new Date("2026-11-02T00:00:00Z") },
+    { displayName: "   ", role: "member", createdAt: new Date("2026-11-03T00:00:00Z") },
+    { displayName: "A".repeat(60), role: "member", createdAt: new Date("2026-11-04T00:00:00Z") },
+    { displayName: "Dana", role: "member", createdAt: new Date("2026-11-05T00:00:00Z") },
+    { displayName: "Omar", role: "member", createdAt: new Date("2026-11-06T00:00:00Z") },
+  ];
+
+  it("gives a device the adults' names: owner first, trimmed, blanks dropped, 40 chars, max 4", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue(parents);
+
+    const res = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: deviceHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().adultNames).toEqual(["Karim", "Sara", "A".repeat(40), "Dana"]);
+    expect(prismaMock.parent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { familyId: "fam-1" }, select: { displayName: true, role: true, createdAt: true } }),
+    );
+    await app.close();
+  });
+
+  it("sends only names: no parent ids, emails or roles reach the device", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue([
+      { id: "parent-1", email: "p@example.com", displayName: "Karim", role: "owner", createdAt: new Date() },
+    ]);
+
+    const res = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: deviceHeader(app) });
+    expect(res.json().adultNames).toEqual(["Karim"]);
+    expect(res.body).not.toContain("p@example.com");
+    expect(res.body).not.toContain("parent-1");
+    await app.close();
+  });
+
+  it("falls back to an empty list when the names lookup fails, and the rules still arrive", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockRejectedValue(new Error("db down"));
+
+    const res = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: deviceHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().adultNames).toEqual([]);
+    expect(res.json().screenTime).toBeDefined();
+    await app.close();
+  });
+
+  it("does not add adultNames to the parent's own read", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.ruleSet.findUnique.mockResolvedValue(null);
+    prismaMock.parent.findMany.mockResolvedValue(parents);
+
+    const res = await app.inject({ method: "GET", url: `/v1/rules/${CHILD_ID}`, headers: authHeader(app) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).not.toHaveProperty("adultNames");
+    await app.close();
+  });
+
+  it("includes adultNames in the ruleset published to the device channel", async () => {
+    const app = await buildApp(rulesRoutes, "/v1/rules");
+    prismaMock.child.findUnique.mockResolvedValue({ id: CHILD_ID, familyId: "fam-1" });
+    prismaMock.parent.findMany.mockResolvedValue([{ displayName: "Karim", role: "owner", createdAt: new Date() }]);
+    prismaMock.ruleSet.upsert.mockResolvedValue({
+      id: "rs-1", childId: CHILD_ID, dailyLimitMinutes: 180, weekendLimitMinutes: 300,
+      bedtimeStart: "21:00", bedtimeEnd: "07:00", schoolHoursStart: "08:00", schoolHoursEnd: "15:00",
+      schoolDays: [1, 2, 3, 4, 5], blockedCategories: [], allowedDomains: [], blockedDomains: [],
+      safeSearchEnforced: true, appRules: [], routines: [], updatedAt: new Date().toISOString(),
+    });
+    prismaMock.device.findMany.mockResolvedValue([]);
+
+    const res = await app.inject({ method: "PUT", url: `/v1/rules/${CHILD_ID}`, headers: authHeader(app), payload: validRuleSet });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).not.toHaveProperty("adultNames");
+    const published = MockRedis.instances.flatMap((i) => i.publish.mock.calls)
+      .filter(([channel]: [string, string]) => channel === `child:${CHILD_ID}:rules`)
+      .map(([, message]: [string, string]) => JSON.parse(message));
+    expect(published.at(-1)?.adultNames).toEqual(["Karim"]);
+    await app.close();
+  });
+});
