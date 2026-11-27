@@ -188,4 +188,52 @@ final class ShieldTextTests: XCTestCase {
                               encoding: .utf8)
         XCTAssertTrue(text.contains("language: String = resolvedLanguage()"), "the shield reads the recorded language first")
     }
+
+    // MARK: - U105: the daily-limit shield
+
+    /// U105: the limit is its own shield, with the approved title, reset line and button, and "Close app" kept.
+    func testDailyLimitNamesTheResetTimeAndOffersMoreTime() {
+        let text = ShieldText.make(situation: .dailyLimit(resetsAt: monday(0, 0, in: utc)),
+                                   language: "en", timeZone: utc)
+        XCTAssertEqual(text.title, "Daily time is up")
+        XCTAssertEqual(text.subtitle, "Your time resets at \(fsi)00:00\(pdi)")
+        XCTAssertEqual(text.primaryButton, "Ask for more time")
+        XCTAssertEqual(text.secondaryButton, "Close app")
+    }
+
+    /// U105, the blocking rule for Arabic: the reset time stays Latin-digit `HH:mm` and is isolated with FSI/PDI.
+    /// A `DateFormatter` with the phone's locale would render «١٢:٣٠» here, so this asserts on the scalars.
+    func testArabicDailyLimitKeepsLatinDigitsAndIsolatesTheTime() {
+        let text = ShieldText.make(situation: .dailyLimit(resetsAt: monday(0, 0, in: utc)),
+                                   language: "ar", timeZone: utc)
+        XCTAssertEqual(text.title, "انتهى الوقت المحدد لليوم")
+        let subtitle = text.subtitle ?? ""
+        XCTAssertTrue(subtitle.contains("\(fsi)00:00\(pdi)"),
+                      "the reset time must be Latin digits inside FSI/PDI: \(subtitle)")
+        let arabicIndic = subtitle.unicodeScalars.filter { (0x0660...0x0669).contains($0.value) }
+        XCTAssertTrue(arabicIndic.isEmpty, "Arabic-Indic digits leaked into the Arabic reset line: \(subtitle)")
+        XCTAssertEqual(text.primaryButton, "اطلب وقتًا إضافيًا")
+        XCTAssertEqual(text.secondaryButton, "إغلاق التطبيق")
+    }
+
+    /// U105: after the child asks, the primary label becomes the confirmation sentence.
+    func testTheRequestSentShieldSaysTheParentWasAsked() {
+        let en = ShieldText.make(situation: .dailyLimitRequestSent(resetsAt: monday(0, 0, in: utc)),
+                                 language: "en", timeZone: utc)
+        XCTAssertEqual(en.primaryButton, "Asked your parent. You'll get more time if they say yes.")
+        XCTAssertEqual(en.title, "Daily time is up")
+        let ar = ShieldText.make(situation: .dailyLimitRequestSent(resetsAt: monday(0, 0, in: utc)),
+                                 language: "ar", timeZone: utc)
+        XCTAssertEqual(ar.primaryButton, "أُرسل طلبك إلى أهلك. ستحصل على وقت إضافي إذا وافقوا.")
+    }
+
+    /// U105: the clock is built from calendar components, so it is Latin `HH:mm` on any zone and never localised.
+    func testTheResetClockIsLatinDigitsOnAnyZone() {
+        XCTAssertEqual(ShieldText.clockTime(monday(0, 0, in: utc), timeZone: utc), "00:00")
+        XCTAssertEqual(ShieldText.clockTime(monday(0, 0, in: utc), timeZone: qatar), "03:00")
+        XCTAssertEqual(ShieldText.clockTime(monday(9, 5, in: qatar), timeZone: qatar), "09:05")
+        for value in ["00:00", "03:00", "09:05"] {
+            XCTAssertTrue(value.unicodeScalars.allSatisfy { $0.isASCII }, "not Latin digits: \(value)")
+        }
+    }
 }

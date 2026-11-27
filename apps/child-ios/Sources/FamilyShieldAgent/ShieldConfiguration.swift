@@ -18,22 +18,31 @@ open class FamilyShieldConfigurationDataSource: ShieldConfigurationDataSource {
 
     /// Shield configuration shown when an application is blocked.
     public override func configuration(shielding application: Application) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier))
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier,
+                                                  dailyLimitResetsAt: Self.dailyLimitResetsAt()))
     }
 
     /// Shield configuration shown when a website is blocked. The web filter is not a window, so no line.
     public override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil))
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil, dailyLimitResetsAt: Self.dailyLimitResetsAt()))
     }
 
     /// ADR-0037: an app shielded through a blocked group's category gets the same OSRA shield.
     public override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier))
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: application.bundleIdentifier,
+                                                  dailyLimitResetsAt: Self.dailyLimitResetsAt()))
     }
 
     /// ADR-0037: a website shielded through a blocked group's category.
     public override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
-        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil))
+        Self.makeConfiguration(ShieldText.current(bundleIdentifier: nil, dailyLimitResetsAt: Self.dailyLimitResetsAt()))
+    }
+
+    /// U105: the daily limit's reset time when the limit is what holds the shield, nil when it is not. The limit is
+    /// not a window, so it is only offered to `ShieldText` when nothing else explains the shield.
+    static func dailyLimitResetsAt(now: Date = Date()) -> Date? {
+        let status = DailyScreenTime.dailyLimitStatus(now: now)
+        return status.exhausted ? status.resetsAt : nil
     }
 
     /// #511: the text comes from `ShieldText`, in the phone's language. Our own rules (bedtime, the routines)

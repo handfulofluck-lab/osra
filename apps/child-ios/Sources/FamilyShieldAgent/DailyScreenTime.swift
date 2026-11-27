@@ -190,6 +190,20 @@ enum DailyScreenTimeMonitor {
         }) ?? false
     }
 
+    /// U105: whether the child's own daily limit is what holds the shield, and when the day turns over.
+    ///
+    /// Read from the same app-group state the shield is drawn from, so the block screen and the enforcement
+    /// cannot disagree about whether the limit is spent.
+    static func dailyLimitStatus(now: Date = Date(),
+                                 calendar: Calendar = .current) -> (exhausted: Bool, resetsAt: Date) {
+        let resetsAt = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let exhausted = (try? withState { _, current in
+            guard let state = current, state.deviceID == AlertReporter.pairedDeviceId() else { return false }
+            return state.isExhausted(at: now, calendar: calendar)
+        }) ?? false
+        return (exhausted, resetsAt)
+    }
+
     static func clear() {
         do {
             try withState { url, _ in

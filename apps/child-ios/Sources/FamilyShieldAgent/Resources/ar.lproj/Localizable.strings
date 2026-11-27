@@ -5,6 +5,11 @@
 /* %1$@ is the window (وقت النوم, or the routine's name), %2$@ its end time (HH:MM). */
 "block_window_line" = "محجوب بواسطة %1$@ حتى %2$@";
 "block_window_bedtime" = "وقت النوم";
+/* U105: the daily-limit shield (Arabic Language Bureau, 27 Nov). %@ is the reset time, HH:MM with Latin digits, wrapped in FSI/PDI by ShieldText. */
+"daily_title_time_up" = "انتهى الوقت المحدد لليوم";
+"daily_resets_at" = "يتجدّد وقتك الساعة %@";
+"daily_ask_more_time" = "اطلب وقتًا إضافيًا";
+"daily_request_sent" = "أُرسل طلبك إلى أهلك. ستحصل على وقت إضافي إذا وافقوا.";
 
 /* The app's own screens (5.5, Arabic Language Bureau sheet, approved by Karim 2026-11-12 11:20Z). Plurals are in Localizable.stringsdict. */
 "pair_section_title" = "أسرة للأطفال";
