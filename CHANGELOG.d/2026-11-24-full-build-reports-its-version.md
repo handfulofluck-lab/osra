@@ -1,0 +1,1 @@
+- #1080 makes the Full-build child report its version and capabilities again: the flavour's `-full` version suffix is stripped for the wire, while the app keeps showing it.

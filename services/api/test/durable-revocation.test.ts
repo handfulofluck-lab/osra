@@ -7,12 +7,21 @@ import { locationRoutes } from "../src/routes/location.js";
 import { registerRealtime } from "../src/realtime/gateway.js";
 import fastifyWebsocket from "@fastify/websocket";
 import { getRedis } from "../src/redis.js";
-import { currentSessionVersion, invalidateSessionsBefore, sessionVersionKey, revokedTokenKey, REVOKED_TOKEN_TTL_SECONDS } from "../src/lib/sessions.js";
+import {
+  DELETED_SESSION_MARKER,
+  REVOKED_TOKEN_TTL_SECONDS,
+  currentSessionVersion,
+  invalidateSessionsBefore,
+  isParentSessionLive,
+  reconcileSessionVersionCacheAfterCommit,
+  revokedTokenKey,
+  sessionVersionKey,
+} from "../src/lib/sessions.js";
 import { DEVICE_LIVE_TTL_SECONDS, liveDeviceKey, markDeviceRevoked, revokedDeviceKey } from "../src/lib/deviceRevocation.js";
 import { DEVICE_TOKEN_TTL_SECONDS } from "../src/lib/deviceToken.js";
 import { eraseChildData } from "../src/lib/usageModel.js";
 import { runRevokedTokenPrune } from "../src/jobs/revokedTokenPrune.js";
-import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MockRedis, authHeader, buildApp, deviceHeader, evalSessionVersionScript, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -68,6 +77,7 @@ function emptyRedis(): MockRedis {
   redis.set.mockResolvedValue("OK");
   redis.del.mockResolvedValue(0);
   redis.incrby.mockResolvedValue(1);
+  redis.eval.mockImplementation(async (...args: unknown[]) => evalSessionVersionScript(redis, args[0], args[2], args[3], args[4]) ?? null);
   redis.smembers.mockResolvedValue([]);
   redis.on.mockReturnValue(redis);
   return redis;
@@ -89,6 +99,7 @@ function wireRedisStore(): Map<string, string> {
     store.set(key, String(next));
     return next;
   });
+  redis.eval.mockImplementation(async (...args: unknown[]) => evalSessionVersionScript(redis, args[0], args[2], args[3], args[4]) ?? null);
   redis.smembers.mockResolvedValue([]);
   redis.sadd.mockResolvedValue(1);
   redis.srem.mockResolvedValue(1);
@@ -569,4 +580,230 @@ describe("#351 — the global guard is the only device-revocation check on the t
       await app.close();
     });
   }
+});
+
+describe("monotonic session-version cache floor (reconcileSessionVersionCacheAfterCommit + invalidateSessionsBefore)", () => {
+  it("missing cache entry: establishes the committed generation as the floor (never 1) and loads unexpired RevokedToken keys", async () => {
+    // Mutant: `await redis.incrby(key, 1)` on an evicted/missing cache key writes `"1"` instead of `committedVersion = 3`,
+    // leaving `sv=1` and `sv=2` tokens accepted by `isParentSessionLive`!
+    const store = wireRedisStore();
+    prismaMock.revokedToken.findMany.mockResolvedValue([
+      { jti: "jti-single-at-v3", expiresAt: new Date(Date.now() + 3600_000) },
+    ]);
+
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 3);
+
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("3");
+    expect(store.get(revokedTokenKey("jti-single-at-v3"))).toBe("1");
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 2, jti: "jti-v2" })).toBe(false);
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 3, jti: "jti-v3-live" })).toBe(true);
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 3, jti: "jti-single-at-v3" })).toBe(false);
+  });
+
+  it("cache rebuilt at or above committedVersion: preserves the cached generation without overshooting or rolling back", async () => {
+    // Mutant A: `await redis.incrby(key, 1)` bumps a rebuilt `"3"` to `"4"`, wrongly revoking a post-commit `sv=3` token.
+    // Mutant B: unconditional `await redis.set(key, String(committedVersion))` lowers `"5"` back to `"3"`, resurrecting `sv=4`.
+    const store = wireRedisStore();
+
+    // Case 1: rebuilt AT committedVersion (`3`)
+    store.set(sessionVersionKey("parent-1"), "3");
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 3);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("3");
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 2, jti: "jti-2" })).toBe(false);
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 3, jti: "jti-3" })).toBe(true);
+
+    // Case 2: rebuilt or advanced ABOVE committedVersion (`5 > 3`)
+    store.set(sessionVersionKey("parent-1"), "5");
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 3);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("5");
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 4, jti: "jti-4" })).toBe(false);
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 5, jti: "jti-5" })).toBe(true);
+  });
+
+  it("preserves DELETED_SESSION_MARKER and newer generations across concurrent mid-reconcile changes", async () => {
+    // Mutant: separate `GET` + `SET`/`INCRBY` commands instead of atomic Lua `SESSION_VERSION_FLOOR_SCRIPT` ->
+    // overwrites `"deleted"` or lowers a newer generation `"6"` written concurrently during cold-miss rehydration.
+    const store = wireRedisStore();
+    store.set(sessionVersionKey("parent-1"), DELETED_SESSION_MARKER);
+
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 3);
+
+    expect(store.get(sessionVersionKey("parent-1"))).toBe(DELETED_SESSION_MARKER);
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 99, jti: "jti-99" })).toBe(false);
+
+    // Concurrent tombstone race: cache starts cold (`null`), and account deletion writes `"deleted"` while
+    // `revokedToken.findMany` is in flight before `SESSION_VERSION_FLOOR_SCRIPT` executes.
+    store.delete(sessionVersionKey("parent-2"));
+    prismaMock.revokedToken.findMany.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-2"), DELETED_SESSION_MARKER);
+      return [];
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-2", 4);
+    expect(store.get(sessionVersionKey("parent-2"))).toBe(DELETED_SESSION_MARKER);
+    expect(await isParentSessionLive({ sub: "parent-2", sv: 99, jti: "jti-99-race" })).toBe(false);
+
+    // Concurrent newer generation race: cache starts cold (`null`), and a newer revocation writes `"6"` while
+    // `revokedToken.findMany` is in flight for `committedVersion = 4` -> `"6"` is preserved, never rolled back to `"4"`.
+    store.delete(sessionVersionKey("parent-3"));
+    prismaMock.revokedToken.findMany.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-3"), "6");
+      return [{ jti: "jti-cold-v6", expiresAt: new Date(Date.now() + 3600_000) }];
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-3", 4);
+    expect(store.get(sessionVersionKey("parent-3"))).toBe("6");
+    expect(store.get(revokedTokenKey("jti-cold-v6"))).toBe("1");
+    expect(await isParentSessionLive({ sub: "parent-3", sv: 5, jti: "jti-5" })).toBe(false);
+    expect(await isParentSessionLive({ sub: "parent-3", sv: 6, jti: "jti-6-live" })).toBe(true);
+    expect(await isParentSessionLive({ sub: "parent-3", sv: 6, jti: "jti-cold-v6" })).toBe(false);
+
+    // Concurrent stale rebuild race: cache starts cold (`null`), and a concurrent reader writes stale `"2"` while
+    // `revokedToken.findMany` is in flight for `committedVersion = 4` -> raised to `"4"`.
+    store.delete(sessionVersionKey("parent-4"));
+    prismaMock.revokedToken.findMany.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-4"), "2");
+      return [];
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-4", 4);
+    expect(store.get(sessionVersionKey("parent-4"))).toBe("4");
+    expect(await isParentSessionLive({ sub: "parent-4", sv: 3, jti: "jti-3" })).toBe(false);
+    expect(await isParentSessionLive({ sub: "parent-4", sv: 4, jti: "jti-4" })).toBe(true);
+  });
+
+  it("conditional error cleanup deletes stale markers below floor while preserving concurrent deleted or >= floor markers", async () => {
+    // Mutant: unconditional `redis.del(key)` in `catch` deletes `DELETED_SESSION_MARKER` or a generation `>= floor`
+    // written concurrently between the failed floor write and cleanup execution.
+    const store = wireRedisStore();
+    const redis = getRedis() as unknown as MockRedis;
+
+    // 1. Stale marker (`"2" < 4`) is deleted when the floor write fails:
+    store.set(sessionVersionKey("parent-1"), "2");
+    redis.incrby.mockRejectedValueOnce(new Error("OOM command not allowed"));
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBeUndefined();
+
+    // 2. Concurrent tombstone written before cleanup runs is preserved:
+    store.set(sessionVersionKey("parent-1"), "2");
+    redis.incrby.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-1"), DELETED_SESSION_MARKER);
+      throw new Error("OOM command not allowed");
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe(DELETED_SESSION_MARKER);
+
+    // 3. Concurrent rebuild at/above `committedVersion` (`"4"` and `"6"`) written before cleanup runs is preserved:
+    store.set(sessionVersionKey("parent-1"), "2");
+    redis.incrby.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-1"), "4");
+      throw new Error("OOM command not allowed");
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("4");
+
+    store.set(sessionVersionKey("parent-1"), "2");
+    redis.incrby.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-1"), "6");
+      throw new Error("OOM command not allowed");
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("6");
+
+    // 4. `invalidateSessionsBefore` also uses conditional cleanup: rethrows on OOM while preserving concurrent `"6"`.
+    store.set(sessionVersionKey("parent-1"), "3");
+    prismaMock.parent.update.mockResolvedValueOnce({ ...PARENT, sessionVersion: 4 });
+    redis.incrby.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-1"), "6");
+      throw new Error("OOM command not allowed");
+    });
+    await expect(invalidateSessionsBefore("parent-1")).rejects.toThrow("OOM");
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("6");
+  });
+
+  it("invalidateSessionsBefore also applies the committed floor if the cache was evicted or rebuilt mid-transaction", async () => {
+    // Mutant: `invalidateSessionsBefore` calling `redis.incrby(key, 1)` unconditionally after commit writes `"1"` when
+    // the key was evicted mid-transaction (`committedVersion = 4`), or `"5"` when another reader already rebuilt `"4"`.
+    const store = wireRedisStore();
+    prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, sessionVersion: 3 });
+
+    // Mid-transaction eviction: key existed (`"3"`) before tx, vanishes during tx while DB commits `4`.
+    prismaMock.parent.update.mockImplementationOnce(async () => {
+      store.delete(sessionVersionKey("parent-1"));
+      return { ...PARENT, sessionVersion: 4 };
+    });
+    store.set(sessionVersionKey("parent-1"), "3");
+    expect(await invalidateSessionsBefore("parent-1")).toBe(4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("4");
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 3, jti: "jti-3" })).toBe(false);
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 4, jti: "jti-4" })).toBe(true);
+
+    // Mid-transaction rebuild: another reader already rebuilt `"5"` right after DB committed `5`.
+    prismaMock.parent.update.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-1"), "5");
+      return { ...PARENT, sessionVersion: 5 };
+    });
+    expect(await invalidateSessionsBefore("parent-1")).toBe(5);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("5");
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 5, jti: "jti-5" })).toBe(true);
+  });
+
+  it("warm-path eviction restores durable RevokedToken rows before creating marker, and failed restoration keeps absent markers absent while preserving concurrent newer/deleted values", async () => {
+    // Mutant: allow `SESSION_VERSION_FLOOR_SCRIPT` to initialize an absent marker on the warm call (`allowCreate = '0'`) ->
+    // creates `auth:session-version:<parentId>` without restoring `RevokedToken` rows after a mid-transaction eviction,
+    // or leaves a half-initialized marker if restoration fails.
+    const store = wireRedisStore();
+    const redis = getRedis() as unknown as MockRedis;
+    prismaMock.parent.findUnique.mockResolvedValue({ ...PARENT, sessionVersion: 3 });
+
+    // 1. Warm-path eviction in `invalidateSessionsBefore`: marker `"3"` exists pre-tx, vanishes mid-tx while DB commits `4`.
+    // Warm Lua probe returns `__MISS__` without creating the marker, restores `jti-evicted-v4`, then creates `"4"`.
+    store.set(sessionVersionKey("parent-1"), "3");
+    let markerDuringRestore: string | undefined = "sentinel";
+    prismaMock.parent.update.mockImplementationOnce(async () => {
+      store.delete(sessionVersionKey("parent-1"));
+      return { ...PARENT, sessionVersion: 4 };
+    });
+    prismaMock.revokedToken.findMany.mockImplementationOnce(async () => {
+      markerDuringRestore = store.get(sessionVersionKey("parent-1"));
+      return [{ jti: "jti-evicted-v4", expiresAt: new Date(Date.now() + 3600_000) }];
+    });
+    expect(await invalidateSessionsBefore("parent-1")).toBe(4);
+    expect(markerDuringRestore).toBeUndefined();
+    expect(store.get(revokedTokenKey("jti-evicted-v4"))).toBe("1");
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("4");
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 4, jti: "jti-evicted-v4" })).toBe(false);
+    expect(await isParentSessionLive({ sub: "parent-1", sv: 4, jti: "jti-live-v4" })).toBe(true);
+
+    // 2. Absent marker stays absent when restoration fails (DB query failure OR Redis token-key SET failure):
+    store.delete(sessionVersionKey("parent-1"));
+    prismaMock.revokedToken.findMany.mockRejectedValueOnce(new Error("db read failed"));
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBeUndefined();
+
+    const baseSet = redis.set.getMockImplementation()!;
+    prismaMock.revokedToken.findMany.mockResolvedValueOnce([
+      { jti: "jti-fail-set", expiresAt: new Date(Date.now() + 3600_000) },
+    ]);
+    redis.set.mockImplementationOnce(async (key: string, value: string, ...args: unknown[]) => {
+      if (key === revokedTokenKey("jti-fail-set")) throw new Error("OOM command not allowed");
+      return baseSet(key, value, ...args);
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBeUndefined();
+
+    // 3. Concurrent newer generation (`"6" >= 4`) or `DELETED_SESSION_MARKER` written during a failed restoration survives:
+    store.delete(sessionVersionKey("parent-1"));
+    prismaMock.revokedToken.findMany.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-1"), "6");
+      throw new Error("transient db timeout");
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe("6");
+
+    store.delete(sessionVersionKey("parent-1"));
+    prismaMock.revokedToken.findMany.mockImplementationOnce(async () => {
+      store.set(sessionVersionKey("parent-1"), DELETED_SESSION_MARKER);
+      throw new Error("transient db timeout");
+    });
+    await reconcileSessionVersionCacheAfterCommit("parent-1", 4);
+    expect(store.get(sessionVersionKey("parent-1"))).toBe(DELETED_SESSION_MARKER);
+  });
 });

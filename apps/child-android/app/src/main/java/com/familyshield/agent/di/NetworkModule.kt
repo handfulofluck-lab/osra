@@ -48,7 +48,7 @@ object NetworkModule {
         .addInterceptor(
             ClientHeaderInterceptor {
                 ClientHeader.value(
-                    versionName = BuildConfig.VERSION_NAME,
+                    versionName = ClientHeader.wireVersionName(BuildConfig.VERSION_NAME),
                     versionCode = BuildConfig.VERSION_CODE,
                     flavour = if (BuildConfig.CAPTURE_CALL_SMS) ClientHeader.FLAVOUR_FULL else ClientHeader.FLAVOUR_PLAY,
                 )
