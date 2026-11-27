@@ -13,6 +13,22 @@ export const ANDROID_REQUIRED_GRANTS = [
   "private_dns",
 ] as const satisfies readonly GrantKey[];
 
+/**
+ * osra-security#82 (26 Nov): the Full build asks for notification access as a required grant (#1208), so the
+ * server waits for it too, or the phone and the server disagree about when protection starts. Play has no
+ * notification listener at all and keeps its seven. The flavour comes from the capabilities contract.
+ * A pairing that already completed keeps its completion: nothing here re-opens it (completion is only ever
+ * set, never cleared, by a report).
+ */
+export const ANDROID_FULL_REQUIRED_GRANTS = [
+  ...ANDROID_REQUIRED_GRANTS,
+  "notification_listener",
+] as const satisfies readonly GrantKey[];
+
+export function requiredGrantsFor(capabilities: Pick<Capabilities, "client">): readonly GrantKey[] {
+  return capabilities.client.flavour === "full" ? ANDROID_FULL_REQUIRED_GRANTS : ANDROID_REQUIRED_GRANTS;
+}
+
 const TAMPER_GRANT: Readonly<Record<string, GrantKey>> = {
   accessibility_off: "accessibility",
   accessibility: "accessibility",
@@ -38,7 +54,7 @@ function parsedCapabilities(raw: unknown): Capabilities | null {
 export function requiredMissingGrants(raw: unknown): GrantKey[] | null {
   const capabilities = parsedCapabilities(raw);
   if (!capabilities || capabilities.client.app !== "child-android") return null;
-  return ANDROID_REQUIRED_GRANTS.filter((grant) => capabilities.grants[grant] !== "granted");
+  return requiredGrantsFor(capabilities).filter((grant) => capabilities.grants[grant] !== "granted");
 }
 
 export function shouldHoldTamperDuringSetup(
@@ -70,6 +86,25 @@ export function completionDedupeKey(deviceId: string, pairedAt: Date): string {
   return `setup_complete|${deviceId}|${episode(pairedAt)}`;
 }
 
-export function incompleteDedupeKey(deviceId: string, pairedAt: Date): string {
+/**
+ * #1208: ONE key per pairing, shared by the phone's immediate setup notice and the server's 30-minute
+ * reminder, so the two upsert a single parent row instead of paging twice. A device row is one pairing.
+ */
+export function incompleteDedupeKey(deviceId: string): string {
+  return `setup_incomplete:${deviceId}`;
+}
+
+/**
+ * The key the server reminder used before #1208 (one per setup episode). A pairing that was already
+ * reminded under it keeps that row as its one notice after the upgrade: nothing re-pages it (Codex, #1230).
+ */
+export function legacyIncompleteDedupeKey(deviceId: string, pairedAt: Date): string {
   return `setup_incomplete|${deviceId}|${episode(pairedAt)}`;
+}
+
+/** Both keys a pairing's one setup notice may live under, the shared one first. */
+export function setupNoticeKeys(deviceId: string, pairedAt: Date | null | undefined): string[] {
+  return pairedAt
+    ? [incompleteDedupeKey(deviceId), legacyIncompleteDedupeKey(deviceId, pairedAt)]
+    : [incompleteDedupeKey(deviceId)];
 }
