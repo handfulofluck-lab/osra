@@ -81,18 +81,20 @@ internal static class PairingDialog
         private async void OnPair(object? sender, EventArgs e)
         {
             var code = _codeBox.Text.Trim();
-            var pin = ParentPinPolicy.Normalize(_pinBox.Text);
+            var pinError = ParentPinPolicy.Validate(_pinBox.Text);
             if (code.Length == 0)
             {
                 _status.Text = "Enter the 6-digit pairing code.";
                 return;
             }
 
-            if (pin is null)
+            if (pinError is not null)
             {
-                _status.Text = $"Choose a {ParentPinPolicy.MinLength}–{ParentPinPolicy.MaxLength} digit parent PIN (0000 is not allowed).";
+                _status.Text = pinError;
                 return;
             }
+
+            var pin = ParentPinPolicy.Normalize(_pinBox.Text)!;
 
             if (!ParentPinPolicy.SamePin(pin, _pinConfirmBox.Text))
             {

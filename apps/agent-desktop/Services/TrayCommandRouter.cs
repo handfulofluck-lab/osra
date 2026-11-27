@@ -100,17 +100,17 @@ public sealed class TrayUserActions
         await Task.CompletedTask;
     }
 
-    private bool TryGetParentPin(string action, out string pin)
+    private bool TryGetParentPin(string action, out string pinHash)
     {
-        var configured = ParentPinPolicy.Normalize(_config.ParentPin);
+        var configured = ParentPinPolicy.NormalizeConfiguredHash(_config.ParentPin);
         if (configured is not null)
         {
-            pin = configured;
+            pinHash = configured;
             LastArmRefusal = null;
             _pinRefusalLogged = false;
             return true;
         }
-        pin = string.Empty;
+        pinHash = string.Empty;
         LastArmRefusal = action;
         if (!_pinRefusalLogged)
         {

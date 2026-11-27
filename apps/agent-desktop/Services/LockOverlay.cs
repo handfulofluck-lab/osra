@@ -14,13 +14,13 @@ internal static class LockOverlay
 
     /// <summary>
     /// Shows the overlay across all screens (re-asserts when already visible) only when a valid
-    /// parent PIN is configured. Returns false and shows nothing otherwise: a lock with no PIN
-    /// (or the legacy <c>0000</c>) would be dismissable by anyone, so it must not arm.
+    /// stored parent PIN hash (<c>pbkdf2$...</c>) is configured. Returns false and shows nothing
+    /// otherwise: a lock with no valid PIN hash would be dismissable or unverifiable, so it must not arm.
     /// </summary>
-    public static bool ShowIfPinned(string pin, string title, string message)
+    public static bool ShowIfPinned(string pinHash, string title, string message)
     {
-        if (ParentPinPolicy.Normalize(pin) is null) return false;
-        Instance.Show(pin, title, message);
+        if (!ParentPinPolicy.IsStoredHash(pinHash)) return false;
+        Instance.Show(pinHash, title, message);
         return true;
     }
 

@@ -84,7 +84,8 @@ public sealed class ReleaseConfigurationTests : IDisposable
         Assert.Equal("debug-device", loaded.DeviceId);
         Assert.Equal("debug-child", loaded.ChildId);
         Assert.Equal("debug-hmac", loaded.HmacSecret);
-        Assert.Equal("4821", loaded.ParentPin);
+        Assert.True(ParentPinPolicy.IsStoredHash(loaded.ParentPin));
+        Assert.True(ParentPinPolicy.Matches(loaded.ParentPin, "4821"));
         Assert.False(loaded.SetSystemProxy);
         Assert.True(loaded.AllowEnvironmentOverrides);
     }

@@ -6,7 +6,7 @@ namespace FamilyShield.Agent.Services;
 /// <summary>
 /// Persistent agent identity (§14.3), stored as JSON beside the executable. The file is a source of
 /// identity claims, not trusted endpoint, rule or enforcement configuration. Only Debug permits
-/// environment overrides. A stored parent PIN remains local to the interactive tray until W1b.
+/// environment overrides. <see cref="ParentPin"/> is stored only as a salted PBKDF2-HMAC-SHA256 hash.
 /// </summary>
 public sealed class AgentConfig
 {
@@ -39,9 +39,10 @@ public sealed class AgentConfig
     public string? HmacSecret { get; set; }
 
     /// <summary>
-    /// Per-install parent PIN, established at pairing and stored in this file for the tray. Lock,
-    /// bedtime and screen-time refuse to arm while this is null. Debug-only
-    /// <c>DESKTOP_PARENT_PIN</c> adoption preserves the legacy migration; W1b hashes this field.
+    /// Per-install parent PIN hash (<c>pbkdf2$120000$&lt;salt&gt;$&lt;hash&gt;</c>), established at
+    /// pairing and stored in this file for the tray. Lock, bedtime and screen-time refuse to arm
+    /// without a valid stored hash. Any legacy plaintext PIN in the file is hashed and rewritten
+    /// on first run; Debug-only <c>DESKTOP_PARENT_PIN</c> adoption also stores only the hash.
     /// </summary>
     public string? ParentPin { get; set; }
 
@@ -77,35 +78,40 @@ public sealed class AgentConfig
         config.AllowEnvironmentOverrides = allowEnvironmentOverrides;
         config.ApiBase = ProductionApiBase;
         config.SetSystemProxy = true;
+        var fileHadIdentity = !string.IsNullOrWhiteSpace(config.DeviceJwt);
+
+        // W1b migration (#1115): hash any legacy plaintext PIN in the config file on first run in
+        // both Release and Debug, and remove invalid / legacy 0000 values from disk.
+        var migratedPin = ParentPinPolicy.MigrateToStoredHash(config.ParentPin, out var pinMigrated);
+        if (pinMigrated)
+        {
+            config.ParentPin = migratedPin;
+            if (fileHadIdentity)
+            {
+                TryPersistMigratedPin(config, exeDir);
+            }
+        }
+
         if (!allowEnvironmentOverrides)
         {
             return string.IsNullOrWhiteSpace(config.DeviceJwt) ? null : config;
         }
 
-        var fileHadIdentity = !string.IsNullOrWhiteSpace(config.DeviceJwt);
         config.ApiBase = Environment.GetEnvironmentVariable("API_BASE") ?? ProductionApiBase;
         config.DeviceJwt = Environment.GetEnvironmentVariable("DEVICE_JWT") ?? config.DeviceJwt;
         config.DeviceId = Environment.GetEnvironmentVariable("DEVICE_ID") ?? config.DeviceId;
         config.ChildId = Environment.GetEnvironmentVariable("CHILD_ID") ?? config.ChildId;
         config.HmacSecret = Environment.GetEnvironmentVariable("INTERNAL_HMAC_SECRET") ?? config.HmacSecret;
 
-        // Legacy Debug migration: adopt the PIN once, never create an env-only identity file.
-        var resolvedPin = ParentPinPolicy.Resolve(
-            config.ParentPin, Environment.GetEnvironmentVariable(ParentPinPolicy.EnvVar));
-        if (!string.Equals(config.ParentPin, resolvedPin, StringComparison.Ordinal))
+        // Legacy Debug migration: adopt the PIN once as a PBKDF2 hash, never create an env-only identity file.
+        var resolvedPin = ParentPinPolicy.ResolveToStoredHash(
+            config.ParentPin, Environment.GetEnvironmentVariable(ParentPinPolicy.EnvVar), out var envPinChanged);
+        if (envPinChanged)
         {
             config.ParentPin = resolvedPin;
             if (fileHadIdentity)
             {
-                try
-                {
-                    config.Save(exeDir);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine(
-                        $"OSRA: could not persist the parent PIN to {Path.Combine(exeDir, FileName)}: {ex.Message}");
-                }
+                TryPersistMigratedPin(config, exeDir);
             }
         }
 
@@ -147,15 +153,34 @@ public sealed class AgentConfig
 
     /// <summary>
     /// Writes indented JSON to <paramref name="exeDir"/>/<see cref="FileName"/>; skips the write
-    /// when the content is unchanged (avoids rewrite churn). Returns true when the file was written.
+    /// when the content is unchanged (avoids rewrite churn). Any plaintext <see cref="ParentPin"/>
+    /// is hashed in place before serialization so a plaintext PIN is never written to disk.
+    /// Returns true when the file was written.
     /// </summary>
     public bool Save(string exeDir)
     {
+        if (ParentPin is not null && !ParentPinPolicy.IsStoredHash(ParentPin))
+        {
+            ParentPin = ParentPinPolicy.MigrateToStoredHash(ParentPin, out _);
+        }
         var path = Path.Combine(exeDir, FileName);
         var json = JsonSerializer.Serialize(this, SaveOptions);
         if (File.Exists(path) && string.Equals(File.ReadAllText(path), json, StringComparison.Ordinal))
             return false;
         File.WriteAllText(path, json);
         return true;
+    }
+
+    private static void TryPersistMigratedPin(AgentConfig config, string exeDir)
+    {
+        try
+        {
+            config.Save(exeDir);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"OSRA: could not persist the parent PIN hash to {Path.Combine(exeDir, FileName)}: {ex.Message}");
+        }
     }
 }

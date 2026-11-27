@@ -10,7 +10,8 @@ public sealed class RuleSyncDispatchTests : IDisposable
     private readonly string _dbPath;
     private readonly string _statusPath;
     private readonly LocalRuleStore _store;
-    private readonly AgentConfig _config = new() { ParentPin = "4821" };
+    private static readonly string SamplePinHash = ParentPinPolicy.Hash("4821");
+    private readonly AgentConfig _config = new() { ParentPin = SamplePinHash };
     private readonly RuleSyncService _sync;
     private readonly TrayUserActions _tray;
     private readonly FakeSink _sink = new();
@@ -162,14 +163,29 @@ public sealed class RuleSyncDispatchTests : IDisposable
     }
 
     [Fact]
-    public async Task LockUsesExactlyTheConfiguredParentPin()
+    public async Task LockUsesExactlyTheConfiguredParentPinHash()
+    {
+        var shown = new List<string>();
+        var pinHash = ParentPinPolicy.Hash("7391");
+        var tray = NewTrayWithPin(pinHash);
+        tray.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
+        await tray.HandleAsync(new TrayMessage(TrayMessageKind.@lock));
+        var overlayPin = Assert.Single(shown);
+        Assert.Equal(pinHash, overlayPin);
+        Assert.True(ParentPinPolicy.Matches(overlayPin, "7391"));
+        Assert.DoesNotContain("7391", overlayPin, StringComparison.Ordinal);
+        Assert.Null(tray.LastArmRefusal);
+    }
+
+    [Fact]
+    public async Task PlaintextPinDoesNotArmTheLock()
     {
         var shown = new List<string>();
         var tray = NewTrayWithPin("7391");
         tray.ShowOverlay = (pin, _, _) => { shown.Add(pin); return true; };
         await tray.HandleAsync(new TrayMessage(TrayMessageKind.@lock));
-        Assert.Equal("7391", Assert.Single(shown));
-        Assert.Null(tray.LastArmRefusal);
+        Assert.Empty(shown);
+        Assert.Equal("lock", tray.LastArmRefusal);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using FamilyShield.Agent.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -21,11 +22,85 @@ public sealed class TrayServerResilienceTests
         Assert.Contains(fixture.Factory.Servers, server => server.SessionId == 2);
 
         fixture.Factory.FailCreates.Remove(1);
+        fixture.Advance(TimeSpan.FromSeconds(5));
         fixture.Worker.Synchronize();
         var replacement = fixture.Factory.Servers.Last(server => server.SessionId == 1);
         var message = await ReadFrame(replacement);
         Assert.Equal(TrayMessageKind.ring, message.Kind);
     }
+
+    [Fact]
+    public void PipeCreateFailureBacksOffExponentiallyAndResetsOnRecovery()
+    {
+        using var fixture = new Fixture([new InteractiveSession(7, "user", true)]);
+        fixture.Factory.FailCreates.Add(7);
+
+        // Attempt 1 fails -> schedules 5 s backoff
+        fixture.Worker.Synchronize();
+        Assert.Equal(1, fixture.Factory.CreateAttempts);
+
+        // Still inside 5 s backoff -> skipped
+        fixture.Advance(TimeSpan.FromSeconds(4));
+        fixture.Worker.Synchronize();
+        Assert.Equal(1, fixture.Factory.CreateAttempts);
+
+        // 5 s elapsed -> attempt 2 fails -> schedules 10 s backoff
+        fixture.Advance(TimeSpan.FromSeconds(1));
+        fixture.Worker.Synchronize();
+        Assert.Equal(2, fixture.Factory.CreateAttempts);
+
+        // Inside 10 s backoff -> skipped
+        fixture.Advance(TimeSpan.FromSeconds(9));
+        fixture.Worker.Synchronize();
+        Assert.Equal(2, fixture.Factory.CreateAttempts);
+
+        // 10 s elapsed -> attempt 3 fails -> schedules 20 s backoff
+        fixture.Advance(TimeSpan.FromSeconds(1));
+        fixture.Worker.Synchronize();
+        Assert.Equal(3, fixture.Factory.CreateAttempts);
+
+        // Inside 20 s backoff -> skipped; once elapsed and cleared -> recovers
+        fixture.Advance(TimeSpan.FromSeconds(19));
+        fixture.Worker.Synchronize();
+        Assert.Equal(3, fixture.Factory.CreateAttempts);
+
+        fixture.Factory.FailCreates.Remove(7);
+        fixture.Advance(TimeSpan.FromSeconds(1));
+        fixture.Worker.Synchronize();
+        Assert.Equal(4, fixture.Factory.CreateAttempts);
+        Assert.Single(fixture.Factory.Servers);
+    }
+
+    [Fact]
+    public async Task PipeCreateFailureReportsCountAndSanitizedSquatterImageNameWithoutPaths()
+    {
+        using var fixture = new Fixture(
+            [new InteractiveSession(7, "user", true)],
+            squatProbe: new FakeSquatProbe(@"C:\Users\child-alice\Downloads\powershell.exe"));
+        fixture.Factory.FailCreates.Add(7);
+
+        fixture.Worker.Synchronize();
+        await WaitUntil(() => fixture.AlertBodies.Count > 0);
+
+        var raw = Assert.Single(fixture.AlertBodies);
+        Assert.DoesNotContain("child-alice", raw, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(@"C:\Users", raw, StringComparison.OrdinalIgnoreCase);
+
+        using var doc = JsonDocument.Parse(raw);
+        var metadata = doc.RootElement.GetProperty("metadata");
+        Assert.Equal("tray_pipe_create_failed", metadata.GetProperty("type").GetString());
+        Assert.Equal(1, metadata.GetProperty("failureCount").GetInt32());
+        Assert.Equal("powershell.exe", metadata.GetProperty("squatterImage").GetString());
+    }
+
+    [Theory]
+    [InlineData(@"C:\Users\child\AppData\Local\Temp\evil.exe", "evil.exe")]
+    [InlineData("/usr/bin/squatter", "squatter")]
+    [InlineData("notepad.exe", "notepad.exe")]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void SanitizeImageNameStripsDirectoriesAndLeavesOnlyBareImage(string? input, string? expected) =>
+        Assert.Equal(expected, TrayServerWorker.SanitizeImageName(input));
 
     [Fact]
     public async Task FailedSynchronizeStillWaitsBeforeRetrying()
@@ -87,25 +162,31 @@ public sealed class TrayServerResilienceTests
     {
         private readonly LocalRuleStore _store;
         private readonly string _directory;
+        private DateTime _now = new(2026, 11, 25, 12, 0, 0, DateTimeKind.Utc);
         public FakeSessions Sessions { get; }
         public FakeFactory Factory { get; } = new();
+        public List<string> AlertBodies { get; } = [];
         public Func<TimeSpan, CancellationToken, Task>? Delay { get; set; }
         public TrayServerWorker Worker { get; }
 
-        public Fixture(IReadOnlyList<InteractiveSession> sessions)
+        public Fixture(IReadOnlyList<InteractiveSession> sessions, IPipeSquatProbe? squatProbe = null)
         {
             Sessions = new FakeSessions(sessions);
             _directory = Path.Combine(Path.GetTempPath(), "osra-server-resilience", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_directory);
             _store = new LocalRuleStore(NullLogger<LocalRuleStore>.Instance,
                 Path.Combine(_directory, "rules.db"), Path.Combine(_directory, "status.json"));
-            var config = new AgentConfig { ApiBase = "https://unit.test" };
+            var config = new AgentConfig { ApiBase = "https://unit.test", DeviceId = "dev-1", ChildId = "child-1", HmacSecret = "sec-1" };
             Worker = new TrayServerWorker(Sessions, Factory, NullLogger<TrayServerWorker>.Instance,
                 new ForegroundActivityAccumulator(_store),
-                new ApiClient(new HttpClient(new SuccessHandler()) { BaseAddress = new Uri(config.ApiBase) }, config),
+                new ApiClient(new HttpClient(new RecordingHandler(AlertBodies)) { BaseAddress = new Uri(config.ApiBase) }, config),
                 config, new TrayServerEvents(), new FakeRegistry(),
-                delay: (period, cancellationToken) => Delay?.Invoke(period, cancellationToken) ?? Task.Delay(period, cancellationToken));
+                clock: () => _now,
+                delay: (period, cancellationToken) => Delay?.Invoke(period, cancellationToken) ?? Task.Delay(period, cancellationToken),
+                squatProbe: squatProbe ?? new FakeSquatProbe(null));
         }
+
+        public void Advance(TimeSpan delta) => _now += delta;
 
         public void Dispose()
         {
@@ -113,6 +194,11 @@ public sealed class TrayServerResilienceTests
             _store.Dispose();
             try { Directory.Delete(_directory, recursive: true); } catch (Exception) { }
         }
+    }
+
+    private sealed class FakeSquatProbe(string? imagePath) : IPipeSquatProbe
+    {
+        public string? IdentifyHolderImageName(int sessionId) => TrayServerWorker.SanitizeImageName(imagePath);
     }
 
     private sealed class FakeSessions(IReadOnlyList<InteractiveSession> sessions) : IInteractiveSessionSource
@@ -135,10 +221,12 @@ public sealed class TrayServerResilienceTests
 
     private sealed class FakeFactory : ITrayServerFactory
     {
+        public int CreateAttempts { get; private set; }
         public List<FakeServer> Servers { get; } = [];
         public HashSet<int> FailCreates { get; } = [];
         public ITrayServer Create(int sessionId, string userSid, int expectedPid)
         {
+            CreateAttempts++;
             if (FailCreates.Contains(sessionId)) throw new UnauthorizedAccessException("Pipe create failed.");
             var server = new FakeServer(sessionId);
             Servers.Add(server);
@@ -163,9 +251,13 @@ public sealed class TrayServerResilienceTests
         }
     }
 
-    private sealed class SuccessHandler : HttpMessageHandler
+    private sealed class RecordingHandler(List<string> bodies) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created));
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Content is not null)
+                bodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
+            return new HttpResponseMessage(HttpStatusCode.Created);
+        }
     }
 }

@@ -116,25 +116,25 @@ public sealed class ScreenTimeEnforcer : BackgroundService
     /// Resolves the per-install parent PIN; a missing PIN refuses to arm and is logged once per
     /// run (not once per 60 s tick) so the reason is visible without flooding the console.
     /// </summary>
-    private bool TryGetParentPin(out string pin)
+    private bool TryGetParentPin(out string pinHash)
     {
-        var configured = ParentPinPolicy.Normalize(_config.ParentPin);
+        var configured = ParentPinPolicy.NormalizeConfiguredHash(_config.ParentPin);
         if (configured is not null)
         {
-            pin = configured;
+            pinHash = configured;
             LastArmRefusal = null;
             _pinRefusalLogged = false;
             return true;
         }
 
-        pin = string.Empty;
+        pinHash = string.Empty;
         LastArmRefusal = "screen_time";
         if (!_pinRefusalLogged)
         {
             _pinRefusalLogged = true;
             _log.LogError(
-                "Refusing to arm bedtime/screen-time: no parent PIN is configured. Set parentPin in {Config} " +
-                "to a {Min}-{Max} digit PIN, or set DESKTOP_PARENT_PIN and restart once; OSRA does not use a default PIN.",
+                "Refusing to arm bedtime/screen-time: no valid parent PIN hash is configured in {Config}; " +
+                "pair the device to establish a {Min}-{Max} digit parent PIN.",
                 AgentConfig.FileName, ParentPinPolicy.MinLength, ParentPinPolicy.MaxLength);
         }
         return false;

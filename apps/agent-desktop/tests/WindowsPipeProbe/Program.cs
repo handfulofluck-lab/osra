@@ -16,7 +16,10 @@ static async Task<int> RunClient()
     {
         try
         {
-            await using var client = new TrayPipeClient();
+            // The CI probe hosts both ends from WindowsPipeProbe.exe; pass its image path while still
+            // enforcing Session 0 + S-1-5-18 + exact image path against the real SYSTEM service.
+            await using var client = new TrayPipeClient(
+                new WindowsServiceIdentityVerifier(expectedServiceImagePath: Environment.ProcessPath));
             await using var connection = await client.ConnectAsync(sessionId, CancellationToken.None);
             var message = await TrayProtocol.ReadAsync(connection.Stream, TrayDirection.ToTray);
             if (message.Kind != TrayMessageKind.@lock) return 4;

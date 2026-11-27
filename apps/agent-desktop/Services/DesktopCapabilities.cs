@@ -51,7 +51,7 @@ public static class DesktopCapabilities
     }
 
     public static RuntimeFacts CurrentFacts(AgentConfig config, TrayConnectionState? state = null) => new(
-        HasParentPin: ParentPinPolicy.Normalize(config.ParentPin) is not null,
+        HasParentPin: ParentPinPolicy.IsStoredHash(config.ParentPin),
         TrayConnected: state?.IsConnected == true,
         ProcessBlocking: true,
         WebFiltering: true);
