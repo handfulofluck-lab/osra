@@ -5751,6 +5751,18 @@ abstract class AppLocalizations {
   /// **'No apps match'**
   String get appsNoMatch;
 
+  /// No description provided for @appsSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get appsSentToPhone;
+
+  /// No description provided for @appsNotYetOnIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get appsNotYetOnIphone;
+
   /// No description provided for @appAboutThisApp.
   ///
   /// In en, this message translates to:
@@ -6075,6 +6087,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Decided {time}'**
   String timeRequestDecidedAt(String time);
+
+  /// No description provided for @p15CanBeWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible concern — automatic checks can be wrong.'**
+  String get p15CanBeWrong;
+
+  /// No description provided for @p15ActionsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'What you can do'**
+  String get p15ActionsHeader;
+
+  /// No description provided for @p15TalkWithChild.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk with {child}'**
+  String p15TalkWithChild(String child);
+
+  /// No description provided for @p15HelpChildBlockContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Help {child} block {contact}'**
+  String p15HelpChildBlockContact(String child, String contact);
+
+  /// No description provided for @p15HelpBlockGuideBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Sit with {child} and open {app} together to block {contact} and mute their messages.'**
+  String p15HelpBlockGuideBody(String child, String app, String contact);
+
+  /// No description provided for @p15AdjustLimits.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust screen time & bedtime'**
+  String get p15AdjustLimits;
+
+  /// No description provided for @p15ReviewAppRules.
+  ///
+  /// In en, this message translates to:
+  /// **'Review app rules'**
+  String get p15ReviewAppRules;
+
+  /// No description provided for @p15IphoneNotYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get p15IphoneNotYet;
+
+  /// No description provided for @p14SegmentRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests'**
+  String get p14SegmentRequests;
+
+  /// No description provided for @p14LevelUrgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Urgent'**
+  String get p14LevelUrgent;
+
+  /// No description provided for @p14LevelCheckSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Check soon'**
+  String get p14LevelCheckSoon;
+
+  /// No description provided for @p14LevelInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Info'**
+  String get p14LevelInfo;
+
+  /// No description provided for @p14FilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get p14FilterAll;
+
+  /// No description provided for @p14NoRequestsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No requests yet'**
+  String get p14NoRequestsYet;
+
+  /// No description provided for @p14GroupedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 time · last {time}} other{{count} times · last {time}}}'**
+  String p14GroupedCount(int count, String time);
 }
 
 class _AppLocalizationsDelegate
