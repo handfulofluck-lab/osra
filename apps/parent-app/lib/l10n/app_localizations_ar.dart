@@ -4422,4 +4422,25 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get homeExampleBadge => 'مثال';
+
+  @override
+  String get p01WelcomeSubtitle => 'صورة أوضح ليوم عائلتك الرقمي.';
+
+  @override
+  String get p01ExampleBadge => 'مثال';
+
+  @override
+  String get p01NoAdsLine => 'بلا إعلانات. لا تُباع بيانات عائلتك أبدًا.';
+
+  @override
+  String get p01PreviewScreenTimeValue => 'المتبقي ساعة و20 دقيقة';
+
+  @override
+  String get p01PreviewBedtimeValue => 'من 21:30 إلى 07:00';
+
+  @override
+  String get p01PreviewAppsValue => 'تطبيقان محظوران';
+
+  @override
+  String get p01PreviewLocationValue => 'في المدرسة';
 }

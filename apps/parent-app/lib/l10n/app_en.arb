@@ -2656,5 +2656,12 @@
       }
     }
   },
-  "homeExampleBadge": "Example"
+  "homeExampleBadge": "Example",
+  "p01WelcomeSubtitle": "A clearer view of your family's digital day.",
+  "p01ExampleBadge": "Example",
+  "p01NoAdsLine": "No ads. Your family's data is never sold.",
+  "p01PreviewScreenTimeValue": "1 h 20 min left",
+  "p01PreviewBedtimeValue": "21:30 → 07:00",
+  "p01PreviewAppsValue": "2 blocked",
+  "p01PreviewLocationValue": "At school"
 }

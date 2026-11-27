@@ -4147,4 +4147,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get homeExampleBadge => 'Example';
+
+  @override
+  String get p01WelcomeSubtitle =>
+      'A clearer view of your family\'s digital day.';
+
+  @override
+  String get p01ExampleBadge => 'Example';
+
+  @override
+  String get p01NoAdsLine => 'No ads. Your family\'s data is never sold.';
+
+  @override
+  String get p01PreviewScreenTimeValue => '1 h 20 min left';
+
+  @override
+  String get p01PreviewBedtimeValue => '21:30 → 07:00';
+
+  @override
+  String get p01PreviewAppsValue => '2 blocked';
+
+  @override
+  String get p01PreviewLocationValue => 'At school';
 }
