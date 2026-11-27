@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -509,7 +511,7 @@ class _DeviceActionGrid extends StatelessWidget {
 /// While a pause/resume command is waiting on the handset, the busy control spans the full
 /// row of the grid (B6, 7120730242) so "Pausing…" / "Resuming…" / «جارٍ إيقاف الجهاز…» never
 /// orphan their ellipsis on a separate line and the waiting state stands out clearly.
-class _DeviceActionsSection extends ConsumerWidget {
+class _DeviceActionsSection extends ConsumerStatefulWidget {
   final String childId;
   final Device device;
   final void Function(String command) onSend;
@@ -522,43 +524,86 @@ class _DeviceActionsSection extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DeviceActionsSection> createState() => _DeviceActionsSectionState();
+}
+
+class _DeviceActionsSectionState extends ConsumerState<_DeviceActionsSection> {
+  /// #1167: the card learns that the handset acted from one realtime frame (`command_acked`), and the server
+  /// publishes that frame best-effort, so a lost frame left "Pausing…" on screen until the parent pulled to
+  /// refresh. While a pause/resume command is waiting, re-read this device's history on a bounded backoff — six
+  /// reads over about three minutes — then stop. This recovers a missed frame; it is not a replacement for push
+  /// and not a loop.
+  static const _backoffSeconds = [5, 10, 20, 40, 60, 60];
+  Timer? _poll;
+  int _step = 0;
+  bool _polling = false;
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  /// Called from [build] with the state that build resolved. Idempotent, so a rebuild is not a new chain and a
+  /// new command restarts the backoff.
+  void _syncWaitingPoll(bool waiting) {
+    if (waiting == _polling) return;
+    _polling = waiting;
+    _poll?.cancel();
+    _poll = null;
+    _step = 0;
+    if (waiting) _scheduleNextPoll();
+  }
+
+  void _scheduleNextPoll() {
+    if (_step >= _backoffSeconds.length) return;
+    _poll = Timer(Duration(seconds: _backoffSeconds[_step++]), () {
+      _poll = null;
+      if (!mounted || !_polling) return;
+      ref.invalidate(deviceCommandHistoryProvider(widget.device.id));
+      _scheduleNextPoll();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
     final history =
-        ref.watch(deviceCommandHistoryProvider(device.id)).valueOrNull ??
+        ref.watch(deviceCommandHistoryProvider(widget.device.id)).valueOrNull ??
             const <DeviceCommand>[];
     final pauseState = resolveDevicePauseControlState(history);
+    _syncWaitingPoll(pauseState.waiting);
 
     final pauseWidget = _buildPauseControl(context, pauseState);
     final historyButton = _deviceTonalButton(
-      key: ValueKey('deviceAction-history-${device.id}'),
-      onPressed: onOpenHistory,
+      key: ValueKey('deviceAction-history-${widget.device.id}'),
+      onPressed: widget.onOpenHistory,
       icon: Icons.receipt_long,
       label: l10n.deliveryStatus,
     );
 
     final pairChildren = <Widget>[
       _deviceTonalButton(
-        key: ValueKey('deviceAction-ring-${device.id}'),
-        onPressed: () => onSend('ring'),
+        key: ValueKey('deviceAction-ring-${widget.device.id}'),
+        onPressed: () => widget.onSend('ring'),
         icon: Icons.notifications_active,
         label: l10n.ring,
       ),
       _deviceTonalButton(
-        key: ValueKey('deviceAction-stopRing-${device.id}'),
-        onPressed: () => onSend('stop_ring'),
+        key: ValueKey('deviceAction-stopRing-${widget.device.id}'),
+        onPressed: () => widget.onSend('stop_ring'),
         icon: Icons.notifications_off_outlined,
         label: l10n.commandStopRing,
       ),
       _deviceTonalButton(
-        key: ValueKey('deviceAction-lock-${device.id}'),
-        onPressed: () => onSend('lock'),
+        key: ValueKey('deviceAction-lock-${widget.device.id}'),
+        onPressed: () => widget.onSend('lock'),
         icon: Icons.lock,
         label: l10n.lock,
       ),
       _deviceTonalButton(
-        key: ValueKey('deviceAction-unlock-${device.id}'),
-        onPressed: () => onSend('unlock'),
+        key: ValueKey('deviceAction-unlock-${widget.device.id}'),
+        onPressed: () => widget.onSend('unlock'),
         icon: Icons.lock_open,
         label: l10n.unlock,
       ),
@@ -578,7 +623,7 @@ class _DeviceActionsSection extends ConsumerWidget {
         _DeviceActionGrid(children: pairChildren),
         const SizedBox(height: AppSpace.xs),
         SizedBox(
-          key: ValueKey('deviceAction-pauseFullRow-${device.id}'),
+          key: ValueKey('deviceAction-pauseFullRow-${widget.device.id}'),
           width: double.infinity,
           child: pauseWidget,
         ),
@@ -600,8 +645,8 @@ class _DeviceActionsSection extends ConsumerWidget {
             ? l10n.commandResumeDevice
             : l10n.commandPauseDevice);
     final button = _deviceTonalButton(
-      key: ValueKey('deviceAction-$command-${device.id}'),
-      onPressed: state.waiting ? null : () => onSend(command),
+      key: ValueKey('deviceAction-$command-${widget.device.id}'),
+      onPressed: state.waiting ? null : () => widget.onSend(command),
       icon: state.confirmedPaused ? Icons.play_circle : Icons.pause_circle,
       label: label,
     );
