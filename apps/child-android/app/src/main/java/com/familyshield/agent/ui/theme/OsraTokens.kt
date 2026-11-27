@@ -22,6 +22,7 @@ object OsraTokens {
         val raised: Color,
         val line: Color,
         val border: Color,
+        val inputBorder: Color,
         val ink: Color,
         val muted: Color,
         val primary: Color,
@@ -65,7 +66,8 @@ object OsraTokens {
      * - cardBorder: 1 px card outline (dark only)
      * - raised: Secondary buttons, steppers
      * - line: Dividers inside a card
-     * - border: Outline of secondary buttons and inputs
+     * - border: Outline of secondary buttons and cards
+     * - inputBorder: Enabled text-field outline (>= 3:1 WCAG 1.4.11 non-text contrast)
      * - ink: Primary text
      * - muted: Secondary text
      * - primary: Primary button, switch on, links, today's bar
@@ -96,6 +98,7 @@ object OsraTokens {
         raised = Color(0xFFFFFFFF),
         line = Color(0xFFE6ECEB),
         border = Color(0xFFC9D6D3),
+        inputBorder = Color(0xFF6E7E7B),
         ink = Color(0xFF12211F),
         muted = Color(0xFF4D5E5A),
         primary = Color(0xFF0B5D57),
@@ -128,6 +131,7 @@ object OsraTokens {
         raised = Color(0xFF1E2A31),
         line = Color(0xFF2B3840),
         border = Color(0xFF3A4A53),
+        inputBorder = Color(0xFF6A7C86),
         ink = Color(0xFFE9EFF1),
         muted = Color(0xFFA7B6BD),
         primary = Color(0xFF7DB4FF),
