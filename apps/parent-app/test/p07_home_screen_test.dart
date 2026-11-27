@@ -876,7 +876,8 @@ void main() {
       await flushHttp(tester);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsNothing);
+      // U104: the banner stays, as the visible reason for the still-faded bonus buttons.
+      expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsOneWidget);
 
       final lockBtn = find.byKey(const ValueKey('homeActionLock-child-ios'));
       await tester.scrollUntilVisible(lockBtn, 120, scrollable: homeVerticalScrollable());

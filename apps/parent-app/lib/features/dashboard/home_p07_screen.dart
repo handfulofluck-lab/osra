@@ -1593,7 +1593,9 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
               ),
             ],
             const SizedBox(height: AppSpace.md),
-            if (iosOnly && !iosLockReady && !iosInternetReady) ...[
+            // U104: bonus +15/+30 is never live on an iPhone yet, so a faded button always remains and the
+            // banner stays as its visible reason even when Lock or Pause internet is ready.
+            if (iosOnly) ...[
               Container(
                 key: ValueKey('homeIosControlsNotYet-${child.id}'),
                 padding: const EdgeInsetsDirectional.symmetric(
