@@ -1,7 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../api/permission_errors.dart';
 import '../../core/ltr_isolate.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
@@ -70,11 +72,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() => _signingOutAll = true);
     // osra-security#92: the notifier keeps the ordering — push removal first, then the account-wide
     // revocation, then local clear — because the removal authenticates with the session being revoked.
-    //
-    // No error path here on purpose: once the session is revoked this device cannot retry or re-authenticate,
-    // so the honest outcome is that it is signed out. A failure inside the notifier still leaves the phone
-    // signed out locally, and a snackbar on a screen that is closing would say nothing useful.
-    await ref.read(authProvider.notifier).logoutEverywhere();
+    // A failed revocation leaves the phone signed in, so it can be retried (Claude, 11:36).
+    try {
+      await ref.read(authProvider.notifier).logoutEverywhere();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() => _signingOutAll = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(friendlyErrorText(l10n, e, () => l10n.saveFailed)),
+      ));
+    }
   }
 
   /// B1 (UI/UX Bureau, 00:53): the current language and theme, from the appearance screen's own labels.

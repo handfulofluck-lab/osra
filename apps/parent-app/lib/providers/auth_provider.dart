@@ -272,9 +272,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await _push?.unregister();
     } catch (_) {}
-    try {
-      await _api.raw.post('/v1/auth/logout-all');
-    } catch (_) {}
+    // A failed revocation must NOT clear the phone: the parent still holds a live session and has to be
+    // able to retry, so the exception is left to propagate and nothing is deleted here (Claude, 11:36).
+    await _api.raw.post('/v1/auth/logout-all');
     try {
       await _storage.delete(key: 'jwt');
       await _storage.delete(key: 'refresh');
