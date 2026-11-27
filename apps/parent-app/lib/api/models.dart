@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color, Colors;
 
+import '../core/social_sender.dart';
+
 /// Plain Dart models mirroring `packages/shared-types/src/index.ts` field
 /// names (displayName, birthYear, batteryPct, lastSeen, blockedCategories,
 /// dailyLimitMinutes, bedtimeStart, ...). All `fromJson` factories tolerate
@@ -89,6 +91,7 @@ class Parent {
   final String displayName;
   final String role;
   final bool mfaEnabled;
+  final List<String> permissions;
 
   const Parent({
     required this.id,
@@ -97,6 +100,7 @@ class Parent {
     required this.displayName,
     this.role = 'owner',
     this.mfaEnabled = false,
+    this.permissions = const [],
   });
 
   factory Parent.fromJson(Map<String, dynamic> json) => Parent(
@@ -106,6 +110,7 @@ class Parent {
         displayName: _str(json['displayName']),
         role: _str(json['role'], 'owner'),
         mfaEnabled: _bool(json['mfaEnabled']),
+        permissions: _strList(json['permissions']),
       );
 }
 
@@ -190,6 +195,12 @@ class Device {
   /// server *has* judged carries a setup whose [DeviceSetup.reportedAt] is the receipt time.
   final DeviceSetup? setup;
 
+  /// ADR-0047: when the server authenticated completion of required setup grants.
+  final DateTime? setupCompletedAt;
+
+  /// Whether the server sent [setupCompletedAt], distinguishing an explicit null from a legacy response.
+  final bool hasSetupCompletedAtField;
+
   const Device({
     required this.id,
     required this.childId,
@@ -201,6 +212,8 @@ class Device {
     this.lastSeen,
     this.pushToken,
     this.setup,
+    this.setupCompletedAt,
+    this.hasSetupCompletedAtField = false,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -213,6 +226,8 @@ class Device {
         batteryPct: _int(json['batteryPct']),
         lastSeen: DateTime.tryParse(_str(json['lastSeen'])),
         pushToken: _strOrNull(json['pushToken']),
+        setupCompletedAt: DateTime.tryParse(_str(json['setupCompletedAt'])),
+        hasSetupCompletedAtField: json.containsKey('setupCompletedAt'),
         setup: json['setup'] is Map
             ? DeviceSetup.fromJson(
                 Map<String, dynamic>.from(json['setup'] as Map))
@@ -226,6 +241,10 @@ class Device {
   /// `services/api/src/jobs/deviceSilence.ts` owns the flip to `offline`, and an agent call or an upload
   /// owns the flip back; [lastSeen] is shown beside the word as an age, not re-read as a verdict.
   bool get isOnline => status == 'online';
+
+  /// ADR-0047 first-setup state exists only for Android responses carrying the new server field.
+  bool get tracksSetupCompletion =>
+      platform.toLowerCase() == 'android' && hasSetupCompletedAtField;
 
   /// Whether the server has a capability report for this phone (ADR-0034 decision 3).
   ///
@@ -339,6 +358,7 @@ class DeviceCommand {
   /// Issue #231: what the agent reported when it settled the row — `{'reason': ...}` for a
   /// device-side refusal, `{'fix': 'fresh'|'cached'}` for a locate that produced a fix. Null for
   /// rows settled before this contract or by the server (a `locate_now` refused at the POST).
+  final Map<String, dynamic>? payload;
   final Map<String, dynamic>? result;
 
   const DeviceCommand({
@@ -351,6 +371,7 @@ class DeviceCommand {
     this.deliveredAt,
     this.ackedAt,
     this.attempts = 0,
+    this.payload,
     this.result,
   });
 
@@ -364,6 +385,9 @@ class DeviceCommand {
         deliveredAt: DateTime.tryParse(_str(json['deliveredAt'])),
         ackedAt: DateTime.tryParse(_str(json['ackedAt'])),
         attempts: _int(json['attempts']),
+        payload: json['payload'] is Map
+            ? Map<String, dynamic>.from(json['payload'] as Map)
+            : null,
         result: json['result'] is Map
             ? Map<String, dynamic>.from(json['result'] as Map)
             : null,
@@ -1226,6 +1250,43 @@ class AlertFix {
   }
 }
 
+/// The first decision saved by the server for a daily-limit time request.
+@immutable
+class TimeRequestResolution {
+  final int? grantedMinutes;
+  final String actorName;
+  final DateTime resolvedAt;
+  final bool? decidedByViewer;
+
+  const TimeRequestResolution({
+    required this.grantedMinutes,
+    required this.actorName,
+    required this.resolvedAt,
+    this.decidedByViewer,
+  });
+
+  static TimeRequestResolution? fromJson(Object? json,
+      {bool ownSubmission = false}) {
+    if (json is! Map) return null;
+    final minutes = json['minutes'];
+    final grantedMinutes = switch (json['action']) {
+      'grant' when minutes == 15 => 15,
+      'grant' when minutes == 30 => 30,
+      'decline' when minutes == null => null,
+      _ => -1,
+    };
+    final resolvedAt = DateTime.tryParse(_str(json['resolvedAt']));
+    if (grantedMinutes == -1 || resolvedAt == null) return null;
+    final viewer = json['decidedByViewer'];
+    return TimeRequestResolution(
+      grantedMinutes: grantedMinutes,
+      actorName: _str(json['actorName']).trim(),
+      resolvedAt: resolvedAt,
+      decidedByViewer: viewer is bool ? viewer : (ownSubmission ? true : null),
+    );
+  }
+}
+
 /// One alert as the parent app reads it. [AlertFix] is #672: the SOS's own location, when it has one.
 @immutable
 class Alert {
@@ -1241,6 +1302,7 @@ class Alert {
   final DateTime? updatedAt;
   final bool acknowledged;
   final int attemptCount;
+  final TimeRequestResolution? timeRequestResolution;
 
   const Alert({
     required this.id,
@@ -1255,6 +1317,7 @@ class Alert {
     this.updatedAt,
     this.acknowledged = false,
     this.attemptCount = 1,
+    this.timeRequestResolution,
   });
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
@@ -1272,7 +1335,45 @@ class Alert {
         updatedAt: DateTime.tryParse(_str(json['updatedAt'])),
         acknowledged: _bool(json['acknowledged']),
         attemptCount: _int(json['attemptCount'], 1),
+        timeRequestResolution:
+            TimeRequestResolution.fromJson(json['timeRequestResolution']),
       );
+
+  Alert copyWith({
+    Map<String, dynamic>? metadata,
+    DateTime? updatedAt,
+    bool? acknowledged,
+    TimeRequestResolution? timeRequestResolution,
+  }) =>
+      Alert(
+        id: id,
+        childId: childId,
+        deviceId: deviceId,
+        severity: severity,
+        category: category,
+        title: title,
+        body: body,
+        metadata: metadata ?? this.metadata,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        acknowledged: acknowledged ?? this.acknowledged,
+        attemptCount: attemptCount,
+        timeRequestResolution:
+            timeRequestResolution ?? this.timeRequestResolution,
+      );
+
+  int? get requestedScreenTimeMinutes {
+    if (category != 'app_blocked' ||
+        metadata['requestType'] != 'time' ||
+        metadata['reason'] != 'daily_limit') {
+      return null;
+    }
+    return switch (metadata['minutes']) {
+      15 || '15' => 15,
+      30 || '30' => 30,
+      _ => null,
+    };
+  }
 
   /// #1029: whether this alert is a social/gaming chat concern alert.
   bool get isSocialAlert =>
@@ -1312,10 +1413,8 @@ class Alert {
   }
 
   /// #1029: contact display name from metadata (as the child's app shows it), or null if absent/blank.
-  String? get socialContactName {
-    final raw = metadata['contact']?.toString().trim() ?? '';
-    return raw.isEmpty ? null : raw;
-  }
+  String? get socialContactName =>
+      socialSenderDisplayName(metadata['contact']?.toString());
 
   /// #1029: latest flagged-message timestamp in the throttle window, if present.
   DateTime? get socialLatestAt {
@@ -1547,7 +1646,16 @@ class ReportSummary {
     this.socialConcerns = 0,
     this.calls = 0,
     this.sms = 0,
+    this.blockedDomainsVisible = false,
   });
+
+  /// True when the server sent `topBlockedDomains` at all.
+  ///
+  /// The key is absent — not empty — when host names may not be shown: the
+  /// site-names flag is off (`SITE_NAMES_ENABLED`), or the reader has no
+  /// `social` permission (`services/api/src/routes/reports.ts`). P-12 must hide
+  /// the whole recently-blocked list in that case rather than say "no sites".
+  final bool blockedDomainsVisible;
 
   factory ReportSummary.fromJson(Map<String, dynamic> json) => ReportSummary(
         totalAppMinutes: _int(json['totalAppMinutes']),
@@ -1560,6 +1668,7 @@ class ReportSummary {
             BlockedDomain.fromJson(m)
         ],
         socialConcerns: _int(json['socialConcerns']),
+        blockedDomainsVisible: json.containsKey('topBlockedDomains'),
         calls: _int(json['calls']),
         sms: _int(json['sms']),
       );

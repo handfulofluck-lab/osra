@@ -2,14 +2,21 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show Listenable, TargetPlatform, ValueNotifier, defaultTargetPlatform, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/models.dart';
+import 'alert_notification.dart';
 import 'background_push.dart';
 import 'notification_tap.dart';
 
 const _shownAlertIdsKey = 'push.shownAlertIds';
+
+final _foregroundAlertWakes = ValueNotifier(0);
+
+/// A foreground notification indicates the authenticated activity cache may be stale.
+Listenable get foregroundAlertWakes => _foregroundAlertWakes;
 
 /// #1028: Returns true when iOS itself will render a visible foreground banner
 /// and sound for this push payload, so the client must NOT post a second local
@@ -128,7 +135,7 @@ class ForegroundPushBridge {
         if (isPresentedNativelyInForeground(
           isApplePlatform: isApplePlatform,
           nativeForegroundPresentationEnabled: nativeForegroundPresentationEnabled,
-          hasNotificationPayload: hasNotificationPayload,
+          hasNotificationPayload: hasNotificationPayload || isNativeGroupedWakeData(data),
         )) {
           // Single presenter on iOS: APNs already shows the foreground banner & sound.
           // Record the alert id so a subsequent background wake does not duplicate it.
@@ -274,7 +281,11 @@ Future<StreamSubscription<T>?> enablePushAlerts<T>({
   }());
 
   final bridge = ForegroundPushBridge(
-    runWake: runWake ?? () async => (await buildWake()).run(),
+    runWake: runWake ??
+        () async => (await buildWake(
+              presentGroupedDeliveries: !apple || !nativePresentationEnabled,
+            ))
+                .run(),
     isApplePlatform: apple,
     nativeForegroundPresentationEnabled: nativePresentationEnabled,
     markAlertIdShown: markAlertIdShown,
@@ -287,6 +298,10 @@ Future<StreamSubscription<T>?> enablePushAlerts<T>({
     final data = extractData != null
         ? extractData(msg)
         : (msg is RemoteMessage ? msg.data : const <String, dynamic>{});
+    if (isGenericAlertWakeData(data, hasNotificationPayload: hasNotif) ||
+        (data['alertId']?.toString().trim().isNotEmpty ?? false)) {
+      _foregroundAlertWakes.value++;
+    }
     unawaited(bridge.handleMessage(hasNotificationPayload: hasNotif, data: data));
   });
 }

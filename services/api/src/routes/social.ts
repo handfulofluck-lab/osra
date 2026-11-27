@@ -8,8 +8,9 @@ import { checkActiveConsent } from "../lib/consent.js";
 import { requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 import { decryptSnippet, encryptSnippet } from "../lib/snippetVault.js";
 import { isValidTimeZone } from "../lib/digestSchedule.js";
-import { failedProviders, flaggedProviders, readProviderAnalysis, readProviderModelSnapshot, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
-import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingQaDeadline, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
+import { failedProviders, flaggedProviders, readProviderAnalysis, readOwnScanScoreReceipt, readProviderModelSnapshot, type OwnScanScoreReceipt, type ProviderReceipts } from "../lib/stagingProviderOutcomes.js";
+import { reserveStagingAiCall } from "../lib/stagingAiQuota.js";
+import { STAGING_QA_MODEL, STAGING_QA_REGION, stagingAiAllChildrenEnabled, stagingQaDeadline, stagingQaModel, stagingQaModelEnabled, type StagingQaModel } from "../lib/stagingQaModel.js";
 
 const ScanSchema = z.object({
   childId: z.string().min(1),
@@ -32,6 +33,7 @@ const ScanBatchSchema = z.object({ items: z.array(z.unknown()).min(1).max(SCAN_B
 
 const EventsQuerySchema = z.object({
   childId: z.string().min(1),
+  eventId: z.string().min(1).optional(),
   app: z.string().optional(),
   severity: z.enum(["info", "warning", "critical"]).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(50),
@@ -53,7 +55,7 @@ type FlagTimeSnapshot = {
   cutoff: number | null;
   path: "own" | "hybrid_second_look" | "rules" | null;
 };
-type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts; model?: FlagTimeSnapshot };
+type ScanAnalysis = { verdict: Verdict | null; attempted: boolean; providers?: ProviderReceipts; model?: FlagTimeSnapshot; ownScore?: OwnScanScoreReceipt };
 
 // NOTE: fail-open — when the AI engine is unreachable the scan falls back to a local
 // keyword/regex check so obvious self-harm language is never silently dropped.
@@ -183,7 +185,10 @@ async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDead
     const res = await fetch(qa.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, trace_id: qa.traceId, ...(providerMode && { include_provider_outcomes: true }) }),
+      body: JSON.stringify({
+        text, trace_id: qa.traceId, ...(providerMode && { include_provider_outcomes: true }),
+        ...(qa.allChildren && { consented_staging: true }),
+      }),
       redirect: "error",
       signal: AbortSignal.timeout(deadline - now),
     });
@@ -192,8 +197,12 @@ async function analyzeStagingFixture(text: string, qa: StagingQaModel, batchDead
     const scored = await res.json();
     if (Date.now() >= deadline) return failure(true, "timeout");
     if (providerMode) {
+      if (qa.allChildren && scored?.region !== "eu-north-1") return failure(true, "unavailable");
       const analysis = readProviderAnalysis(scored, providerMode, qa.traceId);
-      return { ...analysis, attempted: true, model: readProviderModelSnapshot(scored, analysis.providers.own) };
+      return {
+        ...analysis, attempted: true, model: readProviderModelSnapshot(scored, analysis.providers.own),
+        ownScore: readOwnScanScoreReceipt(scored, analysis.providers.own),
+      };
     }
     if (scored?.trace_id !== qa.traceId || scored.model !== STAGING_QA_MODEL || scored.region !== STAGING_QA_REGION) {
       return failure(true, "unavailable");
@@ -275,17 +284,19 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   }
 
   // The family's zone rides the lookup the route already does, so the day key costs no second query.
-  const crossAppQa = stagingQaModelEnabled() && process.env.OSRA_STAGING_QA_ANDROID_SOURCES === "1";
+  const allChildren = stagingAiAllChildrenEnabled();
+  const crossAppQa = allChildren || (stagingQaModelEnabled() && process.env.OSRA_STAGING_QA_ANDROID_SOURCES === "1");
   const child = await prisma.child.findUnique({
     where: { id: childId },
     include: {
-      family: { select: { timezone: true } },
+      family: { select: { timezone: true, ...(allChildren && { region: true }) } },
       ruleSet: crossAppQa && { select: { socialMonitoring: true } },
     },
   });
   if (!child) return { ok: false, reason: "child_not_found", status: 404 };
   // ADR-0008 §2b: withdrawal of consent stops collection.
-  const consent = await checkActiveConsent(childId);
+  const familyRegion = allChildren ? child.family?.region : undefined;
+  const consent = await checkActiveConsent(childId, familyRegion);
   if (!consent.active) {
     const reason = consent.reason ?? "parental_consent_required";
     return { ok: false, reason, status: 428, body: { error: reason, childId } };
@@ -294,9 +305,21 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
   const childAge = typeof (child as { birthYear?: number }).birthYear === "number"
     ? new Date().getFullYear() - (child as { birthYear: number }).birthYear
     : undefined;
-  const qa = stagingQaModel({ device, deviceId, childId, app: appName, source, text, socialMonitoring: child.ruleSet?.socialMonitoring });
-  const ai = qa ? await analyzeStagingFixture(text, qa, batchDeadline)
-    : stagingQaModelEnabled() ? { verdict: null, attempted: false }
+  const qa = allChildren && !familyRegion ? null
+    : stagingQaModel({ device, deviceId, childId, app: appName, source, text, socialMonitoring: child.ruleSet?.socialMonitoring });
+  const timeZone = child.family?.timezone ?? "UTC";
+  const now = new Date();
+  const reservation = qa?.allChildren
+    ? await reserveStagingAiCall(child.familyId, localDay(now, timeZone), now)
+    : undefined;
+  if (reservation?.log) {
+    log?.warn({ reason: reservation.reason, familyCount: reservation.familyCount, globalCount: reservation.globalCount },
+      "staging social AI daily cap reached");
+  }
+  const stagingOrInvalidBroadFlag = process.env.OSRA_DEPLOYMENT_SCOPE === "staging" ||
+    process.env.OSRA_STAGING_AI_ALL_CHILDREN === "1";
+  const ai = qa && reservation?.allowed !== false ? await analyzeStagingFixture(text, qa, batchDeadline)
+    : stagingOrInvalidBroadFlag ? { verdict: null, attempted: false }
       : await analyzeWithAi(text, childAge);
   const local = localKeywordCheck(text);
   // Union, not "model wins" (Antigravity, #938 B3): when both flag, the concern types are merged and the
@@ -315,7 +338,7 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
       : ai.verdict ?? local;
   // Issue #890: the counter is written whether or not the capture is flagged — cost is paid on both — and
   // it counts the ATTEMPT, so a timeout against a paid engine is not recorded as a free scan.
-  await recordScanUsage(child.familyId, (child as { family?: { timezone?: string } | null }).family?.timezone, ai.attempted, log);
+  await recordScanUsage(child.familyId, timeZone, ai.attempted, log);
   const ownReceipt = ai.providers?.own;
   const proofRegion = qa?.providerMode === "own"
     ? (ownReceipt?.status === "scored" ? ownReceipt.region ?? STAGING_QA_REGION : undefined)
@@ -328,6 +351,11 @@ async function scanOne(input: unknown, device: ScanDevice, log?: FastifyRequest[
     fallback: ai.verdict === null,
     modelFlagged: ai.verdict?.flagged ?? null,
     rulesFlagged: local.flagged,
+    // Ahmed's 26 Nov test: language, top score and cut-off for every scan, and the length of what was
+    // scored, so a quiet scan says whether the cut-off or the capture missed. Never the text.
+    childId,
+    textChars: text.length,
+    ...(ai.ownScore ? { own: ai.ownScore } : {}),
   };
   const receipt = ai.providers && qa ? { childId, traceId: qa.traceId, providers: ai.providers } : undefined;
   if (!verdict.flagged) {
@@ -509,6 +537,7 @@ export async function socialRoutes(app: FastifyInstance) {
     const rows = await prisma.socialEvent.findMany({
       where: {
         childId: q.childId,
+        ...(q.eventId ? { id: q.eventId } : {}),
         ...(q.app ? { app: q.app } : {}),
         ...(q.severity ? { severity: q.severity } : {}),
       },
