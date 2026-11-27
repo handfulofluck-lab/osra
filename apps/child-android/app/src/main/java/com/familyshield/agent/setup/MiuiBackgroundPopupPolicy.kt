@@ -52,16 +52,16 @@ object MiuiBackgroundPopupPolicy {
         return m.contains("xiaomi") || m.contains("redmi") || m.contains("poco")
     }
 
-    /** Pure state classifier (JVM-tested). */
+    /** Pure state classifier (JVM-tested): every readable denial takes precedence over unreadable. */
     fun classifyState(
         manufacturer: String?,
         op10021Mode: Int?,
         op10020Mode: Int? = null,
     ): MiuiPopupState {
         if (!isXiaomiFamily(manufacturer)) return MiuiPopupState.ALLOWED
-        if (op10021Mode == null) return MiuiPopupState.UNREADABLE
-        if (op10021Mode != MODE_ALLOWED) return MiuiPopupState.DENIED
+        if (op10021Mode != null && op10021Mode != MODE_ALLOWED) return MiuiPopupState.DENIED
         if (op10020Mode != null && op10020Mode != MODE_ALLOWED) return MiuiPopupState.DENIED
+        if (op10021Mode == null) return MiuiPopupState.UNREADABLE
         return MiuiPopupState.ALLOWED
     }
 

@@ -90,6 +90,49 @@ class MiuiBackgroundPopupPolicy1235Test {
                 parentConfirmed = true,
             ),
         )
+        // osra-security#91: readable denial on either op MUST win even when the sibling op is null/unreadable.
+        for (oem in listOf("Xiaomi", "Redmi", "POCO")) {
+            assertEquals(
+                "$oem: readable DENIED op10020 must beat unreadable null op10021",
+                MiuiPopupState.DENIED,
+                MiuiBackgroundPopupPolicy.classifyState(oem, op10021Mode = null, op10020Mode = 1),
+            )
+            assertFalse(
+                "$oem: parentConfirmed must NOT override readable DENIED op10020 when op10021 is null",
+                MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed(
+                    manufacturer = oem,
+                    op10021Mode = null,
+                    op10020Mode = 1,
+                    parentConfirmed = true,
+                ),
+            )
+            assertEquals(
+                "$oem: readable DENIED op10021 must beat unreadable null op10020",
+                MiuiPopupState.DENIED,
+                MiuiBackgroundPopupPolicy.classifyState(oem, op10021Mode = 1, op10020Mode = null),
+            )
+            assertFalse(
+                "$oem: parentConfirmed must NOT override readable DENIED op10021 when op10020 is null",
+                MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed(
+                    manufacturer = oem,
+                    op10021Mode = 1,
+                    op10020Mode = null,
+                    parentConfirmed = true,
+                ),
+            )
+            // Safe confirmation path remains intact when op10021 is null and op10020 is ALLOWED (no denial).
+            assertEquals(
+                "$oem: null op10021 with ALLOWED op10020 stays UNREADABLE",
+                MiuiPopupState.UNREADABLE,
+                MiuiBackgroundPopupPolicy.classifyState(oem, op10021Mode = null, op10020Mode = 0),
+            )
+            assertFalse(
+                MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed(oem, op10021Mode = null, op10020Mode = 0, parentConfirmed = false),
+            )
+            assertTrue(
+                MiuiBackgroundPopupPolicy.isBackgroundPopupAllowed(oem, op10021Mode = null, op10020Mode = 0, parentConfirmed = true),
+            )
+        }
     }
 
     @Test
