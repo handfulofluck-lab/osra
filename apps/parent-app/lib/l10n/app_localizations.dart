@@ -5751,6 +5751,18 @@ abstract class AppLocalizations {
   /// **'No apps match'**
   String get appsNoMatch;
 
+  /// No description provided for @appsSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get appsSentToPhone;
+
+  /// No description provided for @appsNotYetOnIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get appsNotYetOnIphone;
+
   /// No description provided for @appAboutThisApp.
   ///
   /// In en, this message translates to:
@@ -6015,6 +6027,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Keep {app} blocked'**
   String accessRequestKeepBlockedLabel(String app);
+
+  /// No description provided for @alertsOffBannerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts are off. You won\'t hear about urgent messages.'**
+  String get alertsOffBannerBody;
+
+  /// No description provided for @alertsOffTurnOnAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on alerts'**
+  String get alertsOffTurnOnAction;
 
   /// No description provided for @timeRequestTitle.
   ///
