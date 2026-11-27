@@ -43,8 +43,11 @@ class ChildHomeRefreshControllerTest {
             listeners.forEach { it() }
             assertEquals(1, refreshes.get())
 
-            // Periodic foreground tick triggers additional refreshes while open.
-            Thread.sleep(110L)
+            // Periodic foreground tick triggers additional refreshes while open (poll with 2 s deadline).
+            val deadlineNs = System.nanoTime() + 2_000_000_000L
+            while (refreshes.get() < 2 && System.nanoTime() < deadlineNs) {
+                Thread.sleep(10L)
+            }
             val beforeStop = refreshes.get()
             assertTrue("Expected periodic ticks to refresh while open (got $beforeStop)", beforeStop >= 2)
 
