@@ -1,3 +1,4 @@
+import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/settings/settings_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -162,6 +163,42 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     await maybeCaptureFrame(tester, 'p22-settings-flag-off-en-light-390.png');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+
+  testWidgets('P-22 dashboard menu with the flag on en-light-390', (tester) async {
+    await pumpFrame(
+      tester,
+      const DashboardScreen(),
+      locale: const Locale('en'),
+      dark: false,
+      width: 390,
+      textScale: 1,
+      family: familyWith(),
+    );
+    await tester.tap(find.byType(PopupMenuButton<String>).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('dashboardMenu-settings')), findsOneWidget);
+    await maybeCaptureFrame(tester, 'p22-menu-on-en-light-390.png');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('P-22 dashboard menu with the flag off en-light-390', (tester) async {
+    await pumpFrame(
+      tester,
+      const DashboardScreen(),
+      locale: const Locale('en'),
+      dark: false,
+      width: 390,
+      textScale: 1,
+      family: familyWith(),
+      uxP22: false,
+    );
+    await tester.tap(find.byType(PopupMenuButton<String>).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('dashboardMenu-settings')), findsNothing);
+    await maybeCaptureFrame(tester, 'p22-menu-off-en-light-390.png');
     await tester.pumpWidget(const SizedBox());
   });
 
