@@ -1461,5 +1461,9 @@
       }
     }
   },
-  "homeExampleBadge": "مثال"
+  "homeExampleBadge": "مثال",
+  "appsFilterAllowed": "مسموح ({count})",
+  "appsLimitSheetTitle": "الحد اليومي لتطبيق {app}",
+  "appsNoLimit": "بلا حد",
+  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد."
 }

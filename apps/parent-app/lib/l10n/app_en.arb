@@ -2641,5 +2641,9 @@
       }
     }
   },
-  "homeExampleBadge": "Example"
+  "homeExampleBadge": "Example",
+  "appsFilterAllowed": "Allowed ({count})",
+  "appsLimitSheetTitle": "Daily limit for {app}",
+  "appsNoLimit": "No limit",
+  "appsIphoneNoAppList": "The iPhone doesn't send its app list yet."
 }
