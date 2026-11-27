@@ -3723,6 +3723,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appsNoMatch => 'لا توجد تطبيقات مطابقة';
 
   @override
+  String get appsSentToPhone => 'أُرسلت إلى الهاتف';
+
+  @override
+  String get appsNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
   String get appAboutThisApp => 'عن هذا التطبيق';
 
   @override
@@ -3959,6 +3965,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'إبقاء $app محظورًا';
   }
+
+  @override
+  String get alertsOffBannerBody => 'التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.';
+
+  @override
+  String get alertsOffTurnOnAction => 'تفعيل التنبيهات';
 
   @override
   String timeRequestTitle(String child, int minutes) {

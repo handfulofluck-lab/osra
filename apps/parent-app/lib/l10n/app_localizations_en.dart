@@ -3505,6 +3505,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appsNoMatch => 'No apps match';
 
   @override
+  String get appsSentToPhone => 'Sent to phone';
+
+  @override
+  String get appsNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
   String get appAboutThisApp => 'About this app';
 
   @override
@@ -3724,6 +3730,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String accessRequestKeepBlockedLabel(String app) {
     return 'Keep $app blocked';
   }
+
+  @override
+  String get alertsOffBannerBody =>
+      'Alerts are off. You won\'t hear about urgent messages.';
+
+  @override
+  String get alertsOffTurnOnAction => 'Turn on alerts';
 
   @override
   String timeRequestTitle(String child, int minutes) {
