@@ -67,10 +67,15 @@ export const FAMILY_SCOPED_DELETES: Record<string, (s: FamilyScope) => unknown> 
   digestRecipient: (s) => ({ familyId: s.familyId }),
   digestSend: (s) => ({ familyId: s.familyId }),
   digestPrefs: (s) => ({ familyId: s.familyId }),
+  // Issue #890: per-family scan counters. Aggregates with no child id in them, but they are still the
+  // family's usage and they go with it — the §4 guard is right to refuse a new familyId model that
+  // nobody decided about.
+  aiScanUsage: (s) => ({ familyId: s.familyId }),
   mfaResetRequest: (s) => ({ parentId: { in: s.parentIds } }),
   parentPushToken: (s) => ({ parentId: { in: s.parentIds } }),
   parentMfaRecoveryCode: (s) => ({ parentId: { in: s.parentIds } }),
   accountDeletionToken: (s) => ({ parentId: { in: s.parentIds } }),
+  socialEventFeedback: (s) => ({ parentId: { in: s.parentIds } }),
   parent: (s) => ({ familyId: s.familyId }),
 };
 
@@ -90,6 +95,7 @@ export const PARENT_SCOPED_DELETES: Record<string, (s: ParentScope) => unknown> 
   // makes the decision explicit to the §4 coverage guard — and it is the decision that matches the
   // account-deletion promise: the proof of a consent goes with the account it authorised.
   parentConsentEvent: (s) => ({ parentId: s.parentId }),
+  socialEventFeedback: (s) => ({ parentId: s.parentId }),
   parent: (s) => ({ id: s.parentId }),
 };
 

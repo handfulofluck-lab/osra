@@ -50,21 +50,27 @@ const KEEP_KEY = `awk -F'\\t' -v key="$SECURITY_KEY_NAME" '$1 == "verify" && $2 
 const PARSE_AGENT = `node "$policy" --parse < "$RUNNER_TEMP/bodies.jsonl" | ${DROP_KEY} > "$sigs"`;
 const PARSE_KEY = `node "$policy" --parse < "$RUNNER_TEMP/key-bodies.jsonl" | ${KEEP_KEY} >> "$sigs"`;
 
-// Verification-shaped comments; only the agent's "— Claude" and Ahmed's own "— Ahmed" may survive.
+// Only the shared account’s ordinary signatures and Ahmed’s own security signature may survive.
 const T0 = '2026-11-13T21:00:00Z';
 const T1 = '2026-11-13T21:05:00Z';
 const c = (login, body, updated = T0) => ({ user: { login }, created_at: T0, updated_at: updated, body });
 const FIXTURE = [
   c(AGENT_LOGIN, 'Verified-sha: aaaaaaa\n\n— Claude (architecture + testing)'),
+  c(AGENT_LOGIN, 'Verified-sha: 2222222\n\n— Neon'),
+  c(AGENT_LOGIN, 'Verified-sha: 5555555\n\n— Kimi-Mac'),
   c(AGENT_LOGIN, 'Verified-sha: eeeeeee\n\n— Ahmed'), // forged from the shared account
   c(KEY_LOGIN, 'Verified-sha: bbbbbbb\n\n— Claude'), // Ahmed's agent is also "Claude"
   c(KEY_LOGIN, 'Arabic-Bureau: reviewed fffffff\n\n— Claude (Arabic Language Bureau)'),
   c(KEY_LOGIN, 'Verified-sha: ddddddd\n\n— Ahmed (security + iOS)'),
   c(KEY_LOGIN, 'Verified-sha: 9999999\n\n— Ahmed (security + iOS)', T1), // edited: could be anyone's words
+  c(KEY_LOGIN, 'Verified-sha: 3333333\n\n— Neon'),
+  c(KEY_LOGIN, 'Verified-sha: 6666666\n\n— Kimi-Mac'),
+  c('drive-by-account', 'Verified-sha: 4444444\n— Neon'),
+  c('drive-by-account', 'Verified-sha: 7777777\n— Kimi-Mac'),
   c('drive-by-account', 'Verified-sha: ccccccc\n— Ahmed'),
   c('drive-by-account', 'Verified-sha: 1111111\n— Antigravity'),
 ];
-const WANT = ['verify\tClaude\taaaaaaa', 'verify\tAhmed\tddddddd'];
+const WANT = ['verify\tClaude\taaaaaaa', 'verify\tAhmed\tddddddd', 'verify\tNeon\t2222222', 'verify\tKimi-Mac\t5555555'];
 
 const envValues = (text, key) => [...text.matchAll(new RegExp(`^\\s*${key}:\\s*(\\S+)\\s*$`, 'gm'))].map((m) => m[1]);
 const codeLines = (text) => text.split('\n').filter((l) => !l.trim().startsWith('#'));

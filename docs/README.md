@@ -10,6 +10,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | Deciding who does what | [`../AGENTS.md`](../AGENTS.md) §1 — the live split: Kimi Code implements and merges, Claude (KCL lead) decides architecture, Antigravity verifies, the maintainer holds the trade-offs and the final call |
 | Setting the test environment up | [`TESTING.md`](TESTING.md) → [`test-guides/INSTALLATION-GUIDE.md`](test-guides/INSTALLATION-GUIDE.md) |
 | Running or interpreting tests | [`TESTING.md`](TESTING.md) |
+| Starting a live two-device test | [`testing/pre-test-checklist.md`](testing/pre-test-checklist.md) — all six start gates must be green for every child device |
 | Needing the one physical test phone (Galaxy Z Flip4, `R5CW116Y6GF`) | [`../AGENTS.md`](../AGENTS.md) §9 — who may hold it, the lease and its expiry, release and takeover → [`TESTING.md`](TESTING.md) §5.0 — claim text, pre-flight checks and reset commands → [`QA/DEVICE-REGISTER.md`](QA/DEVICE-REGISTER.md) — the durable per-device register, run checklist and recovery order; local helper [`../scripts/hardware/phone-claim.ps1`](../scripts/hardware/phone-claim.ps1) |
 | Touching an agent (human or AI) | [`../AGENTS.md`](../AGENTS.md) — roles, definition of done, PR rules, hygiene |
 | Implementing a change | [`ROADMAP.md`](ROADMAP.md) for the item → [`../AGENTS.md`](../AGENTS.md) §3 (definition of done) → [`TESTING.md`](TESTING.md) for the gates that must be green before review |
@@ -42,8 +43,11 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`../services/ai-engine/eval/README.md`](../services/ai-engine/eval/README.md) | The labelled evaluation set: where the text comes from, the content rule, how to run or add a bank (plan 4.2) |
 | [`test-guides/CI-SECRETS.md`](test-guides/CI-SECRETS.md) | Every secret CI and deployment read from the environment, and what happens when one is missing |
 | [`ROADMAP.md`](ROADMAP.md) | The KCL plan (Phases 0–5, five gates, 20 weeks) item by item with acceptance lines and current status; mirrored on issue #50 |
+| [`superpowers/plans/2026-11-13-windows-w1-service-tray.md`](superpowers/plans/2026-11-13-windows-w1-service-tray.md) | Approved Windows W1 implementation plan (#623): two hosts, session supervision, the typed pipe, configuration, pairing and capability boundaries, tests and unsigned artifact |
 | [`ops/ci-cost-2026-11.md`](ops/ci-cost-2026-11.md) | Measured 31-day GitHub Actions usage and the 2026 USD cost model behind the cheaper-CI workflow changes (#613) |
 | [`adr/`](adr/README.md) | Architecture decision records — context, decision, reasoning, rejected alternatives, costs |
+| [Consented staging own-model scoring](adr/0046-consented-staging-own-model-scoring.md) | #1144 staging-only analyzer routing, quotas and rollout guards |
+| [Bounded Mac metadata access](adr/0043-bounded-mac-metadata-access.md) | Proposed implementation record for #893; reviewed inputs, operating limits and private evidence prerequisites |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | What changed on which day, with the PR/issue that carried it, and the verification state |
 | [`../CHANGELOG.d/`](../CHANGELOG.d/README.md) | One changelog fragment per change — where entries are written now, and why the shared `[Unreleased]` block was replaced |
 | [`../AGENTS.md`](../AGENTS.md) | Binding working agreement: the role split and the merge rule (§1), definition of done (§3), hard rules (§4), PR/review protocol (§6), device hygiene (§7) |
@@ -56,6 +60,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`QA/QA-REPORT-2026-10-11.md`](QA/QA-REPORT-2026-10-11.md) | Consolidated QA state: method, results, limits, priority order |
 | [`QA/TESTING-STRATEGY.md`](QA/TESTING-STRATEGY.md) | The agreed verification strategy: layers and ownership, the **environment matrix**, the rules each lane holds, cadence, and the anti-pattern checklist |
 | [`QA/SCENARIO-SUITE.md`](QA/SCENARIO-SUITE.md) | The real-device parent/child scenario suite: the test bed and device pairs, the scenario catalogue by phase (`SC-*`, roadmap rows S0–S5), the plan for making runs fast, who does what, and how a run is recorded (#665) |
+| [`QA/pre-test-checklist.md`](QA/pre-test-checklist.md) | Operational pre-flight, live-window, and post-test checklist (`PT-01`–`PT-21`) for live swap and staging full-function runs (#1024) |
 | [`superpowers/specs/2026-11-15-scenario-runner-design.md`](superpowers/specs/2026-11-15-scenario-runner-design.md) | The `scenario.ps1` manifest runner design: safe subprocess boundaries, before/after restore, evidence, measurements and no-device dry-run tests (#667; design approved with five additions) |
 | [`superpowers/plans/2026-11-15-scenario-runner.md`](superpowers/plans/2026-11-15-scenario-runner.md) | The fail-first scenario-runner implementation plan, including serial/lock/admin safeguards, in-memory OSRA-only PNG crops and all nine restored values (#667; plan approved with four further additions, implemented and ready for review) |
 | [`QA/TEST-REQUESTS.md`](QA/TEST-REQUESTS.md) | Open test requests (`TR-nn`) from the architecture lead to the testing lane, with pass criteria; replies quote the id with the raw gate output and go to the discussion log |
@@ -84,6 +89,7 @@ Start here. This page is the map: what each document is for, and which one to re
 | [`test-guides/CHROMEBOOK-KINDLE-PATH.md`](test-guides/CHROMEBOOK-KINDLE-PATH.md) | Roadmap for the Chromebook/Kindle paths |
 | [`../apps/child-ios/QA-IOS.md`](../apps/child-ios/QA-IOS.md) | iOS status, limitations and what still requires a Mac |
 | [`../apps/child-ios/MacAgent/README.md`](../apps/child-ios/MacAgent/README.md) | The Mac's background agent (5.9 step ii): what it does, its commands, and the test-Mac rows |
+| [`QA/swap-test-2026-11-24.md`](QA/swap-test-2026-11-24.md) | Plain-language numbered walkthrough for Karim's Tue 24 Nov 2026 swapped-role live test (Flip4 parent, iPhone child 1, Android child 2; #1024) |
 
 ## Conventions
 

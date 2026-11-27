@@ -34,6 +34,8 @@ class CapabilitiesPolicyTest {
         backgroundLocation: Boolean = false,
         callSms: Boolean = true,
         profiles: ProfilePolicy.Report? = null,
+        webFilter: com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState =
+            com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState.NOT_APPLICABLE,
     ) = CapabilitiesPolicy.CapabilityFacts(
         versionName = "0.2.0",
         versionCode = 2,
@@ -48,6 +50,7 @@ class CapabilitiesPolicyTest {
         backgroundLocation = backgroundLocation,
         callSmsGranted = callSms,
         profiles = profiles,
+        webFilter = webFilter,
     )
 
     @Test
@@ -99,6 +102,34 @@ class CapabilitiesPolicyTest {
 
         val working = facts(granted = setOf("web_filter"), filterSetUp = true, tunnel = true)
         assertEquals("ready", CapabilitiesPolicy.features(working)["web_filter"])
+
+        // Issue #1079, fail-visible (Claude 7143266097): the tunnel is up but the list that blocks the parent's
+        // categories is not on the phone. Some of the filter still works — SafeSearch and the YouTube rewrite
+        // need no pack — so the honest verdict is `degraded`, not `ready` and not `unavailable`. Mutant: leaving
+        // this case on the `else` branch reports `ready`, which is the silence child 2 was given.
+        val tunnelNoPack = facts(
+            granted = setOf("web_filter"),
+            filterSetUp = true,
+            tunnel = true,
+            webFilter = com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState.UNPROTECTED,
+        )
+        assertEquals("degraded", CapabilitiesPolicy.features(tunnelNoPack)["web_filter"])
+
+        // And the two states that carry no bad news keep the old verdicts.
+        val notApplicable = facts(
+            granted = setOf("web_filter"),
+            filterSetUp = true,
+            tunnel = true,
+            webFilter = com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState.NOT_APPLICABLE,
+        )
+        assertEquals("ready", CapabilitiesPolicy.features(notApplicable)["web_filter"])
+        val enforcing = facts(
+            granted = setOf("web_filter"),
+            filterSetUp = true,
+            tunnel = true,
+            webFilter = com.familyshield.agent.vpn.DnsFilterPolicy.EnforcementState.ENFORCING,
+        )
+        assertEquals("ready", CapabilitiesPolicy.features(enforcing)["web_filter"])
     }
 
     @Test

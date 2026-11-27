@@ -504,16 +504,17 @@ describe("/v1/me push tokens", () => {
 
   it("registers, lists and removes a token for the signed-in parent", async () => {
     const app = await buildApp(meRoutes, "/v1/me");
+    const h = { authorization: `Bearer ${app.jwt.sign({ sub: "parent-1", familyId: "fam-1", role: "parent", sv: 0 })}` };
     prismaMock.parentPushToken.upsert.mockResolvedValue({ id: "t1", platform: "android", createdAt: new Date("2026-10-16T00:00:00Z") });
-    const reg = await app.inject({ method: "POST", url: "/v1/me/push-token", headers: authHeader(app), payload: { token: "f".repeat(40), platform: "android", appVersion: "1.2.0" } });
+    const reg = await app.inject({ method: "POST", url: "/v1/me/push-token", headers: h, payload: { token: "f".repeat(40), platform: "android", appVersion: "1.2.0" } });
     expect(reg.statusCode).toBe(201);
-    expect(prismaMock.parentPushToken.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { token: "f".repeat(40) }, create: expect.objectContaining({ parentId: "parent-1", platform: "android" }) }));
+    expect(prismaMock.parentPushToken.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { token: "f".repeat(40) }, create: expect.objectContaining({ parentId: "parent-1", platform: "android", sessionVersion: 0 }) }));
 
-    const bad = await app.inject({ method: "POST", url: "/v1/me/push-token", headers: authHeader(app), payload: { token: "short", platform: "android" } });
+    const bad = await app.inject({ method: "POST", url: "/v1/me/push-token", headers: h, payload: { token: "short", platform: "android" } });
     expect(bad.statusCode).toBe(400);
 
     prismaMock.parentPushToken.deleteMany.mockResolvedValue({ count: 1 });
-    const del = await app.inject({ method: "DELETE", url: "/v1/me/push-token", headers: authHeader(app), payload: { token: "f".repeat(40) } });
+    const del = await app.inject({ method: "DELETE", url: "/v1/me/push-token", headers: h, payload: { token: "f".repeat(40) } });
     expect(del.json()).toEqual({ removed: 1 });
     expect(prismaMock.parentPushToken.deleteMany).toHaveBeenCalledWith({ where: { token: "f".repeat(40), parentId: "parent-1" } });
 

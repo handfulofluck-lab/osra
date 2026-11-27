@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:familyshield_parent/api/models.dart' show LiveActivity, wellbeingColor;
+import 'package:familyshield_parent/core/ltr_isolate.dart';
 import 'package:familyshield_parent/features/children/child_detail_screen.dart';
+import 'package:familyshield_parent/features/children/child_apps_list.dart';
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/reports/reports_screen.dart';
 import 'package:familyshield_parent/features/settings/digest_prefs_screen.dart';
@@ -25,7 +27,12 @@ void main() {
 
   Future<void> pumpScreen(WidgetTester tester, Widget home, FakeApiClient api) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api)],
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        // P-09 (#1179) ships behind `OSRA_UX_P09`; the Apps rows below test the new shape, where the row
+        // itself opens the insight sheet.
+        p09AppsEnabledProvider.overrideWithValue(true),
+      ],
       child: localizedTestApp(home),
     ));
     await tester.pumpAndSettle();
@@ -73,10 +80,11 @@ void main() {
 
       // Web section: visits, blocked domains and the #7 YouTube NOTE.
       final scrollable = find.byType(Scrollable).first;
-      await tester.scrollUntilVisible(find.text('tiktok.com'), 200, scrollable: scrollable);
+      await tester.scrollUntilVisible(find.text(ltrIsolateHost('tiktok.com')), 200, scrollable: scrollable);
       await tester.pumpAndSettle();
-      expect(find.textContaining('42 URL visits'), findsOneWidget);
-      expect(find.text('tiktok.com'), findsOneWidget);
+      // #830: the card counts sites once site names replace addresses.
+      expect(find.textContaining('42 sites visited'), findsOneWidget);
+      expect(find.text(ltrIsolateHost('tiktok.com')), findsOneWidget);
       expect(find.textContaining('12× blocked'), findsOneWidget);
       expect(find.textContaining('YouTube search is forced to SafeSearch'), findsOneWidget);
       expect(find.textContaining('Restricted Mode needs HTTPS inspection'), findsOneWidget);
@@ -101,6 +109,51 @@ void main() {
       final calls = api.calls('GET', '/v1/reports/summary');
       expect(calls, hasLength(2));
       expect(calls.last.query['days'], 30);
+    });
+
+    testWidgets('returning to a range reloads activity recorded since the first visit', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/summary': (_) => {'totalAppMinutes': total},
+      });
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
+      expect(find.textContaining('No activity recorded'), findsOneWidget);
+
+      await tester.tap(find.text('30 days'));
+      await tester.pumpAndSettle();
+      total = 22;
+      await tester.tap(find.text('7 days'));
+      await tester.pumpAndSettle();
+
+      // Mutant: retain the old seven-day provider after its last listener leaves.
+      expect(api.calls('GET', '/v1/reports/summary').map((r) => r.query['days']), [7, 30, 7]);
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+    });
+
+    testWidgets('refreshing the open report replaces an earlier empty response', (tester) async {
+      var total = 0;
+      final api = FakeApiClient({'GET /v1/reports/summary': (_) => {'totalAppMinutes': total}});
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'), api);
+      expect(find.textContaining('No activity recorded'), findsOneWidget);
+
+      total = 22;
+      await tester.tap(find.byTooltip('Refresh'));
+      await tester.pumpAndSettle();
+
+      // Mutant: redraw the screen without refetching the selected window.
+      expect(api.calls('GET', '/v1/reports/summary'), hasLength(2));
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+    });
+
+    testWidgets('recorded minutes with an empty app list keep the total and identify the missing breakdown', (tester) async {
+      await pumpScreen(tester, const ReportsScreen(childId: 'child-1'),
+          reportApi(summary: {'totalAppMinutes': 22, 'topApps': []}));
+
+      // Mutant: test topApps.isEmpty alone and claim there was no usage.
+      expect(find.textContaining('Total 22 min'), findsOneWidget);
+      expect(find.text('Per-app usage is unavailable'), findsOneWidget);
+      expect(find.text('No app usage recorded'), findsNothing);
     });
 
     testWidgets('empty summary shows the empty state', (tester) async {
@@ -148,6 +201,27 @@ void main() {
           .map((w) => w.color)
           .toList();
       expect(colors, containsAll([Colors.green, Colors.red]));
+    });
+
+    testWidgets('dashboard refresh gets a new score and keeps a reported zero distinct from a missing score', (tester) async {
+      var score = 0;
+      final api = FakeApiClient({
+        ...standardRoutes(),
+        'GET /v1/reports/wellbeing/child-1': (_) => {'score': score},
+        'GET /v1/reports/wellbeing/child-2': (_) => {'childId': 'child-2'},
+      });
+      await pumpScreen(tester, const DashboardScreen(), api);
+
+      // Mutant: substitute zero when the response omits the score.
+      expect(find.text('Wellbeing 0/100'), findsOneWidget);
+      score = 76;
+      await tester.drag(find.byKey(const ValueKey('dashboardCardsList')), const Offset(0, 350));
+      await tester.pumpAndSettle();
+
+      // Mutant: refreshing the family alone keeps the initial score cached.
+      expect(api.calls('GET', '/v1/reports/wellbeing/child-1'), hasLength(2));
+      expect(find.text('Wellbeing 76/100'), findsOneWidget);
+      expect(find.text('Wellbeing 0/100'), findsNothing);
     });
 
     testWidgets('ring is hidden while the score fails to load', (tester) async {
@@ -225,29 +299,39 @@ void main() {
               },
         });
 
-    testWidgets('timezone dropdown loads the family zone and PATCHes a change (ADR-0020)', (tester) async {
+    testWidgets('timezone picker shows city + GMT offset, searches, and PATCHes IANA id (R-ID-3)', (tester) async {
       final api = digestApi();
       await pumpScreen(tester, const DigestPrefsScreen(), api);
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      // The zone is loaded from /v1/family/me and shown as the current value.
+      // The zone is loaded from /v1/family/me and shown as a city + offset, never raw IANA ids.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('digestTimezone')),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('digestTimezone')), findsOneWidget);
+      expect(find.text('UTC (GMT+0)'), findsOneWidget);
       expect(find.text('18:00'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('digestTimezone')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Asia/Dubai').last);
+      await tester.enterText(find.byKey(const ValueKey('digestTimezoneSearch')), 'Dubai');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dubai (GMT+4)').last);
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
       final patches = api.calls('PATCH', '/v1/family/me');
       expect(patches, hasLength(1));
       expect(patches.single.body['timezone'], 'Asia/Dubai');
-      expect(find.textContaining('Digest timezone set to Asia/Dubai'), findsOneWidget);
+      expect(find.textContaining('Digest timezone set to Dubai (GMT+4)'), findsOneWidget);
+      expect(find.textContaining('Asia/Dubai'), findsNothing);
     });
 
-    testWidgets('a zone outside the curated list is shown, not replaced by UTC (#108)', (tester) async {
+    testWidgets('a zone outside the curated list is pinned at top cleanly without IANA text (#108, R-ID-3)', (tester) async {
       final api = FakeApiClient({
         ...standardRoutes(),
         'GET /v1/digests/prefs': (_) => {
@@ -264,10 +348,8 @@ void main() {
       await flushFakeHttp(tester);
       await tester.pumpAndSettle();
 
-      final dropdown = tester.widget<DropdownButtonFormField<String>>(
-        find.byKey(const ValueKey('digestTimezone')),
-      );
-      expect(dropdown.initialValue, 'Asia/Tokyo');
+      expect(find.text('Tokyo (GMT+9)'), findsOneWidget);
+      expect(find.text('Asia/Tokyo'), findsNothing);
       expect(find.text('18:00'), findsOneWidget);
       // The displayed value matches the server: no PATCH was needed to correct it.
       expect(api.calls('PATCH', '/v1/family/me'), isEmpty);
@@ -286,9 +368,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(weekly).value, isTrue);
 
-      // The email field now carries a helper line (#344 review), so Save sits
-      // just below the 600 px default surface.
-      await tester.ensureVisible(find.text('Save preferences'));
+      // The email chips/input push Save below the 600 px default surface.
+      await tester.scrollUntilVisible(find.text('Save preferences'), 150, scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save preferences'));
       await flushFakeHttp(tester);
@@ -338,7 +419,10 @@ void main() {
       expect(find.textContaining('Confirmation sent'), findsNothing);
       expect(find.byKey(const ValueKey('digestRecipient-qa@osratech.com')), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'qa@osratech.com, grandma@example.com');
+      // Add grandma@example.com via the R-ID-10 single-email chip input while keeping the existing chip.
+      await tester.enterText(find.byKey(const ValueKey('digestEmailAddInput')), 'grandma@example.com');
+      await tester.tap(find.byKey(const ValueKey('digestEmailAddButton')));
+      await tester.pumpAndSettle();
       // The recipient rows push Save below the 600 px surface, so scroll it into view first.
       await tester.drag(find.byType(ListView), const Offset(0, -300));
       await tester.pumpAndSettle();
@@ -460,7 +544,9 @@ void main() {
       final api = insightsApi();
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // P-09 (#1179): the row itself opens the insight sheet; the three rule words live on the row.
       await tester.pumpAndSettle();
 
       expect(api.calls('GET', '/v1/insights/apps').single.query['packageId'], 'com.example.game');
@@ -480,7 +566,9 @@ void main() {
       final api = FakeApiClient(standardRoutes());
       await openAppsTab(tester, api);
 
-      await tester.tap(find.text('Game'));
+      await tester.tap(find.text('Game').first);
+      await tester.pumpAndSettle();
+      // P-09 (#1179): the row itself opens the insight sheet; the three rule words live on the row.
       await tester.pumpAndSettle();
 
       expect(find.text('No insights for this app yet'), findsOneWidget);

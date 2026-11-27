@@ -391,6 +391,12 @@ variable "backup_copy_account_id" {
   default     = ""
 }
 
+variable "backup_offsite_copy_enabled" {
+  description = "Copy each daily backup to backup_copy_vault_arn (another account and EU region). false = the daily backup stays in this account and region only; the vault ARN still selects the AWS Backup plan."
+  type        = bool
+  default     = true
+}
+
 variable "backup_copy_vault_arn" {
   description = "Backup vault in another account and region that receives a copy of each daily backup (org-audit output backup_copy_vault_arn). Empty = no AWS Backup plan."
   type        = string
@@ -399,5 +405,57 @@ variable "backup_copy_vault_arn" {
   validation {
     condition     = var.backup_copy_vault_arn == "" || can(regex("^arn:aws:backup:eu-[a-z]+-[0-9]:[0-9]{12}:backup-vault:", var.backup_copy_vault_arn))
     error_message = "backup_copy_vault_arn must be a backup vault ARN in an EU region."
+  }
+}
+variable "staging_qa_analyzer" {
+  description = "Optional staging-only synthetic QA analyzer. Secret references are Stockholm ARNs with operator-provisioned values."
+  type = object({
+    image_digest              = string
+    frankfurt_vpc_cidr        = string
+    prompt_secret_arn         = string
+    approval_secret_arn       = string
+    pairing_secret_arn        = string
+    armed                     = optional(bool, false)
+    allow_synthetic_pair_text = optional(bool, false)
+    allow_android_sources     = optional(bool, false)
+    own_model_task_size       = optional(bool, false)
+    engine                    = optional(string, "bedrock")
+  })
+  default  = null
+  nullable = true
+
+  validation {
+    condition     = var.staging_qa_analyzer == null ? true : contains(["bedrock", "own", "both"], var.staging_qa_analyzer.engine)
+    error_message = "staging_qa_analyzer.engine must be bedrock, own or both."
+  }
+
+  validation {
+    condition = var.staging_qa_analyzer == null ? true : (
+      var.environment == "staging" &&
+      var.region == "eu-north-1" &&
+      var.assume_role_arn == "" &&
+      length(var.allowed_account_ids) == 1 &&
+      can(regex("^sha256:[a-f0-9]{64}$", var.staging_qa_analyzer.image_digest)) &&
+      can(cidrnetmask(var.staging_qa_analyzer.frankfurt_vpc_cidr))
+    )
+    error_message = "QA analyzer requires Stockholm staging, a pinned account and image digest, and an IPv4 CIDR for the Frankfurt endpoint VPC."
+  }
+
+  validation {
+    condition = var.staging_qa_analyzer == null ? true : (
+      length(toset([
+        var.staging_qa_analyzer.prompt_secret_arn,
+        var.staging_qa_analyzer.approval_secret_arn,
+        var.staging_qa_analyzer.pairing_secret_arn,
+      ])) == 3 &&
+      alltrue([
+        for arn in [
+          var.staging_qa_analyzer.prompt_secret_arn,
+          var.staging_qa_analyzer.approval_secret_arn,
+          var.staging_qa_analyzer.pairing_secret_arn,
+        ] : startswith(arn, "arn:aws:secretsmanager:eu-north-1:${try(tolist(var.allowed_account_ids)[0], "")}:secret:")
+      ])
+    )
+    error_message = "QA prompt, approval, and pairing must use separate full Secrets Manager references in the pinned Stockholm staging account."
   }
 }

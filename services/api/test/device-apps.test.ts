@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { deviceRoutes } from "../src/routes/devices.js";
+import { MAX_APP_ICON_BASE64, deviceRoutes } from "../src/routes/devices.js";
 import { MockRedis, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -259,15 +259,16 @@ describe("installed app inventory — parent read", () => {
       reportedAt: "2026-10-19T08:30:00.000Z",
       count: 2,
       apps: [
-        { packageId: PACKAGE, label: "Game", isSystem: false },
-        { packageId: "com.android.settings", label: "Settings", isSystem: true },
+        // A row without a stored icon answers iconUrl null, which the parent draws as a letter avatar.
+        { packageId: PACKAGE, label: "Game", isSystem: false, iconUrl: null },
+        { packageId: "com.android.settings", label: "Settings", isSystem: true, iconUrl: null },
       ],
     });
     expect(prismaMock.deviceApp.findMany).toHaveBeenCalledWith({
       where: { deviceId: "dev-1" },
       // #199: the parent app needs the device-computed flag to render "Always allowed (needed for calls
       // and safety)"; null on the wire means "not reported".
-      select: { packageId: true, label: true, isSystem: true, essential: true },
+      select: { packageId: true, label: true, isSystem: true, essential: true, icon: true },
       orderBy: [{ label: "asc" }, { packageId: "asc" }],
     });
     await app.close();
@@ -314,6 +315,81 @@ describe("installed app inventory — parent read", () => {
     prismaMock.parent.findUnique.mockResolvedValue({ id: "p-co", familyId: "fam-1", role: "co-parent", permissions: ["rules"] });
     const allowed = await app.inject({ method: "GET", url: "/v1/devices/dev-1/apps", headers: authHeader(app, "fam-1", "p-co") });
     expect(allowed.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+// Karim 23 Nov: "the Apps tab lacks any app icons". The agent sends each launcher icon as small base64
+// PNG or WebP; the server keeps only real images within the cap and hands them back as `iconUrl`.
+describe("installed app inventory — icons", () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]).toString("base64");
+  const WEBP = Buffer.concat([Buffer.from("RIFF"), Buffer.from([0x20, 0, 0, 0]), Buffer.from("WEBPVP8 ")]).toString("base64");
+
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  it("stores a PNG or WebP icon as a data URI and drops anything else without refusing the report", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/apps",
+      headers: deviceHeader(app),
+      payload: {
+        version: 1,
+        apps: [
+          { packageId: "com.example.png", label: "Png", isSystem: false, icon: PNG },
+          { packageId: "com.example.webp", label: "Webp", isSystem: false, icon: WEBP },
+          // Not an image signature: the row is kept, the icon is not.
+          { packageId: "com.example.text", label: "Text", isSystem: false, icon: Buffer.from("<svg onload=x>").toString("base64") },
+          // Not base64 at all.
+          { packageId: "com.example.junk", label: "Junk", isSystem: false, icon: "not base64!" },
+          // Over the per-app cap.
+          { packageId: "com.example.big", label: "Big", isSystem: false, icon: PNG + "A".repeat(MAX_APP_ICON_BASE64) },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ accepted: true, count: 5 });
+    const rows = prismaMock.deviceApp.createMany.mock.calls[0][0].data;
+    expect(rows.find((r: { packageId: string }) => r.packageId === "com.example.png").icon).toBe(`data:image/png;base64,${PNG}`);
+    expect(rows.find((r: { packageId: string }) => r.packageId === "com.example.webp").icon).toBe(`data:image/webp;base64,${WEBP}`);
+    for (const id of ["com.example.text", "com.example.junk", "com.example.big"]) {
+      expect(rows.find((r: { packageId: string }) => r.packageId === id)).not.toHaveProperty("icon");
+    }
+    await app.close();
+  });
+
+  it("accepts a full report with icons beyond Fastify's 1 MiB default body limit", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    const icon = PNG + "A".repeat(MAX_APP_ICON_BASE64 - PNG.length - (MAX_APP_ICON_BASE64 - PNG.length) % 4);
+    const apps = Array.from({ length: 200 }, (_, i) => ({ packageId: `com.example.app${i}`, label: `App ${i}`, isSystem: false, icon }));
+
+    const res = await app.inject({ method: "POST", url: "/v1/devices/dev-1/apps", headers: deviceHeader(app), payload: { version: 1, apps } });
+
+    expect(JSON.stringify({ version: 1, apps }).length).toBeGreaterThan(1024 * 1024);
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ count: 200 });
+    await app.close();
+  });
+
+  it("hands a stored icon back to the parent as iconUrl", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceApp.findMany.mockResolvedValue([
+      { packageId: PACKAGE, label: "Game", isSystem: false, essential: false, icon: `data:image/png;base64,${PNG}` },
+    ]);
+
+    const res = await app.inject({ method: "GET", url: "/v1/devices/dev-1/apps", headers: authHeader(app) });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().apps).toEqual([
+      { packageId: PACKAGE, label: "Game", isSystem: false, essential: false, iconUrl: `data:image/png;base64,${PNG}` },
+    ]);
     await app.close();
   });
 });

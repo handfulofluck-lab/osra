@@ -2,7 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
-import { raiseAlertOnce } from "../lib/alerts.js";
+import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
+import { raiseAlertOnce, type RaiseAlertInput } from "../lib/alerts.js";
+import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
+import { AWAIT_REPORT, raisePhoneSetupNotice } from "../lib/deviceSetupTransitions.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
@@ -63,6 +66,7 @@ export async function alertsRoutes(app: FastifyInstance) {
     const query = parsed.data;
     const where = {
       child: { familyId: user.familyId },
+      heldDuringSetup: false,
       ...(query.childId ? { childId: query.childId } : {}),
       ...(query.severity ? { severity: query.severity } : {}),
       ...(query.category ? { category: query.category } : {}),
@@ -85,7 +89,10 @@ export async function alertsRoutes(app: FastifyInstance) {
   });
 
   /** Acknowledge an alert. */
-  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
+  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req, reply) => {
+    if ((req as unknown as { alert?: { heldDuringSetup?: boolean } }).alert?.heldDuringSetup) {
+      return reply.code(404).send({ error: "not_found" });
+    }
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
     // Issue #672 review (Claude's B1b): the ack returns the row, so a guardian holding `alerts` without
@@ -107,7 +114,16 @@ export async function alertsRoutes(app: FastifyInstance) {
     }
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { childId, deviceId, severity, category, title, body, metadata, dedupeKey, attemptCount } = parsed.data;
+    const { childId, deviceId, severity, category, title, body, dedupeKey, attemptCount } = parsed.data;
+    // Provider attribution and delivery identity are assigned by the server.
+    const {
+      providerOutcomes: _providerOutcomes,
+      pushDeliveryId: _pushDeliveryId,
+      pushDeliverySeq: _pushDeliverySeq,
+      pushDeliveries: _pushDeliveries,
+      summaryGroupedInto: _summaryGroupedInto,
+      ...metadata
+    } = parsed.data.metadata ?? {};
 
     if (auth.device) {
       // Revocation is not checked here: sessionGuard refuses device JWTs, and an unpaired phone has no
@@ -128,25 +144,61 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    // #1208: the phone's setup notice shares the server reminder's key (handled below, under the device lock).
+    const setupNoticeDevice = auth.device && dedupeKey === incompleteDedupeKey(auth.device.id) ? auth.device : null;
+    const heldDuringSetup = auth.device
+      ? shouldHoldTamperDuringSetup(
+          auth.device as unknown as SetupDevice,
+          category,
+          typeof metadata.type === "string" ? metadata.type : null,
+          new Date(),
+        )
+      : false;
+
+    // Claude's ruling on #841 finding 5: while the site-name flag is off, a blocked site is a count with no
+    // host. The parent keeps the attempt; nothing in the row names a site, and the dedupe key groups by day.
+    const redactSite = category === "web_threat" && !siteNamesEnabled();
+    const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : metadata;
+    // ADR-0047: held retries share a separate namespace so a real post-setup event with the
+    // producer's original key creates a new visible row instead of deduplicating the held one.
+    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : heldDuringSetup && dedupeKey ? `held|${dedupeKey}` : dedupeKey;
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
-    const { alert, deduplicated } = await raiseAlertOnce({
+    const input: RaiseAlertInput = {
       childId,
       familyId: child.familyId,
       deviceId: effectiveDeviceId,
       severity,
       category,
-      title,
-      body,
+      // A redacted web_threat carries no client text either: the title and body are free text that could
+      // name a site, so the server owns both while the flag is off (Fable's blocker B).
+      title: redactSite ? "Blocked site opened" : title,
+      body: redactSite ? "Your child tried to open a blocked site." : body,
       // Issue #672: an SOS may carry where it was sent from, as the five flat keys the agent writes.
       // The location is normalised here — or dropped, keeping every other key — and never rejects the
       // alert: an SOS with no usable fix is still an SOS a parent must receive.
-      metadata: sanitizeAlertMetadata(metadata),
-      dedupeKey,
+      metadata: sanitizeAlertMetadata(safeMetadata),
+      dedupeKey: safeDedupeKey,
       attemptCount,
+      heldDuringSetup,
       childName: child.displayName,
-    });
+    };
+
+    if (setupNoticeDevice) {
+      // Decided under the Device row lock with the server-validated grants (Codex, #1230 finding 2 and
+      // osra-security#82/#87): open setup dedupes onto the pairing's one notice; a completed pairing that the
+      // server sees missing a newly required grant gets one new notice with the latch kept; a completed pairing
+      // with every required grant is a stale retry and writes nothing. Publish and push run after commit.
+      const pairedAt = (setupNoticeDevice as unknown as SetupDevice).pairedAt;
+      const outcome = await raisePhoneSetupNotice(setupNoticeDevice.id, pairedAt, { ...input, attemptCount: undefined });
+      // Codex (osra-security#82 7204850059 point 1): the report explaining this notice may not be stored yet. A non-2xx
+      // answer keeps the phone's notice queued (its worker retries), where a 200 drop would mark it posted.
+      if (outcome === AWAIT_REPORT) return reply.code(409).header("Retry-After", "30").send({ retry: "awaiting_report" });
+      if (!outcome) return reply.code(200).send({ dropped: "setup_complete" });
+      return reply.code(outcome.deduplicated ? 200 : 201).send({ alert: outcome.alert });
+    }
+    const { alert, deduplicated } = await raiseAlertOnce(input);
     return reply.code(deduplicated ? 200 : 201).send({ alert });
   });
 

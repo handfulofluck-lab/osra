@@ -30,6 +30,14 @@ data class RuleSetDto(
      * unknown-contact alerting is disabled (no alerts raised).
      */
     val contactAllowlist: List<String> = emptyList(),
+    /**
+     * #830 gating: site names may leave the phone only when this is true. It comes from the server flag,
+     * which stays off until the privacy notice and the Play data-safety form are live. An older server
+     * does not send the field, and the default is off on purpose.
+     */
+    val siteNames: Boolean = false,
+    /** F7 (#1179 / #1192): parents'/guardians' display names for child-facing copy (fallback when empty). */
+    val adultNames: List<String> = emptyList(),
     val updatedAt: String = "",
 )
 

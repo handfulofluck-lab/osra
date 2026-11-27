@@ -15,14 +15,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Feature #2/#17 social scan queue: batches redacted captures for 3 s, dedupes by content hash,
- * caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs the batch, six captures per request
+ * Feature #2/#17 social scan queue: batches redacted captures for 3 s, dedupes repeated capture
+ * occurrences and matching cross-source lines, caps the send rate at [MAX_SENDS_PER_MINUTE] and HMAC-POSTs the batch, six captures per request
  * (#490), to POST /v1/social/scan (the server runs the AI scan and raises alerts). On 200 nothing extra happens
  * here — flagged content surfaces as server-side alerts. A numeric contact (e.g. an unsaved
  * WhatsApp number) is also checked against the Feature #27 allowlist; an unknown number raises a
@@ -38,7 +39,7 @@ class SocialScanQueue @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
-    private val recentHashes = LinkedHashMap<String, Long>() // insertion-ordered for pruning
+    private val dedupe = ScanDedupeTracker()
     private val sendTimestamps = ArrayDeque<Long>()
     private val lastAlertAt = HashMap<String, Long>()
     private var flushJob: Job? = null
@@ -46,22 +47,31 @@ class SocialScanQueue @Inject constructor(
     /**
      * Queues one capture **durably** (plan 2.6: a Room row, so a kill, a reboot or an offline stretch
      * loses nothing) and flushes after [FLUSH_DELAY_MS] of quiet. Dedupe and the send-rate cap are
-     * applied before the row is written. [source] is where the text came from (screen / notification).
+     * applied before the row is written. [source] is where the text came from (screen / notification);
+     * [occurrenceId] distinguishes a genuinely new line from a redraw with the same text; null keeps
+     * the legacy text-only same-source cooldown for callers without stable occurrence ids.
      */
-    fun enqueue(app: String, contact: String?, text: String, nowMs: Long = System.currentTimeMillis(), source: String = ScanQueuePolicy.SOURCE_SCREEN) {
+    fun enqueue(
+        app: String,
+        contact: String?,
+        text: String,
+        nowMs: Long = System.currentTimeMillis(),
+        source: String = ScanQueuePolicy.SOURCE_SCREEN,
+        occurrenceId: String? = null,
+    ) {
         if (text.isBlank()) return
-        val hash = dedupeHash(app, contact, text)
         scope.launch {
             mutex.withLock {
-                val last = recentHashes[hash]
-                if (last != null && nowMs - last < DEDUPE_WINDOW_MS) return@withLock
+                if (!dedupe.canEnqueue(app, contact, text, nowMs, source, occurrenceId)) return@withLock
                 if (!withinRateLimit(sendTimestamps, nowMs, RATE_WINDOW_MS, MAX_SENDS_PER_MINUTE)) {
                     return@withLock // NOTE: over rate — drop; the next user action re-captures.
                 }
-                recentHashes[hash] = nowMs
                 pruneLocked(nowMs)
-                runCatching {
+                val inserted = runCatching {
                     dao.insert(com.familyshield.agent.data.db.PendingScanEntity(app = app, contact = contact, text = text, source = source, createdAt = nowMs))
+                }
+                if (inserted.isSuccess) {
+                    dedupe.record(app, contact, text, nowMs, source, occurrenceId)
                 }
                 if (flushJob == null) {
                     flushJob = scope.launch { delay(FLUSH_DELAY_MS); flush() }
@@ -77,11 +87,15 @@ class SocialScanQueue @Inject constructor(
      */
     suspend fun flush() {
         mutex.withLock {
-            flushJob?.cancel()
+            val callerJob = currentCoroutineContext()[Job]
+            if (flushJob != null && flushJob !== callerJob) flushJob?.cancel()
             flushJob = null
             val now = System.currentTimeMillis()
             runCatching { dao.purge(now - ScanQueuePolicy.MAX_AGE_MS, ScanQueuePolicy.MAX_ATTEMPTS) }
-            val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }.getOrDefault(emptyList())
+                .onFailure { if (it is CancellationException) throw it }
+            val batch = runCatching { dao.oldest(ScanQueuePolicy.BATCH_SIZE) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(emptyList())
             if (batch.isEmpty()) return@withLock
             val childId = settings.childId()
             val deviceId = settings.deviceId()
@@ -92,7 +106,7 @@ class SocialScanQueue @Inject constructor(
                 toDto = { row ->
                     SocialScanDto(childId = childId, deviceId = deviceId, app = row.app, contact = row.contact, text = row.text, source = row.source)
                 },
-                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(items)).results },
+                post = { items -> api.postSocialScanBatch(SocialScanBatchDto(deviceId = deviceId, items = items)).results },
                 isPermanentRejection = { e -> e is retrofit2.HttpException && e.code() in 400..499 && e.code() != 429 },
             ).send(batch)
             for (row in outcome.sent) {
@@ -139,10 +153,7 @@ class SocialScanQueue @Inject constructor(
     }
 
     private fun pruneLocked(nowMs: Long) {
-        val it = recentHashes.entries.iterator()
-        while (it.hasNext()) {
-            if (nowMs - it.next().value > DEDUPE_WINDOW_MS) it.remove() else break
-        }
+        dedupe.prune(nowMs)
         while (sendTimestamps.isNotEmpty() && nowMs - sendTimestamps.first() > RATE_WINDOW_MS) {
             sendTimestamps.removeFirst()
         }

@@ -1,6 +1,9 @@
 package com.familyshield.agent.data
 
+import android.content.Context
 import android.util.Log
+import com.familyshield.agent.vpn.VpnState
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +53,7 @@ object ConsentPolicy {
 @Singleton
 class ConsentState @Inject constructor(
     private val settings: AgentSettings,
+    @ApplicationContext private val context: Context,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -71,6 +75,11 @@ class ConsentState @Inject constructor(
      */
     @Volatile private var pauseEpoch: Long = settings.consentPauseEpochSync()
     @Volatile private var resumedAtMs: Long = settings.consentResumedAtSync()
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(Boolean) -> Unit>()
+
+    fun addListener(listener: (Boolean) -> Unit) {
+        listeners += listener
+    }
 
     /** True while the parent has withdrawn consent; collection and enforcement must stop. */
     fun isPaused(): Boolean = paused
@@ -119,11 +128,14 @@ class ConsentState @Inject constructor(
         if (next) {
             paused = true
             pauseEpoch += 1 // after the flag: a harvest seeing the new epoch also sees paused == true
+            VpnState.clearFilterLoss(context)
         } else {
             resumedAtMs = System.currentTimeMillis()
             paused = false // after the time: a harvest seeing paused == false also sees the new resumedAtMs
         }
+        runCatching { com.familyshield.agent.vpn.FilterVpnService.onConsentChanged(next) }
         Log.i(TAG, if (next) "consent withdrawn — monitoring paused ($reason)" else "consent active — monitoring resumed ($reason)")
+        listeners.forEach { it(next) }
         scope.launch { runCatching { settings.saveConsentState(next, pauseEpoch, resumedAtMs) } }
     }
 

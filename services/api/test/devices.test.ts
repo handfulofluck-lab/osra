@@ -131,8 +131,11 @@ describe("device enrollment & management", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().device.id).toBe("dev-2");
+    // #790: a parent's own enrollment is not a pending claim — nothing claimed anything, so the row is
+    // paired on creation. Without `pairedAt` the device would be hidden from the parent that created it
+    // and swept 30 minutes later.
     expect(prismaMock.device.create).toHaveBeenCalledWith({
-      data: { childId: "child-1", platform: "android", model: "Pixel 7a", osVersion: "14", pushToken: "tok" },
+      data: { childId: "child-1", platform: "android", model: "Pixel 7a", osVersion: "14", pushToken: "tok", pairedAt: expect.any(Date) },
     });
     await app.close();
   });
@@ -263,8 +266,11 @@ describe("device enrollment & management", () => {
     const res = await app.inject({ method: "GET", url: "/v1/devices", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.json().devices).toHaveLength(2);
+    // #790 narrowed this query: the list is the family's phones, and a pending device (a pairing claim
+    // whose phone has not made one accepted request) is not one of them yet. The assertion is exact, so
+    // dropping the `pairedAt` filter fails here rather than silently drawing an unproven row.
     expect(prismaMock.device.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { child: { familyId: "fam-1" } } }),
+      expect.objectContaining({ where: { child: { familyId: "fam-1" }, pairedAt: { not: null } } }),
     );
 
     prismaMock.device.findMany.mockClear();
@@ -540,6 +546,104 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("#830 B3: telemetry caps the app count and each app's minutes", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+
+    const tooManyApps = { appUsage: Array.from({ length: 301 }, (_, i) => ({ packageId: `com.example.app${i}`, minutes: 1 })) };
+    const tooManyMinutes = { appUsage: [{ packageId: "com.example.app", minutes: 1441 }] };
+    const legacyTooMany = { perAppMinutes: Object.fromEntries(Array.from({ length: 301 }, (_, i) => [`com.example.app${i}`, 1])) };
+    const legacyTooManyMinutes = { perAppMinutes: { "com.example.app": 1441 } };
+    for (const payload of [tooManyApps, tooManyMinutes, legacyTooMany, legacyTooManyMinutes]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/devices/dev-1/telemetry",
+        headers: deviceHeader(app),
+        payload: payload as Record<string, unknown>,
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    await app.close();
+  });
+
+  it("#830: telemetry per-app minutes become per-app rows, and the legacy map still maps", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.appUsageDaily.upsert.mockResolvedValue({});
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        totalMinutes: 22,
+        appUsage: [
+          { packageId: "com.google.android.youtube", minutes: 15 },
+          { packageId: "com.android.chrome", minutes: 7 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    const created = prismaMock.appUsageDaily.upsert.mock.calls.map(
+      ([args]: [{ create: { childId: string; deviceId: string; app: string; minutes: number } }]) => args.create,
+    );
+    expect(created).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ childId: "child-1", deviceId: "dev-1", app: "com.google.android.youtube", minutes: 15 }),
+        expect.objectContaining({ childId: "child-1", deviceId: "dev-1", app: "com.android.chrome", minutes: 7 }),
+      ]),
+    );
+
+    // Both shapes in one report: `appUsage` is the contract, so the legacy map is not folded in.
+    prismaMock.appUsageDaily.upsert.mockClear();
+    const both = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        appUsage: [{ packageId: "com.google.android.youtube", minutes: 9 }],
+        perAppMinutes: { "com.android.chrome": 40 },
+      },
+    });
+    expect(both.statusCode).toBe(202);
+    const bothRows = prismaMock.appUsageDaily.upsert.mock.calls.map(
+      ([args]: [{ create: { app: string; minutes: number } }]) => args.create,
+    );
+    expect(bothRows).toEqual([expect.objectContaining({ app: "com.google.android.youtube", minutes: 9 })]);
+    expect(bothRows.some((row) => row.app === "com.android.chrome")).toBe(false);
+
+    // The shape Android sent before the contract was standardised, accepted for one release.
+    prismaMock.appUsageDaily.upsert.mockClear();
+    const legacy = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { perAppMinutes: { "com.google.android.youtube": 5 } },
+    });
+    expect(legacy.statusCode).toBe(202);
+    expect(prismaMock.appUsageDaily.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ app: "com.google.android.youtube", minutes: 5 }) }),
+    );
+    await app.close();
+  });
+
+  it("#830: a device with no child writes no per-app row", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: null });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: { appUsage: [{ packageId: "com.google.android.youtube", minutes: 5 }] },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(prismaMock.appUsageDaily.upsert).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   /**
    * Issue #475: the applied rules version is a *report*, and only a version the server has issued counts.
    * A number from the future would clear the parent's "the phone hasn't picked this up yet" line on a
@@ -562,12 +666,13 @@ describe("device enrollment & management", () => {
     expect(accepted.statusCode).toBe(202);
     // The route also stamps lastSeen/status on every telemetry, so assert on the field, not the call.
     expect(
-      prismaMock.device.update.mock.calls.some(
+      prismaMock.device.updateMany.mock.calls.some(
         ([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 5,
       ),
     ).toBe(true);
 
     prismaMock.device.update.mockClear();
+    prismaMock.device.updateMany.mockClear();
     const future = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/telemetry",
@@ -575,11 +680,11 @@ describe("device enrollment & management", () => {
       payload: { appliedRulesVersion: 99 },
     });
     expect(future.statusCode).toBe(202);
-    expect(
-      prismaMock.device.update.mock.calls.some(
-        ([args]: [{ data?: Record<string, unknown> }]) => "appliedRulesVersion" in (args.data ?? {}),
-      ),
-    ).toBe(false);
+    for (const writer of [prismaMock.device.update, prismaMock.device.updateMany]) {
+      expect(
+        writer.mock.calls.some(([args]: [{ data?: Record<string, unknown> }]) => "appliedRulesVersion" in (args.data ?? {})),
+      ).toBe(false);
+    }
     await app.close();
   });
 
@@ -830,6 +935,158 @@ describe("device enrollment & management", () => {
     await app.close();
   });
 
+  it("issue #830/S1: the per-app split in telemetry reaches AppUsageDaily", async () => {
+    // The parent's usage report read `apps: []` for every family because the only per-app writer was fed by
+    // persistent activity events, and the agent marks all of its own `app_usage` events `live` (filtered by
+    // BUG-002). The same telemetry that carries the total already carries the split; this row pins that it
+    // is stored, and that the total keeps its single writer.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        totalMinutes: 22,
+        appUsage: [
+          { packageId: "com.google.android.youtube", minutes: 14.6 },
+          { packageId: "com.whatsapp", minutes: 7 },
+          // A phone that reports the reserved total key inside the split must not be able to write the
+          // total a second time. Mutant: drop the `app === DEVICE_TOTAL_APP` guard and this row doubles it.
+          { packageId: "*", minutes: 5 },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const rows = prismaMock.appUsageDaily.upsert.mock.calls.map(([args]: [{ where: { childId_deviceId_day_app: { app: string } }; create: { minutes: number } }]) => [
+      args.where.childId_deviceId_day_app.app,
+      args.create.minutes,
+    ]);
+    expect(rows).toEqual(expect.arrayContaining([["com.google.android.youtube", 15], ["com.whatsapp", 7]]));
+    // `*` is the total's own row, written once by `recordDeviceTotal`: a second writer would double it.
+    const totals = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([args]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => args.where.childId_deviceId_day_app.app === "*",
+    );
+    expect(totals).toHaveLength(1);
+    expect((totals[0][0] as { create: { minutes: number } }).create.minutes).toBe(22);
+    await app.close();
+  });
+
+  it("issue #830/S1: an empty or zero-minute entry is skipped, and repeats accumulate", async () => {
+    // The schema already refuses a blank packageId with a 400 for the whole tick (so the writer cannot see
+    // one), but a zero-minute row is legal and must not create a row, and two entries for one package in
+    // one tick are the same counter, not a race to overwrite.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        batteryPct: 40,
+        appUsage: [
+          { packageId: "com.whatsapp", minutes: 0 },
+          { packageId: "com.whatsapp", minutes: 3 },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const perApp = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([args]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => args.where.childId_deviceId_day_app.app === "com.whatsapp",
+    );
+    expect(perApp).toHaveLength(1);
+    expect((perApp[0][0] as { create: { minutes: number } }).create.minutes).toBe(3);
+    await app.close();
+  });
+
+  it("issue #830/S1 C1: the field Android actually sends reaches AppUsageDaily", async () => {
+    // The exact `TelemetryDto` wire shape (`PayloadDtos.kt:19-23`): `perAppMinutes` as a map, no `appUsage`.
+    // Antigravity's C1: without this branch the rollup is a no-op on every real phone, tests green or not.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        perAppMinutes: { "com.google.android.youtube": 15, "com.whatsapp": 7, "*": 5 },
+        totalMinutes: 22,
+        unlockCount: 3,
+        batteryPct: 80,
+        locationGrant: "background",
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const rows = prismaMock.appUsageDaily.upsert.mock.calls.map(
+      ([a]: [{ where: { childId_deviceId_day_app: { app: string } }; create: { minutes: number } }]) => [
+        a.where.childId_deviceId_day_app.app,
+        a.create.minutes,
+      ],
+    );
+    expect(rows).toEqual(expect.arrayContaining([["com.google.android.youtube", 15], ["com.whatsapp", 7]]));
+    // The map's `*` entry must not write the total either — same guard as the array shape.
+    const totals = rows.filter(([k]: [string, number]) => k === "*");
+    expect(totals).toHaveLength(1);
+    expect(totals[0][1]).toBe(22);
+    await app.close();
+  });
+
+  it("issue #830/S1 C1: both shapes in one tick are written once, not added", async () => {
+    // Precedence, not addition: a transitional client must not double its own minutes. Mutant: feed both
+    // lists into recordAppUsage and the count doubles.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      payload: {
+        appUsage: [{ packageId: "com.whatsapp", minutes: 5 }],
+        perAppMinutes: { "com.whatsapp": 9 },
+      },
+    });
+
+    const whatsapp = prismaMock.appUsageDaily.upsert.mock.calls.filter(
+      ([a]: [{ where: { childId_deviceId_day_app: { app: string } } }]) => a.where.childId_deviceId_day_app.app === "com.whatsapp",
+    );
+    expect(whatsapp).toHaveLength(1);
+    expect((whatsapp[0][0] as { create: { minutes: number } }).create.minutes).toBe(5);
+    await app.close();
+  });
+
+  it("issue #830/S1: a failed per-app rollup does not change the response or lose the tick", async () => {
+    // Hydrogen's B1 (#901): §5 promises that a broken rollup cannot fail the upload. Mutant: `throw err` in
+    // the handler's catch, and this row is the only thing that notices.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.appUsageDaily.upsert.mockRejectedValueOnce(new Error("db down"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/devices/dev-1/telemetry",
+      headers: deviceHeader(app),
+      // No `totalMinutes`: the only rollup that can fail here is the per-app one.
+      payload: { batteryPct: 55, appUsage: [{ packageId: "com.whatsapp", minutes: 4 }] },
+    });
+
+    expect(res.statusCode).toBe(202);
+    // The heartbeat still happened: the device row was refreshed, so lastSeen advances as usual.
+    expect(prismaMock.device.update).toHaveBeenCalled();
+    await app.close();
+  });
+
   it("issue #31: accumulates daily screen time minutes on telemetry reports", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, childId: "child-1" });
@@ -938,8 +1195,33 @@ describe("#305 review: the witness code is a device credential, not a parent one
 describe("applied rules version push (#865)", () => {
   const redis = () => getRedis() as unknown as import("./helpers.js").MockRedis;
 
+  // The device row's stored version. The mock applies the route's own `where` clause, so these tests prove
+  // the guard the route sends, not a guard the mock assumes.
+  let stored: number | null = null;
+  // Codex review: the mock interprets only `null` and a strict `lt`, so any other operator (`lte`, `gt`, a
+  // missing null branch) fails here instead of slipping through as "no match".
+  type Guard = { appliedRulesVersion: null | { lt: number } };
+  const guardAllows = (where: { OR?: Guard[] }, current: number | null) => {
+    const conditions = where.OR ?? [];
+    expect(conditions).toHaveLength(2);
+    expect(conditions).toContainEqual({ appliedRulesVersion: null });
+    return conditions.some((c) => {
+      if (c.appliedRulesVersion === null) return current === null;
+      expect(Object.keys(c.appliedRulesVersion)).toEqual(["lt"]);
+      return current !== null && current < c.appliedRulesVersion.lt;
+    });
+  };
+
   beforeEach(() => {
     resetPrismaMock();
+    stored = null;
+    prismaMock.device.updateMany.mockImplementation(
+      async ({ where, data }: { where: { OR?: Guard[] }; data: { appliedRulesVersion: number } }) => {
+        if (!guardAllows(where, stored)) return { count: 0 };
+        stored = data.appliedRulesVersion;
+        return { count: 1 };
+      },
+    );
   });
 
   const report = (app: Awaited<ReturnType<typeof buildApp>>, appliedRulesVersion: number) =>
@@ -993,12 +1275,48 @@ describe("applied rules version push (#865)", () => {
     await app.close();
   });
 
+  /**
+   * Codex #1002 review (23 Nov): the phone reports its applied version at once and again on the periodic
+   * upload, so a delayed upload can land after a newer one. With version 4 issued, a fresh 4 then a late 3
+   * both answer 202 (the phone is not at fault), the row keeps 4, and the parent is told once.
+   */
+  it("a delayed report of an older version does not move the device back to pending", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockImplementation(async () => [{ appliedRulesVersion: stored }]);
+    redis().publish.mockClear();
+
+    expect((await report(app, 4)).statusCode).toBe(202);
+    expect((await report(app, 3)).statusCode).toBe(202);
+    // The mutant: an unguarded write (the code before this fix) stores 3 here and the banner reads pending.
+    expect(stored).toBe(4);
+    const frames = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"'));
+    expect(frames).toHaveLength(1);
+    expect(JSON.parse(frames[0][1] as string).payload.appliedRulesVersion).toBe(4);
+    await app.close();
+  });
+
+  it("a new pairing's first report is always taken", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 7 });
+    prismaMock.device.findMany.mockImplementation(async () => [{ appliedRulesVersion: stored }]);
+    // A re-paired phone is a new device row: nothing stored yet, so even a low first version is accepted.
+    expect((await report(app, 2)).statusCode).toBe(202);
+    expect(stored).toBe(2);
+    await app.close();
+  });
+
   it("publishes again when the version moves up and the family is caught up", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 5 });
     prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 5 }]);
     prismaMock.device.update.mockResolvedValue(DEVICE);
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, appliedRulesVersion: 4 });
+    stored = 4;
     redis().publish.mockClear();
 
     expect((await report(app, 5)).statusCode).toBe(202);
@@ -1057,11 +1375,12 @@ describe("applied rules version push (#865)", () => {
     expect(plain.statusCode).toBe(202);
     expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
     // A future version is not stored either — the #475 rule the push must not weaken.
-    expect(
-      prismaMock.device.update.mock.calls.some(
-        ([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 99,
-      ),
-    ).toBe(false);
+    for (const writer of [prismaMock.device.update, prismaMock.device.updateMany]) {
+      expect(
+        writer.mock.calls.some(([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 99),
+      ).toBe(false);
+    }
+    expect(stored).toBeNull();
     await app.close();
   });
 
@@ -1200,10 +1519,46 @@ describe("device restart reporting (#867)", () => {
     expect(prismaMock.alert.create).toHaveBeenCalledTimes(1);
     const alert = prismaMock.alert.create.mock.calls[0][0].data as { severity: string; body: string; metadata: Record<string, unknown> };
     expect(alert.severity).toBe("info");
-    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 2 minutes\.$/);
-    expect(alert.metadata).toMatchObject({ gapMinutes: 2 });
+    expect(alert.body).toMatch(/^Pixel 7a restarted (?:yesterday )?at \d\d:\d\d and was back after 2 minutes\.$/);
+    expect(alert.metadata).toMatchObject({
+      type: "device_restarted",
+      gapMinutes: 2,
+      bodyKey: "alertBodyDeviceRestarted",
+      bodyParams: { model: "Pixel 7a", gapMinutes: 2 },
+    });
     // The count that decided the restart is stored, so the next tick's comparison has it.
     expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 8 });
+    await app.close();
+  });
+
+  it("adopts a counter on a same-boot tick from an upgraded agent, silently", async () => {
+    // Fable's review of #884: a row with an instant and no counter is an agent upgraded in place. Recording
+    // the counter on this tick — no alert, no instant rewrite — is what moves the next restart's decision off
+    // the wall clock. The mutant, waiting for the next reboot, leaves the clock-move weakness for a full uptime.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    const storedInstant = minutesAgo(90);
+    storedDevice({ lastBootAt: storedInstant, lastBootCount: null });
+
+    expect((await tick(app, { bootedAt: storedInstant.toISOString(), bootCount: 5 })).statusCode).toBe(202);
+    expect(prismaMock.alert.create).not.toHaveBeenCalled();
+    expect(bootWrites()).toHaveLength(1);
+    expect(bootWrites()[0][0].data).toMatchObject({ lastBootCount: 5 });
+    // The instant is not rewritten: this is not a new boot, and moving it would misdate the next gap.
+    expect(bootWrites()[0][0].data).not.toHaveProperty("lastBootAt");
+    await app.close();
+  });
+
+  it("alerts with a dedupe key that names the deciding count", async () => {
+    // Fable's x10 on #884: the key gained the count, and the row that guarded it was lost. Two API instances
+    // both deciding "new boot" for one restart would otherwise push twice; the count is part of the identity
+    // because a moved clock can repeat an instant.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    storedDevice({ lastBootAt: minutesAgo(180), lastBootCount: 7, lastSeen: minutesAgo(122) });
+    const boot = minutesAgo(120);
+
+    expect((await tick(app, { bootedAt: boot.toISOString(), bootCount: 8 })).statusCode).toBe(202);
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as { dedupeKey?: string };
+    expect(alert.dedupeKey).toBe(`boot|${boot.toISOString()}|8`);
     await app.close();
   });
 
@@ -1230,7 +1585,7 @@ describe("device restart reporting (#867)", () => {
     // they already got instead of reading like a routine reboot.
     expect(alert.severity).toBe("warning");
     expect(alert.metadata.gapMinutes).toBe(40);
-    expect(alert.body).toMatch(/^Pixel 7a restarted at \d\d:\d\d, back after 40 minutes\.$/);
+    expect(alert.body).toMatch(/^Pixel 7a restarted (?:yesterday )?at \d\d:\d\d and was back after 40 minutes\.$/);
     await app.close();
   });
 
@@ -1271,7 +1626,7 @@ describe("device restart reporting (#867)", () => {
     await app.close();
   });
 
-  it("renders the alert in the family's timezone, not UTC (x12)", async () => {
+  it("renders the alert in the family's timezone, carries family zone in bodyParams, and drops bodyKey when model is empty (#889)", async () => {
     // Fable's x12: the pure function is tested with a zone; the mutant is the route passing "UTC" — or
     // reading the wrong family — and a wrong hour in "restarted at …" is the made-up number the body warns
     // about. The fixture family is Asia/Dubai, so the two clocks differ by four hours.
@@ -1280,12 +1635,35 @@ describe("device restart reporting (#867)", () => {
     storedDevice({ lastBootAt: minutesAgo(180), lastSeen: new Date(boot.getTime() - 2 * 60_000) });
 
     expect((await tick(app, { bootedAt: boot.toISOString() })).statusCode).toBe(202);
-    const alert = prismaMock.alert.create.mock.calls[0][0].data as { body: string };
+    const alert = prismaMock.alert.create.mock.calls[0][0].data as {
+      body: string;
+      metadata: { bodyKey?: string; bodyParams?: { timeZone?: string; utcOffsetMinutes?: number } };
+    };
     const hhmm = (timeZone: string) =>
       new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(boot);
     expect(hhmm("Asia/Dubai")).not.toBe(hhmm("UTC"));
-    expect(alert.body).toContain(`restarted at ${hhmm("Asia/Dubai")}`);
-    expect(alert.body).not.toContain(`restarted at ${hhmm("UTC")}`);
+    expect(alert.body).toMatch(new RegExp(`^Pixel 7a restarted (?:yesterday )?at ${hhmm("Asia/Dubai")} and was back`));
+    expect(alert.body).not.toContain(`at ${hhmm("UTC")} `);
+    expect(alert.metadata.bodyKey).toBe("alertBodyDeviceRestarted");
+    expect(alert.metadata.bodyParams?.timeZone).toBe("Asia/Dubai");
+    expect(alert.metadata.bodyParams?.utcOffsetMinutes).toBe(240);
+
+    // When `device.model` is blank, English compatibility `body` uses "A phone", while `bodyKey` / `bodyParams`
+    // are stripped so Arabic UI does not interpolate English "A phone" into Arabic (#889 / Fable n7).
+    prismaMock.alert.create.mockClear();
+    const boot2 = minutesAgo(4);
+    storedDevice({ model: "   ", lastBootAt: minutesAgo(180), lastSeen: new Date(boot2.getTime() - (29 * 60 + 45) * 1_000) });
+    expect((await tick(app, { bootedAt: boot2.toISOString() })).statusCode).toBe(202);
+    const unkeyed = prismaMock.alert.create.mock.calls[0][0].data as {
+      severity: string;
+      body: string;
+      metadata: Record<string, unknown>;
+    };
+    expect(unkeyed.severity).toBe("info");
+    expect(unkeyed.metadata.gapMinutes).toBe(29);
+    expect(unkeyed.body).toMatch(/^A phone restarted /);
+    expect(unkeyed.metadata.bodyKey).toBeUndefined();
+    expect(unkeyed.metadata.bodyParams).toBeUndefined();
     await app.close();
   });
 
@@ -1298,6 +1676,171 @@ describe("device restart reporting (#867)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().device.lastBootAt).toBe("2026-11-17T10:00:00.000Z");
     expect(res.json().device.lastBootCount).toBe(7);
+    await app.close();
+  });
+});
+
+/**
+ * #935: when a child device acknowledges a command (`POST /v1/devices/:id/commands/:commandId/ack`),
+ * publish `command_acked` on the family channel so the parent app clears "pending" right away.
+ *
+ * Mutants (AGENTS.md §3):
+ * - M1: Remove `publishFamilyEvent(..., { type: "command_acked", ... })` in `devices.ts`:
+ *       the publish test below fails RED.
+ * - M2: Forward `row.payload` or `detail` in the frame payload:
+ *       the non-leak assertions below fail RED.
+ */
+describe("command ack push (#935)", () => {
+  const redis = () => getRedis() as unknown as import("./helpers.js").MockRedis;
+
+  beforeEach(() => {
+    resetPrismaMock();
+  });
+
+  const ack = (
+    app: Awaited<ReturnType<typeof buildApp>>,
+    commandId: string,
+    payload: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/v1/devices/dev-1/commands/${commandId}/ack`,
+      headers: deviceHeader(app),
+      payload,
+    });
+
+  it("publishes command_acked on the family channel without payload or detail", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-1",
+      deviceId: "dev-1",
+      type: "resume_internet",
+      status: "acked",
+      payload: { secret: "12345678" },
+      result: { note: "FilterVpn: tunnel up" },
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-1", { status: "ok", detail: { note: "FilterVpn: tunnel up" } });
+    expect(res.statusCode).toBe(200);
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    expect(frame).toEqual({
+      type: "command_acked",
+      payload: {
+        deviceId: "dev-1",
+        commandId: "cmd-1",
+        type: "resume_internet",
+        status: "acked",
+        childId: "child-1",
+      },
+    });
+    expect(JSON.stringify(frame)).not.toContain("12345678");
+    expect(JSON.stringify(frame)).not.toContain("FilterVpn");
+    await app.close();
+  });
+
+  it("publishes command_acked with status failed when the device reports failure", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-2",
+      deviceId: "dev-1",
+      type: "lock",
+      status: "failed",
+      payload: {},
+      result: { reason: "permission_missing" },
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-2", { status: "failed", detail: { reason: "permission_missing" } });
+    expect(res.statusCode).toBe(200);
+    const frame = JSON.parse(redis().publish.mock.calls.at(-1)![1] as string);
+    expect(frame.type).toBe("command_acked");
+    expect(frame.payload.status).toBe("failed");
+    expect(JSON.stringify(frame)).not.toContain("permission_missing");
+    await app.close();
+  });
+
+  it("does not publish when no delivered command matches (404)", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 0 });
+    redis().publish.mockClear();
+
+    const res = await ack(app, "cmd-missing", { status: "ok" });
+    expect(res.statusCode).toBe(404);
+    expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+    await app.close();
+  });
+
+  it("still returns 200 when redis publish fails", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-3",
+      deviceId: "dev-1",
+      type: "pause",
+      status: "acked",
+      payload: {},
+      result: {},
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    redis().publish.mockRejectedValueOnce(new Error("redis down"));
+
+    const res = await ack(app, "cmd-3", { status: "ok" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().command.id).toBe("cmd-3");
+    await app.close();
+  });
+
+  it("returns 200 promptly even when redis publish is stalled, and catches late rejection (#968)", async () => {
+    // Mutant: restoring `await publishFamilyEvent(...)` in devices.ts causes the ack to wait on the
+    // unresolved publish promise, so the race below resolves to "timed_out" and this row fails.
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deviceCommand.findUnique.mockResolvedValue({
+      id: "cmd-stalled",
+      deviceId: "dev-1",
+      type: "resume_internet",
+      status: "acked",
+      payload: {},
+      result: {},
+      createdAt: new Date("2026-11-20T12:00:00Z"),
+      ackedAt: new Date("2026-11-20T12:00:02Z"),
+    });
+    let rejectPublish!: (err: Error) => void;
+    const stalledPublish = new Promise<number>((_resolve, reject) => {
+      rejectPublish = reject;
+    });
+    redis().publish.mockClear();
+    redis().publish.mockReturnValueOnce(stalledPublish);
+
+    const outcome = await Promise.race([
+      ack(app, "cmd-stalled", { status: "ok" }),
+      new Promise<"timed_out">((resolve) => setTimeout(() => resolve("timed_out"), 200)),
+    ]);
+
+    expect(outcome).not.toBe("timed_out");
+    const res = outcome as Awaited<ReturnType<typeof ack>>;
+    expect(res.statusCode).toBe(200);
+    expect(res.json().command.id).toBe("cmd-stalled");
+    expect(redis().publish).toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"command_acked"'));
+
+    // Settle the stalled publish with a rejection after the HTTP reply already returned: must be caught cleanly.
+    rejectPublish(new Error("redis stalled then closed"));
+    await new Promise((resolve) => setImmediate(resolve));
     await app.close();
   });
 });

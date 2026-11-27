@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,13 +90,14 @@ void main() {
     expect(mapIsAvailable(TargetPlatform.android, key: ""), isTrue);
   });
 
-  testWidgets("the map screen shows the not-available state on iOS when no key is compiled in", (tester) async {
+  testWidgets("on iOS with no key compiled in, the map screen draws OpenStreetMap instead of a GoogleMap", (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     try {
       await pumpWith(tester, const FamilyMapScreen(), const []);
-      // The card is the existing approved string; no GoogleMap is constructed, which is what crashed.
-      expect(find.text('Not available'), findsOneWidget);
+      // No GoogleMap is constructed, which is what crashed (#598). Karim 22 Nov: a parent still gets a real map.
       expect(find.byType(GoogleMap), findsNothing);
+      expect(find.byType(fm.FlutterMap), findsOneWidget);
+      expect(find.text('Not available'), findsNothing);
       expect(tester.takeException(), isNull);
     } finally {
       debugDefaultTargetPlatformOverride = null;

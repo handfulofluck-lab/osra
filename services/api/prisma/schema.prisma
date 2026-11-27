@@ -23,10 +23,39 @@ model Family {
   parents   Parent[]
   children  Child[]
   purchases FamilyPurchase[]
+  aiUsage   AiScanUsage[]
 }
 
 /// ADR-0041 D1: the server's record of a family's finite plan. The raw store reference never reaches
 /// this table; store_ref contains its SHA-256 hash. Nullable expiry is rejected by entitlement().
+/// Issue #890 (pricing): what a family's scanning actually costs, per family-local day.
+///
+/// The pricing debate on #890 needs "measured variable cost per family", and nothing recorded it: the
+/// AI spend is invisible behind a promise (`AI_ENGINE_URL` unset means every scan is free). One row per
+/// (family, local day) is the unit a monthly figure is summed from, and the unit a per-family fair-use
+/// cap would read. Two counters, not one, because they cost different amounts: `scans` is every capture
+/// that was classified at all, `aiCalls` is the subset that reached the model — the local pattern pass
+/// costs nothing, so a family that only ever hits local patterns shows a real number and a zero bill.
+///
+/// `day` is the family-local calendar day (`Family.timezone`), the same clock the digest and the plan
+/// counters use, so "this month" means the same thing everywhere. Stored as text, not a date: a date
+/// column would be read back in UTC and shift a Dubai family's evening into the next day.
+model AiScanUsage {
+  id       String @id @default(uuid())
+  familyId String @map("family_id")
+  /// `yyyy-mm-dd` in the family's own zone.
+  day      String
+  /// Captures classified for this family that day, local patterns and model alike.
+  scans    Int    @default(0)
+  /// The subset that reached the AI engine. This is the counter a cost figure multiplies.
+  aiCalls  Int    @default(0) @map("ai_calls")
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, day])
+  @@index([day])
+  @@map("ai_scan_usage")
+}
+
 model FamilyPurchase {
   id             String   @id @default(uuid())
   familyId       String   @map("family_id")
@@ -92,6 +121,7 @@ model Parent {
   mfaRecoveryCodes ParentMfaRecoveryCode[]
   mfaResetRequests MfaResetRequest[]
   accountDeletionTokens AccountDeletionToken[]
+  socialEventFeedback SocialEventFeedback[]
 }
 
 /// ADR-0032 / roadmap 2.7: a single-logout revocation, the durable record behind
@@ -192,6 +222,8 @@ model ParentPushToken {
   token      String   @unique
   platform   String
   appVersion String?
+  /// Parent `sessionVersion` at registration time; delivery skips rows below `Parent.sessionVersion`.
+  sessionVersion Int  @default(0)
   /// ADR-0034 A3: the build a parent's own requests report. A parent's header must never land on the
   /// child's Device row, so it goes here, on the row that belongs to that parent's install.
   clientApp     String?
@@ -219,6 +251,9 @@ model Child {
   alerts      Alert[]
   consents    ConsentRecord[]
   pairingDecisions PairingDecision[]
+  stagingScanOutcomes StagingScanOutcome[]
+  socialEvents SocialEvent[]
+  internetOperation ChildInternetOperation?
 }
 
 /// Plan 2.7 (the parent approves each new device): who allowed or refused which phone. `model` is the
@@ -247,11 +282,22 @@ model Device {
   model      String
   osVersion  String
   /// online | offline | locked | sos (mirrors DeviceStatus in packages/shared-types). Writers set
-  /// `online` on pair/claim, telemetry and location ping; the silence job sets `offline`. Nothing
-  /// writes `active` — it was the job's stale assumption and is fixed in src/jobs/deviceSilence.ts.
+  /// `online` on telemetry, the command poll and location ping; pair/claim (`routes/devices.ts`), the
+  /// silence job and the column default write `offline`. Nothing writes `active` — it was the job's
+  /// stale assumption and is fixed in src/jobs/deviceSilence.ts.
   status     String         @default("offline")
   batteryPct Int            @default(0)
   lastSeen   DateTime       @default(now())
+  /// Issue #790: when this device last proved it holds the credentials pairing gave it — set by the
+  /// first request it made that the API accepted (`middleware/pairedAt.ts`) and never rewritten after.
+  /// **Null means pending**: the row exists so an approved claim has somewhere to put its secret, but
+  /// the phone has not answered yet. A pending row is invisible to parents (every parent-facing device
+  /// read excludes it), outside the family's device counts, and deleted by `jobs/pendingDevices.ts`
+  /// after 30 minutes. Pair/claim creates it null on purpose; nothing else may.
+  pairedAt   DateTime?      @db.Timestamptz(3)
+  /// ADR-0047: null during the bounded initial Android setup window; set only from an authenticated
+  /// telemetry report with every required grant ready. Existing paired rows are backfilled by 0046.
+  setupCompletedAt DateTime? @db.Timestamptz(3)
   /// Issue #867: the instant the AGENT says this phone booted (`now - SystemClock.elapsedRealtime()`),
   /// stable for the life of one boot. Null until an agent reports it. A report that moves it by more than
   /// 90 seconds is a restart (src/lib/bootReport.ts); that is how the parent hears about the 1–2 minute gap
@@ -314,6 +360,9 @@ model DeviceApp {
   /// an older Play agent or the iOS agent never claims "not essential" or "always allowed". Display
   /// only — the server does not enforce with it, and no parent request writes it.
   essential Boolean?
+  /// Karim 23 Nov: the app's launcher icon as a `data:image/png|webp;base64,…` URI (about 9 KB at most),
+  /// checked on write. Null until an agent that sends icons reports; the parent then draws a letter avatar.
+  icon      String?
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
@@ -342,6 +391,17 @@ model DeviceCommand {
 
   @@index([deviceId, status])
   @@index([deviceId, createdAt])
+}
+
+/// Latest child-wide internet request and the exact commands it queued.
+model ChildInternetOperation {
+  childId       String   @id
+  id            String   @unique
+  generation    Int
+  desiredPaused Boolean
+  requestedAt   DateTime @db.Timestamptz(3)
+  targets       Json
+  child         Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
 }
 
 model RuleSet {
@@ -421,9 +481,53 @@ model SocialEvent {
   app           String
   contact       String   @default("")
   severity      String   @default("warning")
+  modelVersion  String?
+  lang          String?
+  topCategory   String?
+  topScore      Float?
+  cutoff        Float?
+  path          String?
+  child         Child      @relation(fields: [childId], references: [id], onDelete: Cascade)
+  stagingScanOutcome StagingScanOutcome?
+  feedback      SocialEventFeedback[]
   previewCipher String   @default("")
   concernTypes  String[] @default([])
   createdAt     DateTime @default(now())
+  @@index([childId, createdAt])
+}
+
+model SocialEventFeedback {
+  id            String      @id @default(uuid())
+  socialEventId String
+  parentId      String
+  verdict       String
+  parentName    String
+  firstVotedAt  DateTime    @default(now()) @db.Timestamptz(3)
+  lastChangedAt DateTime    @default(now()) @db.Timestamptz(3)
+  changeCount   Int         @default(0)
+  modelVersion  String?
+  lang          String?
+  topCategory   String?
+  topScore      Float?
+  cutoff        Float?
+  path          String?
+  severity      String?
+  socialEvent   SocialEvent @relation(fields: [socialEventId], references: [id], onDelete: Cascade)
+  parent        Parent      @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([socialEventId, parentId])
+  @@index([parentId])
+}
+
+/// Synthetic staging receipts. A benign or unavailable scan has no social vault event.
+model StagingScanOutcome {
+  traceId       String       @id @db.Uuid
+  childId       String
+  child         Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  socialEventId String?      @unique
+  socialEvent   SocialEvent? @relation(fields: [socialEventId], references: [id], onDelete: SetNull)
+  providers     Json
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
   @@index([childId, createdAt])
 }
 
@@ -519,6 +623,8 @@ model Alert {
   attemptCount Int      @default(1)
   createdAt    DateTime @default(now())
   acknowledged Boolean  @default(false)
+  /// ADR-0047: audit-only setup event; never published, pushed, listed, acknowledged or exported.
+  heldDuringSetup Boolean @default(false)
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])
   @@index([childId, createdAt])

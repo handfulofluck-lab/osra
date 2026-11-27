@@ -17,6 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
@@ -26,6 +29,7 @@ import com.familyshield.agent.enforcement.AppBlocker
 import com.familyshield.agent.enforcement.BlockRaisePolicy
 import com.familyshield.agent.enforcement.BypassAlertFloor
 import com.familyshield.agent.enforcement.EssentialPackages
+import com.familyshield.agent.enforcement.FilterRecoveryPolicy
 import com.familyshield.agent.enforcement.LockEnforcementPolicy
 import com.familyshield.agent.enforcement.LockState
 import com.familyshield.agent.enforcement.OverlayRetryBudget
@@ -52,7 +56,10 @@ import com.familyshield.agent.security.TamperScreen
 import com.familyshield.agent.security.TamperScreenPolicy
 import com.familyshield.agent.security.TamperState
 import com.familyshield.agent.social.SocialCapture
+import com.familyshield.agent.telemetry.FOREGROUND_HEARTBEAT_MS
 import com.familyshield.agent.telemetry.UsageReporter
+import com.familyshield.agent.vpn.FilterVpnService
+import com.familyshield.agent.vpn.VpnState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -69,6 +76,82 @@ class AccessibilityMonitorService : AccessibilityService() {
 
     /** Issue #83 review F1 / #165: what the OS says a package is, shared with [AppBlocker]'s overlay guard. */
     @Inject lateinit var packageFacts: PackageFacts
+
+    /** Issue #1174 & osra-security#80: live grant state + one-way completion latch so enforcement
+     *  waits ONLY until required grants finish the first time for this device id, never weakening
+     *  blocking if a grant is later revoked, and avoiding per-event IPC once latched. */
+    private val grantChecks by lazy {
+        com.familyshield.agent.setup.GrantChecks(this, deviceAdmin)
+    }
+
+    @Volatile private var latchedCompletedDeviceId: String? = null
+    private var lastIncompleteGrantCheckElapsedMs: Long = 0L
+    private var lastIncompleteMissingGrants: List<com.familyshield.agent.setup.OnboardingPolicy.Grant> = emptyList()
+
+    private fun requiredGrantsIncompleteForPairedDevice(): Boolean {
+        if (!settings.isPairedSync()) return false
+        val deviceId = settings.deviceIdSync()
+        if (deviceId != null && latchedCompletedDeviceId == deviceId) return false
+        val upgradeSeeded = com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(this, deviceId)
+        val alreadyCompleted = com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(this, deviceId)
+        if (alreadyCompleted && !upgradeSeeded) {
+            latchedCompletedDeviceId = deviceId
+            return false
+        }
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val missing: List<com.familyshield.agent.setup.OnboardingPolicy.Grant> = if (lastIncompleteGrantCheckElapsedMs != 0L &&
+            nowElapsed - lastIncompleteGrantCheckElapsedMs < com.familyshield.agent.setup.FirstRunOrderPolicy.INCOMPLETE_RECHECK_INTERVAL_MS
+        ) {
+            lastIncompleteMissingGrants
+        } else {
+            val rows = com.familyshield.agent.setup.OnboardingPolicy.rows(
+                com.familyshield.agent.BuildConfig.CAPTURE_NOTIFICATIONS,
+            ) { grantChecks.isGranted(it) }
+            val computed = com.familyshield.agent.setup.OnboardingPolicy.missingRequired(rows)
+            lastIncompleteGrantCheckElapsedMs = nowElapsed
+            lastIncompleteMissingGrants = computed
+            computed
+        }
+        val ready = missing.isEmpty()
+        if (ready && deviceId != null) {
+            com.familyshield.agent.setup.SetupCompletionStore.markCompleted(this, deviceId)
+            latchedCompletedDeviceId = deviceId
+        }
+        val suppressed = com.familyshield.agent.setup.FirstRunOrderPolicy.shouldSuppressEnforcement(
+            paired = true,
+            requiredGrantsReady = ready,
+            setupCompletedOnce = alreadyCompleted || (ready && deviceId != null),
+        )
+        if (!ready && deviceId != null) {
+            val fingerprint = com.familyshield.agent.setup.FirstRunOrderPolicy.missingGrantsFingerprint(missing)
+            val lastNotified = com.familyshield.agent.setup.SetupCompletionStore.lastNotifiedMissingFingerprint(this, deviceId)
+            if (com.familyshield.agent.setup.FirstRunOrderPolicy.shouldEnqueueMissingAlert(
+                    paired = true,
+                    setupCompletedOnce = alreadyCompleted,
+                    currentFingerprint = fingerprint,
+                    lastNotifiedFingerprint = lastNotified,
+                    upgradeSeeded = upgradeSeeded,
+                )
+            ) {
+                com.familyshield.agent.setup.SetupCompletionStore.recordNotifiedMissingFingerprint(this, deviceId, fingerprint)
+                val labels = missing.map { getString(it.titleRes) }
+                runCatching {
+                    TamperAlertWorker.enqueue(
+                        this,
+                        TamperAlertWorker.TYPE_SETUP_INCOMPLETE,
+                        detail = com.familyshield.agent.setup.FirstRunOrderPolicy.missingPermissionsAlertBody(labels),
+                        app = fingerprint,
+                    )
+                }.onFailure { Log.w(TAG, "could not enqueue setup-incomplete alert (#1174)", it) }
+            }
+            if (alreadyCompleted && upgradeSeeded) {
+                // Upgraded phone reported its newly required missing grants once; cache latch in memory
+                // so future events avoid per-event IPC while keeping full protection active.
+                latchedCompletedDeviceId = deviceId
+            }
+        }
+        return suppressed
+    }
 
     private var lastLocationCheckMs = 0L
     private var lastGuardMs = 0L
@@ -205,6 +288,44 @@ class AccessibilityMonitorService : AccessibilityService() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) = packageFacts.refresh()
     }
 
+    /** #830 row 5: periodic local foreground heartbeat while interactive; stops completely while screen is off. */
+    private val foregroundHeartbeat = object : Runnable {
+        override fun run() {
+            val interactive = runCatching {
+                getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: false
+            }.getOrDefault(false)
+            if (!interactive) return
+            usage.recordActiveHeartbeat(System.currentTimeMillis())
+            main.postDelayed(this, FOREGROUND_HEARTBEAT_MS)
+        }
+    }
+
+    private fun scheduleForegroundHeartbeat() {
+        main.removeCallbacks(foregroundHeartbeat)
+        main.postDelayed(foregroundHeartbeat, FOREGROUND_HEARTBEAT_MS)
+    }
+
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    main.removeCallbacks(foregroundHeartbeat)
+                    serviceScope.launch { usage.onScreenOff(System.currentTimeMillis()) }
+                    FilterVpnService.flushIfRunning(this@AccessibilityMonitorService)
+                }
+                Intent.ACTION_SCREEN_ON -> scheduleForegroundHeartbeat()
+            }
+        }
+    }
+
+    private val filterRecoveryCovers = mutableMapOf<WindowBounds, PipCoverOverlay>()
+
+    private val filterLossReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            if (intent?.action == VpnState.ACTION_FILTER_LOSS_CHANGED) refreshFilterRecovery()
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         // Issue #231 review: this callback is the system telling us it has bound the service, so it
@@ -223,6 +344,25 @@ class AccessibilityMonitorService : AccessibilityService() {
             addDataScheme("package")
         }
         runCatching { registerReceiver(packageChangeReceiver, filter) }
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        runCatching { registerReceiver(screenStateReceiver, screenFilter) }
+        val interactiveNow = runCatching {
+            getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: false
+        }.getOrDefault(false)
+        if (interactiveNow) scheduleForegroundHeartbeat()
+        ContextCompat.registerReceiver(
+            this,
+            filterLossReceiver,
+            IntentFilter(VpnState.ACTION_FILTER_LOSS_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        refreshFilterRecovery()
+        // Issue #1174 / osra-security#80: evaluate setup completion once on connect so upgraded
+        // already-complete devices latch immediately and incomplete paired phones emit one alert.
+        requiredGrantsIncompleteForPairedDevice()
         calls.onConnected()
         media.onConnected()
         rules.addRulesChangedListener(rulesChanged)
@@ -273,10 +413,14 @@ class AccessibilityMonitorService : AccessibilityService() {
         rules.removeRulesChangedListener(rulesChanged)
         pipCover.remove()
         guardCover.remove()
+        updateFilterRecoveryCovers(emptySet())
         // #460 review: a deferred raise posted inside the fallback window must not fire after the
         // service is gone — the child turning accessibility off is exactly when that window exists.
         cancelDeferredRaise()
+        main.removeCallbacks(foregroundHeartbeat)
+        runCatching { unregisterReceiver(screenStateReceiver) }
         runCatching { unregisterReceiver(packageChangeReceiver) }
+        runCatching { unregisterReceiver(filterLossReceiver) }
         super.onDestroy()
     }
 
@@ -292,6 +436,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // package, and only the guard's cover needs it.
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
             coverSharedProtectionScreens()
+            refreshFilterRecovery()
             return
         }
         val eventPkg = event?.packageName?.toString() ?: return
@@ -344,8 +489,14 @@ class AccessibilityMonitorService : AccessibilityService() {
         // records, captures and enforces nothing.
         if (consentState.isPaused()) {
             pipCover.remove()
+            updateFilterRecoveryCovers(emptySet())
             // #460 review: consent withdrawn inside the fallback window must not still show a block
             // screen — ADR-0008 §3 says a paused agent records, captures and enforces nothing.
+            cancelDeferredRaise()
+            social.onMonitoringPaused()
+            return
+        }
+        if (enforceFilterRecovery(snapshot, foreground)) {
             cancelDeferredRaise()
             return
         }
@@ -369,6 +520,42 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Issue #460: the launcher may be the Home we asked for, so the deferred block screen goes on
         // top of it. Called after the block step, which may have deferred a new raise this event.
         advanceDeferredRaise(foreground ?: eventPkg)
+    }
+
+    private fun refreshFilterRecovery() {
+        // Issue #1174 (path 2): never show filter-lost recovery while initial required grants are incomplete.
+        if (requiredGrantsIncompleteForPairedDevice() || !VpnState.isFilterLost(this, settings, consentState)) {
+            updateFilterRecoveryCovers(emptySet())
+            return
+        }
+        val snapshot = windowSnapshot()
+        enforceFilterRecovery(snapshot, snapshot.activePackage)
+    }
+
+    private fun enforceFilterRecovery(snapshot: WindowSnapshot, foreground: String?): Boolean {
+        if (requiredGrantsIncompleteForPairedDevice() ||
+            !VpnState.isFilterLost(this, settings, consentState) ||
+            LockState.isActive(this) || Ringer.isRinging ||
+            getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
+        ) {
+            updateFilterRecoveryCovers(emptySet())
+            return false
+        }
+        val ownConsentPending = VpnState.hasPendingOwnConsent()
+        val presentation = FilterRecoveryPolicy.presentation(snapshot, foreground) { pkg ->
+            pkg == packageName || EssentialPackages.isEssential(pkg, packageFacts) ||
+                pkg == TamperScreenPolicy.VPN_DIALOG_PACKAGE && ownConsentPending
+        }
+        updateFilterRecoveryCovers(presentation.coveredWindows)
+        presentation.blockedForeground?.let(blocker::showFilterRecovery)
+        return presentation.blockedForeground != null || presentation.coveredWindows.isNotEmpty()
+    }
+
+    private fun updateFilterRecoveryCovers(bounds: Set<WindowBounds>) {
+        (filterRecoveryCovers.keys - bounds).forEach { old -> filterRecoveryCovers.remove(old)?.remove() }
+        bounds.forEach { target ->
+            filterRecoveryCovers.getOrPut(target) { PipCoverOverlay(this) }.update(target)
+        }
     }
 
     /**
@@ -407,7 +594,7 @@ class AccessibilityMonitorService : AccessibilityService() {
      * reports no event, that is the app staying blocked with no screen.
      */
     private fun raiseDeferredIfDue() {
-        if (consentState.isPaused()) {
+        if (consentState.isPaused() || requiredGrantsIncompleteForPairedDevice()) {
             cancelDeferredRaise()
             return
         }
@@ -438,6 +625,12 @@ class AccessibilityMonitorService : AccessibilityService() {
      * by [pipCover], because a PiP window stays above the block screen.
      */
     private fun enforceVisibleBlocks(snapshot: WindowSnapshot, active: String?) {
+        // Issue #1174: no app-block or routine enforcement until all required onboarding grants are done.
+        if (requiredGrantsIncompleteForPairedDevice()) {
+            pipCover.update(null)
+            cancelDeferredRaise()
+            return
+        }
         val found = VisibleBlockStep.decide(
             snapshot,
             active,
@@ -770,6 +963,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             )
         }
         if (!settings.isPairedSync()) return
+        // Issue #1174 (path 1): never block Settings changes while initial required grants are incomplete.
+        if (requiredGrantsIncompleteForPairedDevice()) return
         val now = System.currentTimeMillis()
         // #533 review: suppress only while the gate is in front or still coming up — never while the guarded
         // screen is back in front of a gate that has gone away (Recents → Settings inside the old 1.5 s).
@@ -802,6 +997,8 @@ class AccessibilityMonitorService : AccessibilityService() {
             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
             ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
+            filterProtectionActive = !consentState.isPaused() && VpnState.isEnabled(this),
+            ownVpnConsentPending = VpnState.hasPendingOwnConsent(),
         )
         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) return // no filter to bypass yet
         if (!TamperScreenPolicy.shouldGuard(screen, pinStore.isConfigured(), TamperState.graceUntil(this), now)) return
@@ -848,6 +1045,8 @@ class AccessibilityMonitorService : AccessibilityService() {
      */
     private fun coverSharedProtectionScreens() {
         if (!settings.isPairedSync()) return removeGuardCover()
+        // Issue #1174 (path 1): never cover shared protection screens while initial required grants are incomplete.
+        if (requiredGrantsIncompleteForPairedDevice()) return removeGuardCover()
         val now = System.currentTimeMillis()
         val guardActive = pinStore.isConfigured() && now >= TamperState.graceUntil(this)
         if (!guardActive) return removeGuardCover()
@@ -886,6 +1085,8 @@ class AccessibilityMonitorService : AccessibilityService() {
                             agentServiceDescription = getString(com.familyshield.agent.R.string.accessibility_description),
                             ourLocationActive = permissionWindowLocationActive ?: locationGrantedNow(),
                             ourSpecialAccess = specialAccessLatch ?: specialAccessHeld(),
+                            filterProtectionActive = !consentState.isPaused() && VpnState.isEnabled(this),
+                            ownVpnConsentPending = VpnState.hasPendingOwnConsent(),
                         )
                         if (screen == TamperScreen.PRIVATE_DNS && !com.familyshield.agent.vpn.VpnState.isEnabled(this)) {
                             screen = TamperScreen.NONE
@@ -940,11 +1141,14 @@ class AccessibilityMonitorService : AccessibilityService() {
     private fun enforceLockState(snapshot: WindowSnapshot, fallbackPackage: String?) {
         val mode = LockState.mode(this)
         if (!LockEnforcementPolicy.isLockingMode(mode)) return
-        var shouldRaise = LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts)
+        // Issue #1183: parent-configured always-allowed apps stay usable while locked, while any
+        // non-allowed app (alone or alongside an allowed app in split-screen/PiP) still raises lock.
+        val alwaysAllowed = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty()
+        var shouldRaise = LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed)
         // No window list from the OS (some OEMs): keep the #165 behaviour and decide from the
         // package resolved for the event, which is a hint but better than no re-raise at all.
         if (!shouldRaise && snapshot.windows.isEmpty() && snapshot.activePackage.isNullOrBlank()) {
-            shouldRaise = LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts)
+            shouldRaise = LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts, alwaysAllowed)
         }
         if (!shouldRaise) return
         val now = System.currentTimeMillis()
@@ -985,9 +1189,19 @@ class AccessibilityMonitorService : AccessibilityService() {
          * launch rule and re-raises the overlay, whereas `Settings.Secure` only says the user enabled
          * it. Same-process state, so it describes the process that is about to dispatch the command.
          */
-        @Volatile
-        var isRunning: Boolean = false
-            internal set
+        private val _runningState = MutableStateFlow(false)
+
+        /**
+         * Live state of [isRunning] so foreground onboarding screens waiting for the OS to finish
+         * binding after the parent returns from Settings advance immediately (#1131 review).
+         */
+        val runningState: StateFlow<Boolean> = _runningState.asStateFlow()
+
+        var isRunning: Boolean
+            get() = _runningState.value
+            internal set(value) {
+                _runningState.value = value
+            }
 
         /**
          * Issue #132: [ensureLocationServiceRunning]'s decision, pure so the JVM suite holds it in

@@ -574,7 +574,7 @@ void main() {
         expect(dialogFinder, findsOneWidget);
         expectNoOverflow(tester, contextLabel: 'SOS Dialog [${_caseLabel(matrix)}]');
 
-        expect(find.byKey(const ValueKey('alert-technical-details')), findsOneWidget);
+        expect(find.byKey(const ValueKey('alert-technical-details')), findsNothing);
 
         final scrollableFinder = find.descendant(
           of: dialogFinder,
@@ -611,14 +611,16 @@ void main() {
         expect(copyRect.right, lessThanOrEqualTo(matrix.size.width + 0.5));
 
         final locationFinder = find.byKey(const ValueKey('alert-sos-location'));
-        final bodyFinder = find.text(
-          'Your child pressed the SOS button and needs immediate attention from a parent.',
-        );
         expect(locationFinder, findsOneWidget);
-        expect(bodyFinder, findsOneWidget);
+        expect(
+          find.descendant(
+            of: dialogFinder,
+            matching: find.text('Your child pressed the SOS button and needs immediate attention from a parent.'),
+          ),
+          findsNothing,
+        );
 
         final locationRect = tester.getRect(locationFinder);
-        final bodyRect = tester.getRect(bodyFinder);
 
         for (final actionFinder in [showOnMapFinder, copyFinder, closeFinder]) {
           final actionRect = tester.getRect(actionFinder);
@@ -633,16 +635,10 @@ void main() {
             reason: 'Action buttons must sit BELOW dialog scrollable content',
           );
           final visibleLocationRect = locationRect.intersect(scrollableRect);
-          final visibleBodyRect = bodyRect.intersect(scrollableRect);
           expect(
             visibleLocationRect.overlaps(actionRect),
             isFalse,
             reason: 'alert-sos-location must not overlap action buttons',
-          );
-          expect(
-            visibleBodyRect.overlaps(actionRect),
-            isFalse,
-            reason: 'SOS body text must not overlap action buttons',
           );
         }
 
@@ -746,6 +742,38 @@ void main() {
           matrix: matrix,
         );
         expectNoOverflow(tester, contextLabel: 'SetupChildScreen [${_caseLabel(matrix)}]');
+      });
+
+      /// #874 (Arabic Language Bureau's frame at `49488d7e`): at AR 320 / 200 % the *selected* value of
+      /// the consent-method field was cut — «رسالة نصية مع تأكيد» read as «رسالة نصية». Cause:
+      /// `DropdownButtonFormField.isDense` defaults to true, which caps the inner box at
+      /// kMinInteractiveDimension (48 px) while the wrapped label needs 96. The label must be laid out
+      /// whole, not ellipsised and not clipped vertically.
+      testWidgets('SetupChildScreen consent method label [${_caseLabel(matrix)}]', (tester) async {
+        final l10n = lookupAppLocalizations(matrix.locale);
+        final api = FakeApiClient({
+          ...standardRoutes(
+            familyMe: {
+              ...familyMeTwoChildren(),
+              'children': <Map<String, dynamic>>[],
+              'devices': <Map<String, dynamic>>[],
+            },
+          ),
+        });
+        await pumpMatrix(tester, const SetupChildScreen(), matrix: matrix, api: api);
+
+        final label = find.text(l10n.consentMethodSmsPlus);
+        if (label.evaluate().isEmpty) {
+          await tester.scrollUntilVisible(
+            label,
+            200,
+            scrollable: find
+                .byWidgetPredicate((w) => w is Scrollable && w.axis == Axis.vertical)
+                .first,
+          );
+          await tester.pumpAndSettle();
+        }
+        expectTextNotClipped(tester, label, reason: 'consent method selected value (#874)');
       });
 
       testWidgets('PairingQrScreen onboardingPairDone [${_caseLabel(matrix)}]', (tester) async {
@@ -951,23 +979,17 @@ void main() {
           final titleFinder = find.text(l10n.editRules);
           expect(titleFinder, findsOneWidget);
           expectTextNotClipped(tester, titleFinder, reason: 'RulesEditor editRules title');
-          final titleInAppBar = find.descendant(
-            of: find.byType(AppBar),
-            matching: find.text(l10n.editRules),
-          );
-          final appBarWidget = tester.widget<AppBar>(find.byType(AppBar));
-          if (titleInAppBar.evaluate().isEmpty) {
-            expect(
-              appBarWidget.toolbarHeight,
-              lessThan(matrix.scale * (kToolbarHeight + 8.0)),
-              reason: 'Collapsed AppBar toolbarHeight should stay compact for Save only',
-            );
-          }
           final saveFinder = find.descendant(
-            of: find.byType(AppBar),
+            of: find.byKey(const ValueKey('rules-save-button')),
             matching: find.text(l10n.save),
           );
+          expect(saveFinder, findsOneWidget);
           expectTextNotClipped(tester, saveFinder, reason: 'RulesEditor Save label');
+          expect(
+            tester.getRect(find.byKey(const ValueKey('rules-save-button'))).height,
+            greaterThanOrEqualTo(52.0),
+            reason: 'U43: Save button stays at least 52 dp tall',
+          );
 
           final fadingTabBarFinder = find.byType(FadingScrollableTabBar);
           expect(fadingTabBarFinder, findsOneWidget);
@@ -1526,7 +1548,7 @@ void main() {
         await tester.tap(find.widgetWithText(TextButton, l10n.onboardingLeaveStay));
         await tester.pumpAndSettle();
 
-        // RulesEditor disable-recommended confirm dialog & collapsed AppBar fallback height.
+        // RulesEditor disable-recommended confirm dialog & bottom 52dp Save button at extreme scale.
         await pumpMatrix(
           tester,
           const RulesEditorScreen(childId: 'child-1'),
@@ -1536,27 +1558,14 @@ void main() {
             blockedCategories: kRecommendedCategories,
           ),
         );
-        expect(
-          find.descendant(of: find.byType(AppBar), matching: find.text(l10n.editRules)),
-          findsNothing,
-        );
-        final appBarWidget = tester.widget<AppBar>(find.byType(AppBar));
-        expect(
-          appBarWidget.toolbarHeight,
-          allOf(isNotNull, greaterThan(kToolbarHeight), lessThan(100.0)),
-          reason: 'Collapsed AppBar toolbarHeight at 3.1x must fit Save without bloating to title height',
-        );
+        final saveButtonFinder = find.byKey(const ValueKey('rules-save-button'));
+        expect(saveButtonFinder, findsOneWidget);
+        expect(tester.getRect(saveButtonFinder).height, greaterThanOrEqualTo(52.0));
         final saveLabelFinder = find.descendant(
-          of: find.byType(AppBar),
+          of: saveButtonFinder,
           matching: find.text(l10n.save),
         );
         expectTextNotClipped(tester, saveLabelFinder, reason: 'RulesEditor Save label at 3.1x');
-        final toolbarRect = tester.getRect(
-          find.descendant(of: find.byType(AppBar), matching: find.byType(NavigationToolbar)),
-        );
-        final saveRect = tester.getRect(saveLabelFinder);
-        expect(saveRect.top, greaterThanOrEqualTo(toolbarRect.top - 0.5));
-        expect(saveRect.bottom, lessThanOrEqualTo(toolbarRect.bottom + 0.5));
 
         final webFilterTab = find.text(l10n.tabWebFilter);
         await tester.ensureVisible(webFilterTab);

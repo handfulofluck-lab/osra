@@ -3,11 +3,7 @@ import 'package:dio/dio.dart';
 import '../../api/permission_errors.dart';
 import '../../l10n/l10n.dart';
 
-/// Turns the API's raw auth error into what the parent can act on.
-///
-/// [AuthNotifier] keeps the server's own string because the non-wizard login
-/// screen shows it verbatim; the wizard is the first-run path, so it names the
-/// two causes a non-engineer can actually fix.
+/// Turns an auth error token into a localized sentence the parent can act on (R-ID-1).
 String onboardingAuthError(AppLocalizations l10n, String raw) {
   final lower = raw.toLowerCase();
   if (lower.contains('invalid_credentials') ||
@@ -19,8 +15,11 @@ String onboardingAuthError(AppLocalizations l10n, String raw) {
   if (lower.contains('invalid authentication code') || lower.contains('invalid_code')) {
     return l10n.onboardingInvalidMfaCode;
   }
-  if (isNetworkMessage(lower)) return l10n.onboardingNoNetwork;
-  return raw;
+  if (raw == 'mfa_reenroll_required' || lower.startsWith('two-step verification was reset')) {
+    return l10n.authMfaReenrollRequired;
+  }
+  if (raw == 'network_error' || isNetworkMessage(lower)) return l10n.onboardingNoNetwork;
+  return l10n.authSignInFailed;
 }
 
 /// One honest sentence for a failed `POST /v1/family/children`.

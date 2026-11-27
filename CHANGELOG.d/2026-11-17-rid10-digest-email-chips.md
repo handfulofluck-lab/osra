@@ -1,0 +1,4 @@
+### Parent app — single-email removable chips for digest recipients (`#900`, `#650 R-ID-10`)
+- Replaced the comma-separated digest emails text field (`splitLocalizedList`) in `DigestPrefsScreen` with removable `InputChip` entries inside a wrapping `Wrap` and a single-email input field + Add action (`digestEmailAddInput` / `digestEmailAddButton`).
+- Enforces `authEmailInvalid` feedback on malformed addresses (both on Add and on Save if text remains in the field), case-insensitive deduplication, and automatic inclusion of a valid pending entry when tapping Save, preserving the `PUT /v1/digests/prefs` `emails: [...]` payload and `DigestRecipientStatus` rows.
+- Uses existing Arabic Bureau-approved keys (`familyEnterEmail`, `authEmailInvalid`, `add`, `digestPrefsEmailsLabel`) and requests `#604` Arabic wording for `digestPrefsEmailsHelper` (dropping comma instructions) and `digestPrefsAddEmail`.

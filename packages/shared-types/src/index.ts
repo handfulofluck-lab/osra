@@ -18,7 +18,9 @@ export interface Child { id: UUID; familyId: UUID; displayName: string; birthYea
 export interface Device { id: UUID; childId: UUID; platform: Platform; model: string;
   osVersion: string; status: DeviceStatus; batteryPct: number; lastSeen: ISODate; pushToken?: string;
   /** Issue #867: the boot instant the agent last reported; present once a current agent has checked in. */
-  lastBootAt?: ISODate; }
+  lastBootAt?: ISODate;
+  /** ADR-0047: server-set when authenticated telemetry completes required Android setup grants. */
+  setupCompletedAt?: ISODate; }
 export interface RuleSet { id: UUID; childId: UUID; screenTime: ScreenTimeRule;
   webFilter: WebFilterRule; appRules: AppRule[]; routines: Routine[]; updatedAt: ISODate;
   /** ADR-0037 PR B3: iPhone app groups the parent blocks, by the id the phone reported. */
@@ -43,12 +45,16 @@ export interface Geofence { id: UUID; childId: UUID; label: string; lat: number;
  * always carries the English `body` as a fallback for an app that does not know the key yet.
  */
 export const ALERT_BODY_KEYS = [
+  "alertBodyDeviceRestarted",
   "alertBodyDeviceSilent",
   "alertBodyGeofenceEnter",
   "alertBodyGeofenceExit",
   "alertBodySearchFlagged",
   "alertBodySocialConcern",
   "alertBodyYouTubeFlagged",
+  "alertBodySetupCompleted",
+  "alertBodySetupIncomplete",
+  "alertBodyDataCleared",
 ] as const;
 export type AlertBodyKey = typeof ALERT_BODY_KEYS[number];
 export type AlertBodyParams = Record<string, string | number>;

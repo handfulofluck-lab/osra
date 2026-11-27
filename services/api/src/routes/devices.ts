@@ -22,14 +22,16 @@ import {
 } from "../lib/pollCadence.js";
 import { publishFamilyEvent } from "../realtime/gateway.js";
 import { familyAppliedVersion, rulesAppliedReached } from "../lib/rulesApplied.js";
-import { recordActivityUsage, recordDeviceTotal } from "../lib/usageModel.js";
+import { gateActivityEvents, recordActivityUsage, recordAppUsage, recordDeviceTotal } from "../lib/usageModel.js";
+import { siteNamesEnabled } from "../lib/siteNames.js";
 
 import { DEVICE_TOKEN_TTL_SECONDS } from "../lib/deviceToken.js";
 import { markDeviceRevoked } from "../lib/deviceRevocation.js";
 import { PAIR_CLAIM_RATE_LIMIT, PAIR_POLL_RATE_LIMIT } from "../lib/rateLimits.js";
 import { cleanDeviceText, decideClaim, markPaired, pollSecretMatches, readClaim, readClaimForCode, recordPollMiss, releaseClaim, reserveClaim, takeApprovedClaim } from "../lib/pairApproval.js";
 import { raiseAlertOnce } from "../lib/alerts.js";
-import { bootReportBody, decideBootReport } from "../lib/bootReport.js";
+import { bootReportBody, decideBootReport, zonedUtcOffsetMinutes } from "../lib/bootReport.js";
+import { completeDeviceSetupIfReady, evaluateDeviceSetupIncomplete, type SetupTransitionDevice } from "../lib/deviceSetupTransitions.js";
 import { encryptSecret } from "../lib/secretVault.js";
 // Re-exported for existing importers/tests; the constant and its contract live in lib/deviceToken.ts.
 export { DEVICE_TOKEN_TTL_SECONDS };
@@ -116,9 +118,29 @@ const PAIR_MAX_ATTEMPTS = 5;
 const TelemetrySchema = z
   .object({
     batteryPct: z.number().int().min(0).max(100).optional(),
-    totalMinutes: z.number().int().min(0).optional(),
+    // #830 B3: a day cannot hold more than 1440 minutes per app, and a device has a bounded app list.
+    // Without these a broken or hostile client could fill the rollup table with rows and minutes.
+    totalMinutes: z.number().int().min(0).max(1440).optional(),
     appUsage: z
-      .array(z.object({ packageId: z.string().min(1), minutes: z.number().min(0) }))
+      .array(
+        z.object({
+          packageId: z.string().min(1).max(200),
+          minutes: z.number().min(0).max(1440),
+        }),
+      )
+      .max(300)
+      .optional(),
+    // C1 (Antigravity's review of #901): the field Android actually sends. `TelemetryDto.perAppMinutes` is
+    // a `Map<String, Int>`, so every real upload left `appUsage: undefined` and the per-app rollup wrote
+    // nothing — the fix would have shipped working tests and an unchanged Flip4. Named here (not only read
+    // ad hoc) so `TELEMETRY_READ_FIELDS`, built from this shape, keeps `GET /v1/devices/:id` consistent.
+    // #830: the map shape the Android agent sends (`Map<String, Int>`), which `appUsage` above supersedes
+    // when both are present. One declaration, not two: the fold of #901 into this branch produced a
+    // duplicate key here, and the later literal would have silently replaced the earlier one's typing.
+    // Bounds are the two findings' union — a day per app (#830 B3) and a bounded app list.
+    perAppMinutes: z
+      .record(z.string().min(1).max(200), z.number().min(0).max(1440))
+      .refine((value) => Object.keys(value).length <= 300, { message: "at most 300 apps" })
       .optional(),
     urls: z.array(z.string()).optional(),
     timestamp: z.string().datetime().optional(),
@@ -152,7 +174,9 @@ const ActivityBatchSchema = z.object({
     .array(
       z.object({
         ts: z.string().datetime().optional(),
-        type: z.enum(["url", "app_usage", "call", "sms"]),
+        // #830: one `lock_period` row per lock the child met (start, end, attempts), decided by Claude
+        // on the issue — information, not an alert.
+        type: z.enum(["url", "app_usage", "call", "sms", "lock_period"]),
         payload: z.record(z.unknown()),
       }),
     )
@@ -199,16 +223,36 @@ function activityEventTs(ts: string | undefined, now: Date = new Date()): Date {
 /**
  * Roadmap 3.4: the installed-launchable-app inventory contract.
  *
- * The payload is an inventory only — package id, launcher label, system flag — never usage. Icons
- * are deliberately not accepted: they are large (tens of KB per app), the parent picker can render a
- * generic icon from the package today, and an icon column would make a privacy-minimised list heavier
- * for little gain. The device and the server share the same bounds so a buggy agent cannot enlarge
- * the table: 500 apps, 100-character labels, one row per package.
+ * The payload is an inventory only — package id, launcher label, system flag — never usage. The device
+ * and the server share the same bounds so a buggy agent cannot enlarge the table: 500 apps,
+ * 100-character labels, one row per package.
+ *
+ * Icons (Karim, 23 Nov: "the Apps tab lacks any app icons"): each row may carry the app's launcher icon
+ * as a small base64 PNG or WebP (the agent renders it at 72 px). It is the app's public launcher icon,
+ * not child content. The server checks the image signature and the size, stores it as a data URI, and the
+ * parent reads it back as `iconUrl`. Optional on the wire, so an older agent still posts a valid report
+ * and its rows draw the letter avatar.
  */
 const INSTALLED_APPS_VERSION = 1;
 const MAX_INSTALLED_APPS = 500;
 const MAX_APP_LABEL_LENGTH = 100;
 const APP_PACKAGE_ID = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
+/** About 9 KB of image per app; a 72 px WebP launcher icon is typically 2 to 4 KB. */
+export const MAX_APP_ICON_BASE64 = 12_000;
+/** 500 apps at the icon cap, plus labels: well inside this, and far above Fastify's 1 MiB default. */
+const INSTALLED_APPS_BODY_LIMIT = 8 * 1024 * 1024;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/** `data:image/png;base64,…` or `data:image/webp;base64,…` when the bytes are one of those images, else null. */
+export function appIconDataUri(base64: string | undefined): string | null {
+  if (!base64 || base64.length > MAX_APP_ICON_BASE64 || base64.length % 4 !== 0 || !BASE64.test(base64)) return null;
+  const head = Buffer.from(base64.slice(0, 24), "base64");
+  const isPng = head.length >= 8 && head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const isWebp = head.length >= 12 && head.toString("latin1", 0, 4) === "RIFF" && head.toString("latin1", 8, 12) === "WEBP";
+  if (isPng) return `data:image/png;base64,${base64}`;
+  if (isWebp) return `data:image/webp;base64,${base64}`;
+  return null;
+}
 
 const InstalledAppSchema = z.object({
   packageId: z.string().trim().min(1).max(255).regex(APP_PACKAGE_ID),
@@ -224,6 +268,8 @@ const InstalledAppSchema = z.object({
    * device-only, `requireDeviceRole` + `requireOwnDevice`).
    */
   essential: z.boolean().optional(),
+  /** Base64 PNG or WebP launcher icon. Anything that is not one of those, or too large, is dropped, not refused. */
+  icon: z.string().max(MAX_APP_ICON_BASE64 * 2).optional(),
 });
 
 const InstalledAppsSchema = z.object({
@@ -234,16 +280,19 @@ const InstalledAppsSchema = z.object({
 /** Trim labels, fall back to the package id, and keep the first occurrence of a package (dedupe). */
 function normalizeInstalledApps(
   apps: Array<z.infer<typeof InstalledAppSchema>>,
-): Array<{ packageId: string; label: string; isSystem: boolean; essential: boolean | null }> {
-  const seen = new Map<string, { packageId: string; label: string; isSystem: boolean; essential: boolean | null }>();
+): Array<{ packageId: string; label: string; isSystem: boolean; essential: boolean | null; icon?: string }> {
+  const seen = new Map<string, { packageId: string; label: string; isSystem: boolean; essential: boolean | null; icon?: string }>();
   for (const app of apps) {
     if (seen.has(app.packageId)) continue;
+    const icon = appIconDataUri(app.icon);
     seen.set(app.packageId, {
       packageId: app.packageId,
       label: app.label.trim() || app.packageId,
       isSystem: app.isSystem,
       // An older agent omits it: store null, which is "not reported", never "not essential".
       essential: app.essential ?? null,
+      // Only a real PNG or WebP within the cap is kept; the row is stored either way.
+      ...(icon ? { icon } : {}),
     });
   }
   return [...seen.values()];
@@ -309,7 +358,11 @@ export async function deviceRoutes(app: FastifyInstance) {
       });
     }
     const { childId, ...rest } = parsed.data;
-    const device = await prisma.device.create({ data: { childId, ...rest } });
+    // Issue #790: this is the parent's own enrollment — no phone claimed anything, so there is nothing
+    // to prove and `pairedAt` is set here rather than left null. A null would make the row invisible to
+    // the parent that just created it and have `jobs/pendingDevices.ts` delete it half an hour later;
+    // the e2e and probe suites register their devices through this route.
+    const device = await prisma.device.create({ data: { childId, ...rest, pairedAt: new Date() } });
     return reply.code(201).send({ device: sanitizeDevice(device) });
   });
 
@@ -460,6 +513,8 @@ export async function deviceRoutes(app: FastifyInstance) {
             category: "tamper",
             title: "OSRA's data was cleared on a phone",
             body: `${record.deviceName ?? record.model} was paired again after OSRA's data on it was cleared. Its protection was off until now.`,
+            bodyKey: "alertBodyDataCleared",
+            params: { model: record.deviceName ?? record.model },
             metadata: { type: "agent_data_cleared" },
             dedupeKey: `agent_data_cleared|${record.claimId}`,
           });
@@ -502,6 +557,13 @@ export async function deviceRoutes(app: FastifyInstance) {
     // Handoff item 5: each device gets its OWN internal HMAC secret, so the global INTERNAL_HMAC_SECRET
     // is never shipped to devices (it remains the ai-engine key).
     const internalSecret = randomBytes(32).toString("hex");
+    // Issue #790: the row is PENDING — `status: "offline"` and `pairedAt` left null, on purpose.
+    // Everything else the claim reported is written here (the phone's model, its capability report, its
+    // push token), because the row is the identity the phone will use. But a phone that has not yet made
+    // one request this API accepted has not proved it holds the secret minted below, and the client that
+    // cannot prove it has no way to ask the server to remove its own row — so it stays offline and
+    // invisible to the parent until `middleware/pairedAt.ts` clears pending on its first accepted
+    // request. `jobs/pendingDevices.ts` removes it if that never comes.
     const device = await prisma.device.create({
       data: {
         platform: record.platform as z.infer<typeof PLATFORM>,
@@ -509,7 +571,8 @@ export async function deviceRoutes(app: FastifyInstance) {
         osVersion: record.osVersion,
         ...(record.pushToken ? { pushToken: record.pushToken } : {}),
         childId: record.childId,
-        status: "online",
+        status: "offline",
+        pairedAt: null,
         lastSeen: new Date(),
         // Stored under VAULT_KEY like the parent's TOTP secret (ADR-0014): a read of the Device table, a snapshot or a
         // backup does not hand out every phone's signing key. The phone gets the raw key once, below.
@@ -544,7 +607,11 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
     const devices = await prisma.device.findMany({
-      where: { child: { familyId: user.familyId } },
+      // Issue #790: a pending device is not the family's device yet. It is created by an approved claim
+      // and proves itself with its first accepted request; until then a row that cannot be shown working
+      // must not be shown at all (the parent's app draws this list as "phones"). `jobs/pendingDevices.ts`
+      // collects the ones that never answer.
+      where: { child: { familyId: user.familyId }, pairedAt: { not: null } },
       include: { child: true },
       orderBy: { lastSeen: "desc" },
     });
@@ -559,7 +626,7 @@ export async function deviceRoutes(app: FastifyInstance) {
   /** Return one device with its latest telemetry payload merged in. */
   // NOTE: there is no telemetry table in the schema; agents POST to /:id/telemetry and the
   // latest payload is kept in Redis under `device:<id>:telemetry`, merged into this response.
-  app.get("/:id", { preHandler: requireFamily({ model: "device" }) }, async (req, reply) => {
+  app.get("/:id", { preHandler: requireFamily({ model: "device", hidePending: true }) }, async (req, reply) => {
     const user = req.user as AuthedUser;
     const { id } = req.params as { id: string };
     if (user.role === "device" && user.deviceId !== id) {
@@ -598,12 +665,12 @@ export async function deviceRoutes(app: FastifyInstance) {
    * answers with the shape a current parent app understands. `reportedAt` is null until the agent
    * has checked in once.
    */
-  app.get("/:id/apps", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ model: "device" })] }, async (req) => {
+  app.get("/:id/apps", { preHandler: [requireParent, requirePermission("rules"), requireFamily({ model: "device", hidePending: true })] }, async (req) => {
     const { id } = req.params as { id: string };
     const device = (req as unknown as { device: { appsReportedAt?: Date | null } }).device;
     const apps = await prisma.deviceApp.findMany({
       where: { deviceId: id },
-      select: { packageId: true, label: true, isSystem: true, essential: true },
+      select: { packageId: true, label: true, isSystem: true, essential: true, icon: true },
       orderBy: [{ label: "asc" }, { packageId: "asc" }],
     });
     return {
@@ -611,7 +678,8 @@ export async function deviceRoutes(app: FastifyInstance) {
       version: INSTALLED_APPS_VERSION,
       reportedAt: device?.appsReportedAt ? new Date(device.appsReportedAt).toISOString() : null,
       count: apps.length,
-      apps,
+      // The stored icon is already a data URI; the parent reads it as `iconUrl` (null draws the letter avatar).
+      apps: apps.map(({ icon, ...app }) => ({ ...app, iconUrl: icon ?? null })),
     };
   });
 
@@ -628,7 +696,7 @@ export async function deviceRoutes(app: FastifyInstance) {
    * list clears the inventory. That is the honest model for "what is installed now"; a merge would
    * accumulate ghosts forever.
    */
-  app.post("/:id/apps", { preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] }, async (req, reply) => {
+  app.post("/:id/apps", { bodyLimit: INSTALLED_APPS_BODY_LIMIT, preHandler: [requireFamily({ model: "device" }), requireDeviceRole, requireOwnDevice()] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = InstalledAppsSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -652,7 +720,9 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Publish a lock/unlock/ring/sos_clear command to the device's Redis command channel and queue. */
-  app.post("/:id/command", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device" })] }, async (req, reply) => {
+  // #790: `hidePending` — a device that has never answered a request is not a phone a parent can
+  // command; its row answers 404 until the agent's own first accepted request clears pending.
+  app.post("/:id/command", { preHandler: [requireParent, requirePermission("devices"), requireFamily({ model: "device", hidePending: true })] }, async (req, reply) => {
     const parsed = CommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { id } = req.params as { id: string };
@@ -720,6 +790,11 @@ export async function deviceRoutes(app: FastifyInstance) {
     // ADR-0008 §2b: an agent polling for commands learns from a 428 that monitoring is paused.
     const device = (req as unknown as { device: PolledDevice & { childId: string } }).device;
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
+    // ADR-0047: lazy timeout even with JOBS_ENABLED=0; completion itself is never inferred from this poll.
+    if (device) {
+      await evaluateDeviceSetupIncomplete(device as unknown as SetupTransitionDevice, new Date())
+        .catch((err) => req.log.warn({ err, deviceId: id }, "device setup timeout evaluation failed (command poll)"));
+    }
     const ackCapable = (req.query as { ack?: string })?.ack === "1";
     const commands = await claimPendingCommands(id, { ackCapable });
     reply.header(POLL_AFTER_HEADER, String(pollAfterSeconds(device)));
@@ -739,6 +814,29 @@ export async function deviceRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const row = await ackDeviceCommand(id, commandId, parsed.data.status, parsed.data.detail);
     if (!row) return reply.code(404).send({ error: "no_delivered_command" });
+    // #935: push `command_acked` on the family channel so the parent app refreshes command delivery
+    // within seconds instead of staying on "pending". Never carry `row.payload` (may hold a witness
+    // code before clearing) or free-text `detail`.
+    const device = (req as unknown as {
+      device?: { childId?: string; child?: { familyId?: string } };
+    }).device;
+    const familyId = device?.child?.familyId ?? (user as { familyId?: string }).familyId;
+    if (familyId) {
+      // Best-effort after the durable DB write (#968 review): the shared Redis client has no command
+      // timeout, so awaiting publish could stall the device's HTTP 200 ack even though the ack is saved.
+      void publishFamilyEvent(familyId, {
+        type: "command_acked",
+        payload: {
+          deviceId: id,
+          commandId: row.id,
+          type: row.type,
+          status: row.status,
+          ...(device?.childId ? { childId: device.childId } : {}),
+        },
+      }).catch((err) => {
+        req.log.warn({ err, familyId, deviceId: id, commandId: row.id }, "command_acked publish failed");
+      });
+    }
     return { command: row };
   });
 
@@ -752,7 +850,7 @@ export async function deviceRoutes(app: FastifyInstance) {
    * `withinBudget`. An empty reading reported as "within budget" would turn "nobody was counting" into
    * "the phone is idle", which is the one answer this instrument exists to be unable to give.
    */
-  app.get("/:id/requests", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+  app.get("/:id/requests", { preHandler: [requireParent, requireFamily({ model: "device", hidePending: true })] }, async (req) => {
     const { id } = req.params as { id: string };
     const windowParam = Number((req.query as { window?: string })?.window ?? BUDGET_WINDOW_MINUTES);
     const windowMinutes = Number.isFinite(windowParam) && windowParam > 0 && windowParam <= RETENTION_MINUTES ? Math.floor(windowParam) : BUDGET_WINDOW_MINUTES;
@@ -776,7 +874,8 @@ export async function deviceRoutes(app: FastifyInstance) {
   });
 
   /** Parent view of recent commands and their delivery state (Phase 2b). Never consumes anything. */
-  app.get("/:id/commands/history", { preHandler: [requireParent, requireFamily({ model: "device" })] }, async (req) => {
+  // #790: `hidePending` — the history read is a parent surface, so a pending row answers 404 there too.
+  app.get("/:id/commands/history", { preHandler: [requireParent, requireFamily({ model: "device", hidePending: true })] }, async (req) => {
     const { id } = req.params as { id: string };
     const limit = Number((req.query as { limit?: string })?.limit ?? 20);
     const items = await listDeviceCommands(id, Number.isFinite(limit) ? limit : 20);
@@ -892,17 +991,24 @@ export async function deviceRoutes(app: FastifyInstance) {
       });
       const current = issued?.rulesVersion ?? 0;
       if (reportedVersion <= current) {
-        await prisma.device.update({ where: { id }, data: { appliedRulesVersion: reportedVersion } });
+        // Codex #1002 review (23 Nov): the phone now reports its applied version at once *and* on the periodic
+        // upload, so two uploads can arrive out of order. The write only ever moves the stored version up, in
+        // one statement, so a delayed report of 3 cannot overwrite a 4 that landed first (and two concurrent
+        // reports cannot both claim the transition). A new pairing is a new device row (null), so its first
+        // report is always taken.
+        const written = await prisma.device.updateMany({
+          where: { id, OR: [{ appliedRulesVersion: null }, { appliedRulesVersion: { lt: reportedVersion } }] },
+          data: { appliedRulesVersion: reportedVersion },
+        });
         // #865: tell the family's parents the moment its last reporting device catches up. Without this
         // the "hasn't picked this change up yet" line is refreshed only by an unrelated socket frame, so
         // a parent reads "not picked up" while the phone is already enforcing. The frame carries the
         // same reduced number the banner reads and nothing else: no rule content, no device detail.
         //
-        // Only on the transition: `req.device` is the row as it was before this upload, so an upload that
-        // repeats a version the phone already reported must not publish — otherwise every telemetry tick
-        // makes every open parent app refetch the family snapshot, changed or not.
-        const previousVersion = (device as { appliedRulesVersion?: number | null }).appliedRulesVersion ?? null;
-        const advanced = previousVersion === null || reportedVersion > previousVersion;
+        // Only on the transition: the guarded write above changed the row only if this report moved the version
+        // up, so an upload that repeats (or trails) a version the phone already reported does not publish —
+        // otherwise every telemetry tick makes every open parent app refetch the family snapshot, changed or not.
+        const advanced = (written?.count ?? 0) > 0;
         const familyId = (device as { child?: { familyId?: string } }).child?.familyId;
         if (familyId && advanced) {
           const siblings = await prisma.device.findMany({
@@ -947,6 +1053,27 @@ export async function deviceRoutes(app: FastifyInstance) {
       }
     }
 
+    // Issue #830/S1: the per-app split the same uploads already carry. Without this the parent's usage
+    // report has a total and no breakdown on every device, because the only other per-app writer is fed
+    // by persistent activity events and the agent's are all `live` (filtered above by BUG-002).
+    // Precedence, not addition: a transitional client that ever sends both shapes must not have its minutes
+    // written twice. `appUsage` is the array shape this PR first targeted; `perAppMinutes` is what the
+    // Android agent has always sent, and it is the one that reaches a real phone.
+    const appUsageEntries =
+      parsed.data.appUsage && parsed.data.appUsage.length > 0
+        ? parsed.data.appUsage
+        : Object.entries(parsed.data.perAppMinutes ?? {}).map(([packageId, minutes]) => ({ packageId, minutes }));
+    if (appUsageEntries.length > 0 && device?.childId) {
+      try {
+        await recordAppUsage(device.childId, id, appUsageEntries);
+      } catch (err) {
+        // Best-effort, like the total: the phone's next tick re-reports the same minutes and the row is
+        // an increment, not a snapshot — a lost write under-counts one app for one day, it does not lie.
+        req.log.warn({ err }, "per-app usage rollup write failed (telemetry)");
+
+      }
+    }
+
     // A device that reports telemetry is alive: refresh lastSeen/battery so the
     // parent app shows a meaningful "online" state. `now` is the instant the boot comparison above used.
     await prisma.device.update({
@@ -975,17 +1102,30 @@ export async function deviceRoutes(app: FastifyInstance) {
         // report that omits it leaves the stored count alone — that report uses the instant fallback, and
         // the count decides again as soon as one arrives.
         ...(bootBaseline && bootBaseline.bootCount !== null ? { lastBootCount: bootBaseline.bootCount } : {}),
+        // Reviewed on #884 (Fable): an in-place agent upgrade reaches a row that has an instant but no counter.
+        // Recording the counter on that first count-bearing tick, without touching the instant and without an
+        // alert, is what moves the restart decision off the wall clock for every existing device after one
+        // tick instead of after the next reboot.
+        ...(boot.kind === "same_boot_adopt_count" ? { lastBootCount: boot.bootCount } : {}),
       },
     });
+    // ADR-0047: only this authenticated telemetry report may complete setup. Pair-claim and stored
+    // reports are deliberately excluded; a failed protected-alert write rolls back this attempt, and
+    // a failed rollback is recovered by retrying the deduped alert on a later all-ready report.
+    if (capabilitiesOk && capabilitiesParsed) {
+      await completeDeviceSetupIfReady(device as unknown as SetupTransitionDevice, capabilitiesParsed, now)
+        .catch((err) => req.log.warn({ err, deviceId: id }, "device setup completion failed (telemetry)"));
+    }
     if (boot.kind === "new_boot" && bootFamilyId) {
-      // Issue #867: the restart itself, reported by the phone because the 30-minute silence window can never
-      // see a 1–2 minute gap. `raiseAlertOnce`, not `raiseAlert`: since #711 a `raiseAlert` producer must
-      // carry a localization `bodyKey`, and no parent-app string exists for a restart yet — the English
-      // title/body is the compatibility floor every un-updated app renders.
+      // Issue #867 / #889: the restart itself, reported by the phone because the 30-minute silence window
+      // can never see a 1–2 minute gap. Carries `bodyKey: "alertBodyDeviceRestarted"` so updated parent apps
+      // localize in the parent's language while `body` stays the English compatibility floor.
       try {
-        // The body is stored as English and read verbatim, so the clock in it has to be the family's
-        // (ADR-0017/ADR-0020), not the server's UTC.
+        // The fallback body is stored in English using the family's zone (ADR-0017/ADR-0020).
         const family = await prisma.family.findUnique({ where: { id: bootFamilyId }, select: { timezone: true } });
+        const familyTimeZone = family?.timezone?.trim() || "UTC";
+        const utcOffsetMinutes = zonedUtcOffsetMinutes(boot.bootedAt, familyTimeZone);
+        const rawModel = device.model?.trim() ?? "";
         await raiseAlertOnce({
           childId: device.childId,
           familyId: bootFamilyId,
@@ -993,11 +1133,21 @@ export async function deviceRoutes(app: FastifyInstance) {
           severity: boot.severity,
           category: "device_restarted",
           title: "Device restarted",
-          body: bootReportBody(boot, device.model ?? "A phone", family?.timezone ?? "UTC"),
+          body: bootReportBody(boot, rawModel || "A phone", familyTimeZone, now),
+          bodyKey: "alertBodyDeviceRestarted",
+          params: {
+            model: rawModel,
+            bootedAt: boot.bootedAt.toISOString(),
+            gapMinutes: boot.gapMinutes,
+            timeZone: familyTimeZone,
+            utcOffsetMinutes,
+          },
           metadata: {
             type: "device_restarted",
             bootedAt: boot.bootedAt.toISOString(),
             gapMinutes: boot.gapMinutes,
+            timeZone: familyTimeZone,
+            utcOffsetMinutes,
             lastSeen: boot.previousLastSeen?.toISOString() ?? null,
           },
           // #225: two API instances can both read the pre-upload row and both decide "new boot"; keying on
@@ -1033,9 +1183,15 @@ export async function deviceRoutes(app: FastifyInstance) {
     const device = (req as unknown as { device: { id: string; childId: string } }).device;
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (device?.childId && !(await assertProcessingAllowed(device.childId, reply))) return;
-    // Filter out live-activity heartbeat snapshots from persistent historical log (BUG-002)
-    const persistentEvents = parsed.data.events.filter(
-      (e) => !(e.type === "app_usage" && (e.payload as Record<string, unknown>)?.live === true),
+    // Filter out live-activity heartbeat snapshots from persistent historical log (BUG-002), then apply
+    // the site-name gate before anything is stored: a `url` event that may not be kept is dropped here,
+    // and a kept one carries only its host, so the raw log never holds a path or query (#841 Fable B1).
+    const siteNames = siteNamesEnabled();
+    const persistentEvents = gateActivityEvents(
+      parsed.data.events.filter(
+        (e) => !(e.type === "app_usage" && (e.payload as Record<string, unknown>)?.live === true),
+      ) as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>,
+      siteNames,
     );
     if (persistentEvents.length > 0) {
       await prisma.activityEvent.createMany({
@@ -1050,7 +1206,7 @@ export async function deviceRoutes(app: FastifyInstance) {
       // Phase 2c: fold the batch into AppUsageDaily / WebVisit. A failure here must not reject the
       // batch (the raw log is the source of truth; the nightly rollup reconciles from it).
       try {
-        await recordActivityUsage(device.childId, id, persistentEvents as Array<{ ts?: string; type: string; payload: Record<string, unknown> }>);
+        await recordActivityUsage(device.childId, id, persistentEvents, { siteNames });
       } catch (err) {
         req.log.warn({ err }, "usage rollup write failed (activity)");
       }

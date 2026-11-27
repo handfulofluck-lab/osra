@@ -9,24 +9,33 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.net.VpnService
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +54,16 @@ import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.dto.AlertDto
+import com.familyshield.agent.sos.SosActivity
+import com.familyshield.agent.ui.block.BlockedAppCopy
+import com.familyshield.agent.ui.block.BlockedAppScreen
+import com.familyshield.agent.ui.block.StillOpenAppUi
+import com.familyshield.agent.ui.request.AskParentActivity
+import com.familyshield.agent.ui.theme.ChildUxFlags
+import com.familyshield.agent.ui.theme.OsraTheme
+import com.familyshield.agent.vpn.FilterVpnService
+import com.familyshield.agent.vpn.VpnState
+import java.time.ZonedDateTime
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +88,9 @@ class BlockActivity : ComponentActivity() {
     @Inject lateinit var settings: AgentSettings
     @Inject lateinit var appBlocker: AppBlocker
     @Inject lateinit var rules: RuleRepository
+    // S1 (osra-security#39): the same pause the filter service honours. Without it a blocked app tapped
+    // while consent is withdrawn still increments the persisted counter and posts a row.
+    @Inject lateinit var consent: com.familyshield.agent.data.ConsentState
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -84,6 +106,27 @@ class BlockActivity : ComponentActivity() {
             appLabel = newLabel
         },
     )
+
+    private val vpnConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        VpnState.endOwnConsent()
+        if (result.resultCode == RESULT_OK && VpnState.isFilterLost(this, settings, consent)) {
+            FilterVpnService.start(this)
+        }
+    }
+
+    private fun reconnectFilter() {
+        if (!VpnState.isFilterLost(this, settings, consent)) {
+            finish()
+            return
+        }
+        val prompt = VpnService.prepare(this)
+        if (prompt == null) {
+            FilterVpnService.start(this)
+        } else {
+            VpnState.beginOwnConsent()
+            runCatching { vpnConsent.launch(prompt) }.onFailure { VpnState.endOwnConsent() }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,20 +150,68 @@ class BlockActivity : ComponentActivity() {
         })
 
         applyIntent(intent)
+        // #830: every block the child meets is reported, not only the "Request access" tap, so the parent
+        // sees "tried to open X" with a growing attempt count.
+        reportBlockedAttempt(request.packageId, request.reason)
 
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {
-                    // Keyed on the package so the "Request sent" state belongs to one app, not to the
-                    // instance: a second block starts with a fresh button.
-                    key(request.packageId) {
-                        BlockScreen(
-                            appLabel = appLabel,
-                            timeLimit = request.timeLimit,
-                            window = request.window,
-                            onRequestAccess = { requestAccess(session.requestAccessPackage(), request.reason) },
-                            onExit = { goHome() },
+            val useC02 = request.reason != REASON_FILTER_LOST && ChildUxFlags.c02BlockedScreenEnabled
+            val darkTheme = isSystemInDarkTheme()
+            SideEffect {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                val lightIconsBackground = useC02 && !darkTheme
+                controller.isAppearanceLightStatusBars = lightIconsBackground
+                controller.isAppearanceLightNavigationBars = lightIconsBackground
+            }
+            if (useC02) {
+                OsraTheme.OsraTheme(darkTheme = darkTheme) {
+                    key(request.packageId, request.reason) {
+                        val explanation = BlockExplainPolicy.explain(
+                            ruleSet = rules.cachedRules(),
+                            packageId = request.packageId,
+                            now = ZonedDateTime.now(),
+                            minutesUsedToday = rules.minutesSnapshot(),
+                            blocklist = rules.blocklistSnapshot(),
+                            pausedInternet = rules.isInternetPaused(),
+                            bonusMinutes = rules.bonusMinutesTodaySnapshot(),
+                            declaresVpnService = rules.declaresVpnServiceSnapshot(request.packageId),
+                            fallbackReason = request.reason,
+                            fallbackWindow = request.window,
                         )
+                        val copy = buildC02Copy(appLabel, explanation)
+                        BlockedAppScreen(
+                            copy = copy,
+                            opensExternalAskScreen = explanation.canAskForMoreTime,
+                            onPrimaryRequest = {
+                                if (explanation.canAskForMoreTime) {
+                                    openAskParent()
+                                } else {
+                                    sendChildRequest(session.requestAccessPackage(), explanation, request.reason)
+                                }
+                            },
+                            onOpenAllowedApp = { pkg -> openStillOpenTarget(pkg) },
+                            onCallParent = { openDialer() },
+                            onSendSos = { openSos() },
+                            onExitHome = { goHome() },
+                        )
+                    }
+                }
+            } else {
+                MaterialTheme {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF131318)) {
+                        // Keyed on the package so the "Request sent" state belongs to one app, not to the
+                        // instance: a second block starts with a fresh button.
+                        key(request.packageId, request.reason) {
+                            if (request.reason == REASON_FILTER_LOST) {
+                                FilterRecoveryScreen(onReconnect = ::reconnectFilter, onExit = ::goHome)
+                            } else BlockScreen(
+                                appLabel = appLabel,
+                                timeLimit = request.timeLimit,
+                                window = request.window,
+                                onRequestAccess = { requestAccess(session.requestAccessPackage(), request.reason) },
+                                onExit = { goHome() },
+                            )
+                        }
                     }
                 }
             }
@@ -136,8 +227,11 @@ class BlockActivity : ComponentActivity() {
      */
     private val unlinkedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != DeviceUnlinker.ACTION_UNLINKED) return
-            if (!settings.isPairedSync()) finish()
+            when (intent?.action) {
+                DeviceUnlinker.ACTION_UNLINKED -> if (!settings.isPairedSync()) finish()
+                VpnState.ACTION_FILTER_LOSS_CHANGED ->
+                    if (request.reason == REASON_FILTER_LOST) closeIfNoLongerBlocked()
+            }
         }
     }
 
@@ -146,7 +240,7 @@ class BlockActivity : ComponentActivity() {
         ContextCompat.registerReceiver(
             this,
             unlinkedReceiver,
-            IntentFilter(DeviceUnlinker.ACTION_UNLINKED),
+            IntentFilter(DeviceUnlinker.ACTION_UNLINKED).apply { addAction(VpnState.ACTION_FILTER_LOSS_CHANGED) },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
     }
@@ -180,6 +274,10 @@ class BlockActivity : ComponentActivity() {
      * the bug this closes.
      */
     private fun closeIfNoLongerBlocked() {
+        if (request.reason == REASON_FILTER_LOST) {
+            if (!VpnState.isFilterLost(this, settings, consent)) finish()
+            return
+        }
         val pkg = session.request.packageId
         val decision = rules.verdict(pkg).decision
         if (BlockRecheckPolicy.decide(pkg, decision) == BlockRecheckPolicy.Action.FINISH) {
@@ -195,6 +293,11 @@ class BlockActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applyIntent(intent)
+        // Hydrogen's #836 blocker: a `singleTask` reuse skipped the attempt report, which runs only in
+        // onCreate — so a second block of the same or another app never incremented the parent's row.
+        // `session.apply` above has already replaced `request`, so this reports the block in front.
+        reportBlockedAttempt(request.packageId, request.reason)
+        if (request.reason == REASON_FILTER_LOST) closeIfNoLongerBlocked()
     }
 
     private fun applyIntent(intent: Intent) {
@@ -222,8 +325,45 @@ class BlockActivity : ComponentActivity() {
         finish()
     }
 
+    /**
+     * #830: one grouped `app_blocked` row per app per UTC day. The count is monotonic
+     * ([AttemptCounter]); the server updates the existing row only when the count is higher and never
+     * pushes again, so a child tapping a blocked app ten times reads "10 attempts" and one notification.
+     */
+    private fun reportBlockedAttempt(pkg: String, reason: String) {
+        // Recovery has one incident alert from the VPN service, independent of app attempts.
+        // Issue #1174 / Ahmed acceptance (7200575366): no app_blocked alert before initial setup completes.
+        if (reason == REASON_FILTER_LOST || consent.isPaused()) return
+        if (settings.isPairedSync()) {
+            val deviceId = settings.deviceIdSync()
+            com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(this, deviceId)
+            if (!com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(this, deviceId)) return
+        }
+        val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+        val attempts = AttemptCounter.next(this, "app", pkg, day)
+        val appLabelSnapshot = appLabel
+        scope.launch {
+            runCatching {
+                api.postInternalAlert(
+                    AlertDto(
+                        childId = settings.childId(),
+                        deviceId = settings.deviceId(),
+                        severity = "info",
+                        category = "app_blocked",
+                        title = "Blocked app opened",
+                        body = "Your child tried to open a blocked app.",
+                        metadata = mapOf("packageId" to pkg, "reason" to reason, "appName" to appLabelSnapshot),
+                        dedupeKey = AlertKeys.blockedApp(pkg, day),
+                        attemptCount = attempts,
+                    ),
+                )
+            }
+        }
+    }
+
     /** POSTs an app_blocked alert for the blocked package; failures are swallowed (best effort). */
     private fun requestAccess(pkg: String, reason: String) {
+        val appLabelSnapshot = appLabel
         scope.launch {
             runCatching {
                 api.postInternalAlert(
@@ -234,11 +374,236 @@ class BlockActivity : ComponentActivity() {
                         category = "app_blocked",
                         title = "Access requested",
                         body = "Child requested access to $pkg",
-                        metadata = mapOf("packageId" to pkg, "reason" to reason),
+                        metadata = mapOf(
+                            "packageId" to pkg,
+                            "reason" to reason,
+                            "appName" to appLabelSnapshot,
+                            "requestType" to "access",
+                        ),
                     ),
                 )
             }
         }
+    }
+
+    /** C-02 (#1179, G2/G3, #1116): posts either a daily-limit time request (`requestType = "time"`) or an app access request (`requestType = "access"`), carrying the snapshotted `appName`. */
+    private fun sendChildRequest(pkg: String, explanation: BlockExplanation, fallbackReason: String) {
+        val appLabelSnapshot = appLabel
+        val payload = BlockExplainPolicy.buildRequestPayload(
+            packageId = pkg,
+            explanation = explanation,
+            fallbackReason = fallbackReason,
+            requestedMinutes = 15,
+            appName = appLabelSnapshot,
+        )
+        scope.launch {
+            runCatching {
+                api.postInternalAlert(
+                    AlertDto(
+                        childId = settings.childId(),
+                        deviceId = settings.deviceId(),
+                        severity = "info",
+                        category = "app_blocked",
+                        title = payload.title,
+                        body = payload.body,
+                        metadata = payload.metadata,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun openStillOpenTarget(pkg: String?) {
+        if (pkg.isNullOrBlank()) {
+            openDialer()
+            return
+        }
+        val launch = packageManager.getLaunchIntentForPackage(pkg)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (launch != null && runCatching { startActivity(launch) }.isSuccess) {
+            finish()
+        }
+    }
+
+    private fun openDialer() {
+        runCatching {
+            startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    private fun openSos() {
+        runCatching {
+            startActivity(Intent(this, SosActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** C-03 (#1179, K31 #1196 finding 1): opens the dedicated Ask-a-parent screen for daily-limit time requests. */
+    private fun openAskParent() {
+        runCatching {
+            startActivity(AskParentActivity.intent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    private fun formatDurationWords(totalMinutes: Int): String {
+        val safe = totalMinutes.coerceAtLeast(0)
+        val hours = safe / 60
+        val mins = safe % 60
+        val hoursText = String.format(java.util.Locale.US, "%d", hours)
+        val minsText = String.format(java.util.Locale.US, "%d", mins)
+        return when {
+            hours > 0 && mins > 0 -> getString(
+                R.string.c02_hours_and_minutes,
+                resources.getQuantityString(R.plurals.c02_hours, hours, hoursText),
+                resources.getQuantityString(R.plurals.c02_minutes, mins, minsText),
+            )
+            hours > 0 -> resources.getQuantityString(R.plurals.c02_hours, hours, hoursText)
+            else -> resources.getQuantityString(R.plurals.c02_minutes, mins, minsText)
+        }
+    }
+
+    private fun buildC02Copy(label: String, explanation: BlockExplanation): BlockedAppCopy {
+        val displayApp = label.ifBlank { request.packageId }
+        val isolatedApp = BlockExplainPolicy.ltrIsolate(displayApp)
+        val monogram = displayApp.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "O"
+
+        val reasonPill = when (explanation.cause) {
+            BlockCause.DAILY_LIMIT -> getString(R.string.c02_reason_daily_limit)
+            BlockCause.APP_LIMIT -> getString(R.string.c02_reason_app_limit)
+            BlockCause.BEDTIME -> getString(R.string.c02_reason_bedtime)
+            BlockCause.SCHOOL -> getString(R.string.c02_reason_school)
+            BlockCause.ROUTINE -> explanation.routineName
+                ?.let { BlockExplainPolicy.firstStrongIsolate(it) }
+                ?: getString(R.string.c02_reason_blocked)
+            BlockCause.PAUSED_INTERNET -> getString(R.string.c02_reason_paused_internet)
+            BlockCause.APP_BLOCKED -> getString(R.string.c02_reason_blocked)
+        }
+
+        val subtitle = when (explanation.cause) {
+            BlockCause.DAILY_LIMIT -> {
+                val used = explanation.usedMinutes
+                val limit = explanation.limitMinutes
+                if (used != null && limit != null && limit > 0) {
+                    getString(R.string.c02_subtitle_used_of, formatDurationWords(used), formatDurationWords(limit))
+                } else {
+                    getString(R.string.c02_subtitle_daily_limit)
+                }
+            }
+            BlockCause.APP_LIMIT -> {
+                val used = explanation.usedMinutes
+                val limit = explanation.limitMinutes
+                if (used != null && limit != null && limit > 0) {
+                    getString(R.string.c02_subtitle_used_of, formatDurationWords(used), formatDurationWords(limit))
+                } else {
+                    getString(R.string.c02_subtitle_app_limit, isolatedApp)
+                }
+            }
+            BlockCause.BEDTIME -> getString(R.string.c02_subtitle_bedtime)
+            BlockCause.SCHOOL -> getString(R.string.c02_subtitle_school)
+            BlockCause.ROUTINE -> explanation.routineName?.let {
+                getString(R.string.c02_subtitle_routine, BlockExplainPolicy.firstStrongIsolate(it))
+            } ?: getString(R.string.c02_subtitle_blocked)
+            BlockCause.PAUSED_INTERNET -> getString(R.string.c02_subtitle_paused_internet)
+            BlockCause.APP_BLOCKED -> getString(R.string.c02_subtitle_blocked)
+        }
+
+        val backAtValue = explanation.backAtTime?.let { hhMm ->
+            val isolatedTime = BlockExplainPolicy.ltrIsolate(hhMm)
+            if (explanation.backAtTomorrow) {
+                getString(R.string.c02_back_at_tomorrow, isolatedTime)
+            } else {
+                getString(R.string.c02_back_at_today, isolatedTime)
+            }
+        }
+
+        val alwaysOpenBadge = getString(R.string.c02_always_open_pill)
+        val stillOpenRows = buildList {
+            for (pkg in explanation.stillOpenPackages) {
+                val resolved = applicationLabel(pkg)?.takeIf { it.isNotBlank() } ?: continue
+                add(
+                    StillOpenAppUi(
+                        packageId = pkg,
+                        label = BlockExplainPolicy.ltrIsolate(resolved),
+                        badge = alwaysOpenBadge,
+                    ),
+                )
+            }
+            add(
+                StillOpenAppUi(
+                    packageId = null,
+                    label = getString(R.string.c02_messages_and_calls),
+                    badge = alwaysOpenBadge,
+                ),
+            )
+        }
+
+        val primaryLabel = if (explanation.canAskForMoreTime) {
+            getString(R.string.c02_ask_more_time_15)
+        } else {
+            getString(R.string.c02_ask_to_open, isolatedApp)
+        }
+
+        val summary = BlockExplainPolicy.rulesSummary(
+            ruleSet = rules.cachedRules(),
+            now = ZonedDateTime.now(),
+            minutesUsedToday = rules.minutesSnapshot(),
+            bonusMinutes = rules.bonusMinutesTodaySnapshot(),
+        )
+        val rulesLines = buildList {
+            summary.dailyLimitMinutes?.let { limit ->
+                add(
+                    getString(
+                        R.string.c02_rules_daily_limit,
+                        formatDurationWords(summary.dailyUsedMinutes),
+                        formatDurationWords(limit),
+                    ),
+                )
+            }
+            summary.bedtimeWindow?.let { (start, end) ->
+                add(
+                    getString(
+                        R.string.c02_rules_bedtime,
+                        BlockExplainPolicy.ltrRange(start, end),
+                    ),
+                )
+            }
+            summary.schoolWindow?.let { (start, end) ->
+                add(
+                    getString(
+                        R.string.c02_rules_school,
+                        BlockExplainPolicy.ltrRange(start, end),
+                    ),
+                )
+            }
+            if (summary.routineNames.isNotEmpty()) {
+                val joined = summary.routineNames.joinToString(", ") { BlockExplainPolicy.firstStrongIsolate(it) }
+                add(getString(R.string.c02_rules_routines, joined))
+            }
+        }
+
+        return BlockedAppCopy(
+            brandLabel = getString(R.string.app_name),
+            reasonPill = reasonPill,
+            monogram = monogram,
+            headline = getString(R.string.c02_paused_title, isolatedApp),
+            subtitle = subtitle,
+            backAgainLabel = getString(R.string.c02_back_again_label),
+            backAtValue = backAtValue,
+            stillOpenLabel = getString(R.string.c02_still_open_label),
+            stillOpenApps = stillOpenRows,
+            primaryRequestLabel = primaryLabel,
+            requestSentTitle = getString(R.string.block_request_sent),
+            requestWaitingLine = getString(R.string.c02_waiting_reply),
+            callParentLabel = getString(R.string.c02_call_parent),
+            seeMyRulesLabel = getString(R.string.c02_see_my_rules),
+            sendSosLabel = getString(R.string.c02_send_sos_row),
+            exitHomeLabel = getString(R.string.block_exit_home),
+            emergencyNote = getString(R.string.c02_emergency_note),
+            rulesSheetTitle = getString(R.string.c02_rules_sheet_title),
+            rulesSheetLines = rulesLines,
+            rulesSheetEmpty = getString(R.string.c02_rules_none),
+            rulesSheetClose = getString(R.string.c02_rules_close),
+        )
     }
 
     companion object {
@@ -261,6 +626,7 @@ class BlockActivity : ComponentActivity() {
 
         /** Reason value: the app's daily time limit is used up. */
         const val REASON_TIME_LIMIT: String = "time_limit"
+        const val REASON_FILTER_LOST: String = "filter_lost"
     }
 }
 
@@ -276,6 +642,34 @@ private fun windowFrom(intent: Intent): WindowReason? {
     val ends = intent.getStringExtra(BlockActivity.EXTRA_WINDOW_ENDS) ?: return null
     val parsed = runCatching { WindowKind.valueOf(kind) }.getOrNull() ?: return null
     return WindowReason(parsed, intent.getStringExtra(BlockActivity.EXTRA_WINDOW_NAME), ends)
+}
+
+@Composable
+private fun FilterRecoveryScreen(onReconnect: () -> Unit, onExit: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        val viewportHeight = maxHeight
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = viewportHeight)
+                .padding(32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.setup_web_filter_disconnected),
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+            )
+            Button(onClick = onReconnect) {
+                Text(stringResource(R.string.setup_web_filter_reconnect))
+            }
+            TextButton(onClick = onExit) {
+                Text(stringResource(R.string.block_exit_home), color = Color.White)
+            }
+        }
+    }
 }
 
 @Composable

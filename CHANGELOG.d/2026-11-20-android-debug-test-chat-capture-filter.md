@@ -1,0 +1,3 @@
+### Android — debug-only on-device test-chat capture filter
+- Added a debug-only capture gate (`src/debug/.../TestChatCaptureGate.kt`) evaluated before `SocialScanQueue.enqueue` in both `NotificationCaptureService` and `SocialCapture`. When a local device-only config file (`files/osra_test_chat_filter.conf`, salted SHA-256) is present on a debug test phone, captures for non-matching chats are dropped on-device before queueing; malformed configs fail closed.
+- Release builds compile an unconditional no-op stub (`src/release/.../TestChatCaptureGate.kt`) and CI verifies that `osra_test_chat_filter` is absent from both Play and Full Release DEX files while present in Debug DEX files.
