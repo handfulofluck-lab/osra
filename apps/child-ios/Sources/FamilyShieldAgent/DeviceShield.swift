@@ -52,14 +52,17 @@ public struct LiveDeviceShield: DeviceShielding {
         store.shield.webDomainCategories = .all()
         // `ManagedSettingsStore` writes do not throw, so the only honest ack is a read-back. A store that did
         // not take the policy reports the failure rather than claiming a lock the child never saw.
-        return store.shield.applicationCategories != nil ? .applied : .failed("shield_not_applied")
+        // Both halves must read back: an apps-only shield would still let the child browse.
+        let applied = store.shield.applicationCategories != nil && store.shield.webDomainCategories != nil
+        return applied ? .applied : .failed("shield_not_applied")
     }
 
     public func unshield(_ set: ShieldSet) async -> ShieldOutcome {
         let store = set.store
         store.clearAllSettings()
         // Clears every field of this store only; the child's own rules and the other store are untouched.
-        return store.shield.applicationCategories == nil ? .cleared : .failed("shield_still_applied")
+        let cleared = store.shield.applicationCategories == nil && store.shield.webDomainCategories == nil
+        return cleared ? .cleared : .failed("shield_still_applied")
     }
 
     #else

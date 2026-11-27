@@ -70,7 +70,7 @@ final class DeviceCommandsTests: XCTestCase {
         }
         XCTAssertEqual(syncs, 1, "two rules_updated in one drain cost one fetch")
         XCTAssertEqual(result.handled, ["rules_updated", "rules_updated"])
-        XCTAssertEqual(result.refused, ["lock"])
+        XCTAssertEqual(result.refused, ["ring"])
 
         let poll = StubProtocol.requests.first?.request
         XCTAssertEqual(poll?.url?.path, "/v1/devices/dev-1/commands")
@@ -81,7 +81,7 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertEqual(acks.count, 3, "every command is acked")
         XCTAssertEqual(acks.map { $0["status"] as? String }, ["ok", "ok", "failed"])
         XCTAssertEqual((acks[2]["detail"] as? [String: String])?["reason"], "not_supported",
-                       "a parent sees why the iPhone did not lock, not a silent delivered")
+                       "a parent sees why the iPhone did not ring, not a silent delivered")
         XCTAssertEqual(StubProtocol.requests[3].request.url?.path, "/v1/devices/dev-1/commands/c3/ack")
     }
 
