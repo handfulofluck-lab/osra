@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:familyshield_parent/features/pairing/pair_p05_screen.dart';
 import 'package:familyshield_parent/features/pairing/pair_qr_screen.dart';
@@ -244,6 +246,233 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.byKey(const ValueKey('p05QrCodeCard')), findsNothing);
+  });
+
+  /// Mutant: place `else if (claimStatus == 'approved')` ahead of `else if (_pollError != null)`
+  /// in `pair_p05_screen.dart` -> a status-poll failure after approval leaves `p05ApprovedCard`
+  /// spinning and hides `p05PollRetryButton`.
+  testWidgets('#1190 P-05 Retry fix: post-approval status poll failure prioritizes Retry over spinner and recovers to paired', (tester) async {
+    final now = DateTime(2026, 11, 27, 6, 45);
+    var stage = 'pending';
+    var failApprovedPoll = false;
+    final api = buildApi(
+      code: '482913',
+      expiresAt: now.add(const Duration(minutes: 10)),
+      claimResponse: () {
+        if (failApprovedPoll) throw const FakeNetworkError();
+        return {
+          'claimId': 'claim-1',
+          'status': stage,
+          'deviceName': "Sam's phone",
+          'model': 'Pixel 8',
+        };
+      },
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p05PairEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PairingQrScreen(
+            childId: 'child-1',
+            childName: 'Alex',
+            clock: () => now,
+            onContinue: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('p05ConfirmDeviceCard')), findsOneWidget);
+
+    // Approve claim -> enters `approved` state.
+    stage = 'approved';
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p05ConfirmLinkButton')), 200);
+    await tester.tap(find.byKey(const ValueKey('p05ConfirmLinkButton')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('p05ApprovedCard')), findsOneWidget);
+
+    // Next status poll fails -> `p05PollErrorCard` + `p05PollRetryButton` take priority over spinner.
+    failApprovedPoll = true;
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('p05PollErrorCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05PollRetryButton')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05ApprovedCard')), findsNothing);
+
+    // Parent taps Retry once network recovers -> transitions cleanly to `p05ConnectedCard`.
+    failApprovedPoll = false;
+    stage = 'paired';
+    await tester.ensureVisible(find.byKey(const ValueKey('p05PollRetryButton')));
+    await tester.tap(find.byKey(const ValueKey('p05PollRetryButton')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('p05PollErrorCard')), findsNothing);
+    expect(find.byKey(const ValueKey('p05ConnectedCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('p05ContinueButton')), findsOneWidget);
+  });
+
+  /// Mutant A: leave `_code` set while `_generate()` awaits replacement or omit `_generation` check in `_readClaim()` ->
+  /// a late poll from generation 1 populates `_claim` under generation 2's code.
+  /// Mutant B: omit `_generation` check in `_decide()` / final-device refresh -> an in-flight approval or poll from an
+  /// earlier generation mutates `_claim` or triggers `familyProvider` refresh after replacement.
+  testWidgets('#1190 P-05 generation guard: replacement clears presentation and discards stale polls, approvals, and device refreshes', (tester) async {
+    final now = DateTime(2026, 11, 27, 6, 45);
+    final exp = now.add(const Duration(minutes: 10)).toUtc().toIso8601String();
+    var pairMintCount = 0;
+    final gen2CreateGate = Completer<void>();
+    final gen1PollGate = Completer<void>();
+    final gen2ApproveGate = Completer<void>();
+    var gen3ClaimReady = false;
+    final approvedClaimIds = <String>[];
+
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'POST /v1/devices/pair': (_) {
+        pairMintCount += 1;
+        if (pairMintCount == 1) {
+          return {'code': '111111', 'expiresAt': exp};
+        }
+        if (pairMintCount == 2) {
+          return FakeDeferred(
+            gen2CreateGate.future.then((_) => {'code': '222222', 'expiresAt': exp}),
+          );
+        }
+        return {'code': '333333', 'expiresAt': exp};
+      },
+      'GET /v1/devices/pair/111111/claim': (_) => FakeDeferred(
+            gen1PollGate.future.then(
+              (_) => {
+                'claimId': 'claim-gen-1',
+                'status': 'pending',
+                'deviceName': 'Stale Gen1 Phone',
+                'model': 'Old Model',
+              },
+            ),
+          ),
+      'GET /v1/devices/pair/222222/claim': (_) => {
+            'claimId': 'claim-gen-2',
+            'status': 'pending',
+            'deviceName': 'Gen2 Phone',
+            'model': 'Pixel 8',
+          },
+      'GET /v1/devices/pair/333333/claim': (_) => gen3ClaimReady
+          ? {
+              'claimId': 'claim-gen-3',
+              'status': 'pending',
+              'deviceName': 'Current Gen3 Phone',
+              'model': 'Pixel 9',
+            }
+          : {'status': 'waiting'},
+      'POST /v1/devices/pair/claims/claim-gen-1/approve': (_) {
+        approvedClaimIds.add('claim-gen-1');
+        return const {'status': 'approved'};
+      },
+      'POST /v1/devices/pair/claims/claim-gen-2/approve': (_) => FakeDeferred(
+            gen2ApproveGate.future.then((_) {
+              approvedClaimIds.add('claim-gen-2');
+              return const {'status': 'approved'};
+            }),
+          ),
+      'POST /v1/devices/pair/claims/claim-gen-3/approve': (_) {
+        approvedClaimIds.add('claim-gen-3');
+        return const {'status': 'approved'};
+      },
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p05PairEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PairingQrScreen(
+            childId: 'child-1',
+            childName: 'Alex',
+            clock: () => now,
+            onContinue: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.textContaining('111 · 111'), findsOneWidget);
+
+    // Trigger Generation 1 poll (suspended in flight), then tap New code -> Generation 2 create suspends.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.ensureVisible(find.byKey(const ValueKey('p05NewCodeButton')));
+    await tester.tap(find.byKey(const ValueKey('p05NewCodeButton')));
+    await tester.pump();
+
+    // Pairing presentation is immediately cleared while replacement code is loading.
+    expect(find.byKey(const ValueKey('p05QrCodeCard')), findsNothing);
+    expect(find.textContaining('111 · 111'), findsNothing);
+    expect(find.byKey(const ValueKey('p05ConfirmDeviceCard')), findsNothing);
+
+    // Complete stale Gen1 poll while Gen2 create is still suspended, then complete Gen2 create.
+    gen1PollGate.complete();
+    await tester.pump(const Duration(milliseconds: 20));
+    gen2CreateGate.complete();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.textContaining('222 · 222'), findsOneWidget);
+    expect(find.textContaining('Stale Gen1 Phone'), findsNothing);
+    expect(find.byKey(const ValueKey('p05ConfirmDeviceCard')), findsNothing);
+
+    // Poll Gen2 -> shows Gen2 Phone -> tap Confirm (suspended on gen2ApproveGate), then immediately request New code (Gen3).
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.textContaining('Gen2 Phone'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p05ConfirmLinkButton')), 200);
+    await tester.tap(find.byKey(const ValueKey('p05ConfirmLinkButton')));
+    await tester.pump();
+
+    await tester.ensureVisible(find.byKey(const ValueKey('p05NewCodeButton')));
+    await tester.tap(find.byKey(const ValueKey('p05NewCodeButton')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.textContaining('333 · 333'), findsOneWidget);
+
+    final familyReadsBefore = api.calls('GET', '/v1/families/me').length;
+    gen2ApproveGate.complete();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Stale Gen2 approval completion must NOT flip Gen3 into Approved or refresh familyProvider.
+    expect(find.byKey(const ValueKey('p05ApprovedCard')), findsNothing);
+    expect(find.byKey(const ValueKey('p05ConnectedCard')), findsNothing);
+    expect(api.calls('GET', '/v1/families/me').length, familyReadsBefore);
+
+    // Gen3 receives its own claim and approves cleanly.
+    gen3ClaimReady = true;
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.textContaining('Current Gen3 Phone'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('p05ConfirmLinkButton')), 200);
+    await tester.tap(find.byKey(const ValueKey('p05ConfirmLinkButton')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(approvedClaimIds.last, 'claim-gen-3');
+    expect(approvedClaimIds.contains('claim-gen-1'), isFalse);
+    expect(find.byKey(const ValueKey('p05ApprovedCard')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 
   for (final cfg in [

@@ -65,6 +65,7 @@ class PairP05Screen extends ConsumerStatefulWidget {
 }
 
 class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
+  int _generation = 0;
   String? _code;
   String? _payload;
   DateTime? _expiresAt;
@@ -97,18 +98,24 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
 
   @override
   void dispose() {
+    _generation += 1;
     _timer?.cancel();
     _claimTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _generate() async {
+    final generation = ++_generation;
     _timer?.cancel();
     _claimTimer?.cancel();
     setState(() {
       _loading = true;
+      _code = null;
+      _payload = null;
+      _expiresAt = null;
       _errorKind = null;
       _claim = null;
+      _deciding = false;
       _decisionError = null;
       _pollError = null;
     });
@@ -117,6 +124,7 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
         '/v1/devices/pair',
         data: {'childId': widget.childId},
       );
+      if (!mounted || generation != _generation) return;
       final data = Map<String, dynamic>.from(res.data as Map);
       final rawCode = data['code'];
       final code = rawCode is String ? normalizeDigits(rawCode) : null;
@@ -129,34 +137,40 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
         code: code,
         apiBaseUrl: ref.read(apiClientProvider).raw.options.baseUrl,
       ).encode();
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _code = code;
         _payload = payload;
         _expiresAt = expiresAt;
+        _claim = null;
+        _deciding = false;
+        _decisionError = null;
+        _pollError = null;
         _loading = false;
       });
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
+        if (!mounted || generation != _generation) return;
         if (_remaining == Duration.zero) _timer?.cancel();
         setState(() {});
       });
-      _claimTimer =
-          Timer.periodic(const Duration(seconds: 2), (_) => _readClaim());
+      _claimTimer = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _readClaim(expectedGeneration: generation),
+      );
     } on DioException catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _errorKind = e.response?.statusCode == 428 ? 'consent' : 'network';
       });
     } on FormatException {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _errorKind = 'format';
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _errorKind = 'network';
@@ -164,7 +178,9 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
     }
   }
 
-  Future<void> _readClaim() async {
+  Future<void> _readClaim({int? expectedGeneration}) async {
+    final generation = expectedGeneration ?? _generation;
+    if (generation != _generation) return;
     final code = _code;
     final status = _claim?['status'];
     if (code == null || _expired || _deciding) return;
@@ -177,27 +193,40 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
           .read(apiClientProvider)
           .raw
           .get('/v1/devices/pair/$code/claim');
-      if (!mounted || code != _code || _deciding) return;
+      if (!mounted ||
+          generation != _generation ||
+          code != _code ||
+          _deciding) {
+        return;
+      }
       final data = Map<String, dynamic>.from(res.data as Map);
+      final claimCode = data['code'];
+      if (claimCode is String && normalizeDigits(claimCode) != code) {
+        return;
+      }
       setState(() {
         _claim = data;
         _pollError = null;
       });
       if (data['status'] == 'paired') {
         _claimTimer?.cancel();
-        ref.invalidate(familyProvider);
+        if (mounted && generation == _generation) {
+          ref.invalidate(familyProvider);
+        }
       } else if (data['status'] == 'denied') {
         _claimTimer?.cancel();
       }
     } catch (e) {
-      if (!mounted || code != _code) return;
+      if (!mounted || generation != _generation || code != _code) return;
       setState(() => _pollError = e);
     }
   }
 
   Future<void> _decide({required bool allow}) async {
+    final generation = _generation;
+    final code = _code;
     final claimId = _claim?['claimId'] as String?;
-    if (claimId == null) return;
+    if (code == null || claimId == null || _expired) return;
     setState(() {
       _deciding = true;
       _decisionError = null;
@@ -206,18 +235,31 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
       await ref.read(apiClientProvider).raw.post(
         '/v1/devices/pair/claims/$claimId/${allow ? 'approve' : 'deny'}',
       );
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _generation ||
+          code != _code ||
+          _claim?['claimId'] != claimId) {
+        return;
+      }
       setState(() {
         _deciding = false;
+        _pollError = null;
         _claim = {...?_claim, 'status': allow ? 'approved' : 'denied'};
       });
       if (allow) {
-        ref.invalidate(familyProvider);
+        if (mounted && generation == _generation) {
+          ref.invalidate(familyProvider);
+        }
       } else {
         _claimTimer?.cancel();
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _generation ||
+          code != _code ||
+          _claim?['claimId'] != claimId) {
+        return;
+      }
       setState(() {
         _deciding = false;
         _decisionError = e;
@@ -539,39 +581,6 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                       ),
                     ),
                   )
-                else if (claimStatus == 'approved')
-                  // B1: Approved means waiting for the phone to fetch its token; not connected yet.
-                  Card(
-                    key: const ValueKey('p05ApprovedCard'),
-                    color: tokens.surfaceContainer,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      side: BorderSide(color: tokens.primary),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpace.lg),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: tokens.primary,
-                            ),
-                          ),
-                          const SizedBox(width: AppSpace.sm),
-                          Expanded(
-                            child: Text(
-                              l10n.pairClaimAllowed,
-                              key: const ValueKey('pairClaimAllowed'),
-                              style: textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
                 else if (claimStatus == 'paired')
                   // B1: Only `paired` shows Phone connected / Continue.
                   Card(
@@ -612,7 +621,8 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                     ),
                   )
                 else if (_pollError != null)
-                  // B5: Honest offline/retry state for claim polling errors (QR stays visible).
+                  // B5 + #1190 Retry fix: polling error takes priority over `approved` spinner
+                  // so a status-poll failure after approval surfaces Retry instead of hanging.
                   Card(
                     key: const ValueKey('p05PollErrorCard'),
                     color: tokens.surfaceContainer,
@@ -634,8 +644,41 @@ class _PairP05ScreenState extends ConsumerState<PairP05Screen> {
                           ),
                           TextButton(
                             key: const ValueKey('p05PollRetryButton'),
-                            onPressed: _readClaim,
+                            onPressed: () => _readClaim(expectedGeneration: _generation),
                             child: Text(l10n.retry),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (claimStatus == 'approved')
+                  // B1: Approved means waiting for the phone to fetch its token; not connected yet.
+                  Card(
+                    key: const ValueKey('p05ApprovedCard'),
+                    color: tokens.surfaceContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      side: BorderSide(color: tokens.primary),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpace.lg),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: tokens.primary,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: Text(
+                              l10n.pairClaimAllowed,
+                              key: const ValueKey('pairClaimAllowed'),
+                              style: textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
+                            ),
                           ),
                         ],
                       ),
