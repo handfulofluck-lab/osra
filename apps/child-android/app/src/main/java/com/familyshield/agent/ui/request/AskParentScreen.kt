@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.familyshield.agent.R
 import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.ui.theme.OsraTokens
@@ -52,6 +53,9 @@ data class AskDurationOptionUi(
     val amountLabel: String,
     val previewSentence: String,
 )
+
+/** U102 (#650): selected-chip check icon scales with font size (`sp`), never fixed `dp`. */
+internal const val DURATION_CHECK_ICON_SIZE_SP = 20
 
 /** U84 (#650): pure visual and TalkBack-semantics contract for a C-03 duration chip. */
 internal data class DurationTilePresentation(
@@ -437,11 +441,12 @@ private fun DurationTile(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (presentation.showCheckIcon) {
+                val checkIconSize = with(LocalDensity.current) { DURATION_CHECK_ICON_SIZE_SP.sp.toDp() }
                 Icon(
                     painter = painterResource(id = R.drawable.ic_check_24),
                     contentDescription = null,
                     tint = palette.primary,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(checkIconSize),
                 )
             }
             Text(

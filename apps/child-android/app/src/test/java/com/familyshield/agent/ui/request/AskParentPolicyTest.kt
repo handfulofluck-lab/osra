@@ -148,6 +148,16 @@ class AskParentPolicyTest {
         assertTrue("U84: DurationTile must use Modifier.selectable for TalkBack", tileFn.contains(".selectable("))
         assertTrue("U84: DurationTile must show ic_check_24 when selected", tileFn.contains("R.drawable.ic_check_24"))
         assertTrue("U84: check icon must be decorative (contentDescription = null)", tileFn.contains("contentDescription = null"))
+        assertTrue("U84: check icon must keep palette.primary tint", tileFn.contains("tint = palette.primary"))
+        assertEquals("U102: check icon size constant must be 20 sp", 20, DURATION_CHECK_ICON_SIZE_SP)
+        assertTrue(
+            "U102: check icon must scale with font size via LocalDensity sp.toDp()",
+            tileFn.contains("with(LocalDensity.current)") && tileFn.contains("DURATION_CHECK_ICON_SIZE_SP.sp.toDp()"),
+        )
+        assertFalse(
+            "U102: check icon must not use a fixed dp size",
+            Regex("""Modifier\.size\(\s*\d+\.dp\s*\)""").containsMatchIn(tileFn),
+        )
         assertFalse("U84: DurationTile must not render selectedBadge or eyebrow text", tileFn.contains("selectedBadge") || tileFn.contains("eyebrow"))
         assertTrue("U84: options group must use selectableGroup()", screen.contains(".selectableGroup()"))
     }
