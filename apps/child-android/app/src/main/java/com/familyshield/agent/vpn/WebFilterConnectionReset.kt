@@ -25,6 +25,7 @@ object WebFilterConnectionReset {
         CLEANED_UP_ON_CONSENT_CHANGE,
         EXPIRED_INSTANCE,
         SKIPPED,
+        POLICY_APPLY_FAILED,
         FAILED_ENTRY_RECOVERED,
         FAILED_ENTRY_CLOSED,
         RESTORE_FAILED_CLOSED,
@@ -327,7 +328,14 @@ object WebFilterConnectionReset {
                     }
                     val currentActive = runCatching { activeModeOnServiceThread() }.getOrNull()
                     if (currentActive == target && transientTunnelEpoch == null) {
-                        runCatching { applyPolicyOnServiceThread(readCommittedPolicyOnServiceThread()) }
+                        val syncedPolicy = runCatching {
+                            val currentPolicy = readCommittedPolicyOnServiceThread()
+                            applyPolicyOnServiceThread(currentPolicy)
+                            currentPolicy
+                        }.getOrNull()
+                        if (syncedPolicy == null || lastAppliedBypassApps != syncedPolicy.alwaysAllowedApps) {
+                            return@runOnService TransitionOutcome.POLICY_APPLY_FAILED
+                        }
                         return@runOnService when {
                             target == FilterVpnService.MODE_SINKHOLE_ALL -> TransitionOutcome.SUPERSEDED_BY_PAUSE
                             ownership.phaseIsFailedEntry -> TransitionOutcome.FAILED_ENTRY_RECOVERED

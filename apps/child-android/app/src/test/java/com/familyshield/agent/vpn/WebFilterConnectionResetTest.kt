@@ -882,18 +882,21 @@ class WebFilterConnectionResetTest {
         assertEquals(FilterVpnService.MODE_DNS, entryExceptionHarness.activeMode)
 
         // 3. Newer authority preservation: if pause_internet took ownership before restore throws, newer authority epoch
-        //    and active MODE_SINKHOLE_ALL tunnel are preserved (or recovered as MODE_SINKHOLE_ALL if establish failed).
-        var throwAfterPause = false
+        //    and active MODE_SINKHOLE_ALL tunnel are preserved once current policy read/apply succeeds.
+        var throwOnceOnRestoreRead = false
         val newerActiveAuthority = SyntheticServiceHarness(
             onReadPolicy = {
-                if (throwAfterPause) throw IllegalStateException("injected readPolicy failure after newer pause")
-                committedPolicy
+                if (throwOnceOnRestoreRead) {
+                    throwOnceOnRestoreRead = false
+                    throw IllegalStateException("injected readPolicy failure after newer pause")
+                }
+                this.committedPolicy
             },
             onWait = { ms ->
                 nowMs += ms
                 if (ms == 1_000L) {
                     assertTrue(serviceAuthoritativeStart(FilterVpnService.MODE_SINKHOLE_ALL, pausedFlag = true))
-                    throwAfterPause = true
+                    throwOnceOnRestoreRead = true
                 }
             },
         )
@@ -903,6 +906,63 @@ class WebFilterConnectionResetTest {
         assertEquals(FilterVpnService.MODE_SINKHOLE_ALL, newerActiveAuthority.activeMode)
         assertTrue(newerActiveAuthority.terminalLossOutcomes.isEmpty())
         assertFalse(newerActiveAuthority.isFilterLost)
+
+        // 3b. Active DNS tunnel with failing current-policy read or apply on fallback must keep existing authority and
+        //     tunnel intact while returning an unacknowledged outcome (POLICY_APPLY_FAILED), never COMPLETED.
+        val olderPolicy = WebFilterConnectionReset.PolicySnapshot(
+            dnsConfig = DnsFilterPolicy.Config(blockedDomains = listOf("older.example")),
+        )
+        val unappliedPolicy = WebFilterConnectionReset.PolicySnapshot(
+            dnsConfig = DnsFilterPolicy.Config(blockedDomains = listOf("older.example", "new-unapplied.example")),
+        )
+        var failCurrentPolicyRead = false
+        val failedReadOnActiveDns = SyntheticServiceHarness(
+            committedPolicy = olderPolicy,
+            onReadPolicy = {
+                if (failCurrentPolicyRead) throw IllegalStateException("injected current-policy read failure")
+                this.committedPolicy
+            },
+            onWait = { ms ->
+                nowMs += ms
+                if (ms == 1_000L) {
+                    assertTrue(serviceAuthoritativeStart(FilterVpnService.MODE_DNS, pausedFlag = false))
+                    committedPolicy = unappliedPolicy
+                    failCurrentPolicyRead = true
+                }
+            },
+        )
+        val outFailedRead = failedReadOnActiveDns.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.POLICY_APPLY_FAILED, outFailedRead)
+        assertFalse("failed current-policy read must not return acknowledged outcome", outFailedRead.acknowledged)
+        assertEquals(2L, failedReadOnActiveDns.controller.currentAuthorityEpochOnServiceThread())
+        assertNull(failedReadOnActiveDns.controller.activeTransientEpochOnServiceThread())
+        assertEquals(FilterVpnService.MODE_DNS, failedReadOnActiveDns.activeMode)
+        assertEquals(listOf("older.example"), failedReadOnActiveDns.appliedDnsConfig.blockedDomains)
+        assertTrue(failedReadOnActiveDns.terminalLossOutcomes.isEmpty())
+        assertFalse(failedReadOnActiveDns.isFilterLost)
+
+        var failCurrentPolicyApply = false
+        val failedApplyOnPostHopDns = SyntheticServiceHarness(
+            committedPolicy = olderPolicy,
+            onPreparePolicy = { callIndex ->
+                if (callIndex == 3) {
+                    committedPolicy = unappliedPolicy
+                    failCurrentPolicyApply = true
+                }
+            },
+            onApplyPolicy = {
+                if (failCurrentPolicyApply) throw IllegalStateException("injected current-policy apply failure")
+            },
+        )
+        val outFailedApply = failedApplyOnPostHopDns.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.POLICY_APPLY_FAILED, outFailedApply)
+        assertFalse("failed current-policy apply must not return acknowledged outcome", outFailedApply.acknowledged)
+        assertEquals(1L, failedApplyOnPostHopDns.controller.currentAuthorityEpochOnServiceThread())
+        assertNull(failedApplyOnPostHopDns.controller.activeTransientEpochOnServiceThread())
+        assertEquals(FilterVpnService.MODE_DNS, failedApplyOnPostHopDns.activeMode)
+        assertEquals(listOf("older.example"), failedApplyOnPostHopDns.appliedDnsConfig.blockedDomains)
+        assertTrue(failedApplyOnPostHopDns.terminalLossOutcomes.isEmpty())
+        assertFalse(failedApplyOnPostHopDns.isFilterLost)
 
         // 4. Ownership-only release: if a newer owner's transient marker and delay signal are installed when the
         //    failing reset's exceptional cleanup executes, ONLY the failing reset's signal is completed and the newer
