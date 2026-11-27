@@ -62,6 +62,31 @@ class ClientHeaderTest {
         assertEquals("a hyphen is allowed by the server", "child-android/0.2.0+2 (test-only)", ClientHeader.value("0.2.0", 2, "test-only"))
     }
 
+    // Issue #1080: the Full flavour appends `versionNameSuffix = "-full"` in Gradle, so BuildConfig.VERSION_NAME
+    // is `0.2.0-full` on the artefact that actually does the parental control. `value()` rightly refused it, and
+    // because CapabilitiesPolicy returns null when the header is null, that one fact silenced the version AND the
+    // whole capability report on every Full build. These rows pin the normaliser and the consequence.
+
+    @Test
+    fun `the suffix the Full build appends is stripped before the wire, and display keeps it`() {
+        assertEquals("0.2.0", ClientHeader.wireVersionName("0.2.0-full"))
+        assertEquals("0.2.0", ClientHeader.wireVersionName("0.2.0"))
+        assertEquals("0.2.0", ClientHeader.wireVersionName(" 0.2.0-full "))
+        assertNull("nothing to report", ClientHeader.wireVersionName(null))
+        assertNull("blank", ClientHeader.wireVersionName("   "))
+        // The trailing hyphen of a suffix is part of the suffix: `1.0.0-fuller` is not `1.0.0`.
+        assertEquals("1.0.0-fuller", ClientHeader.wireVersionName("1.0.0-fuller"))
+    }
+
+    @Test
+    fun `the Full build reports a header once its version is normalised, and would not without that`() {
+        // What BuildConfig.VERSION_NAME actually holds on the Full artefact: no header, hence no capability report.
+        assertNull("the raw Full build value is not expressible", ClientHeader.value("0.2.0-full", 40, ClientHeader.FLAVOUR_FULL))
+        // With the normaliser the same build reports exactly like the Play one, with the flavour in the header.
+        val full = ClientHeader.value(ClientHeader.wireVersionName("0.2.0-full"), 40, ClientHeader.FLAVOUR_FULL)
+        assertEquals("child-android/0.2.0+40 (full)", full)
+    }
+
     @Test
     fun `the value never exceeds the server's cap`() {
         val value = ClientHeader.value("9999.9999.9999", 999_999_999, "abcdefghijklmnop")!!

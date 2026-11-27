@@ -10,6 +10,8 @@ import 'package:familyshield_parent/api/models.dart';
 import 'package:familyshield_parent/core/date_formatting.dart';
 import 'package:familyshield_parent/features/alerts/alert_detail_screen.dart';
 import 'package:familyshield_parent/features/alerts/alerts_screen.dart';
+import 'package:familyshield_parent/features/children/child_detail_screen.dart'
+    show AlertTile;
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/l10n/l10n.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -41,6 +43,7 @@ void main() {
     String id = 'alert-social-1',
     String category = 'social_concern',
     String app = 'whatsapp',
+    String contact = 'Test Group',
     List<String> concernTypes = const ['cyberbullying'],
     String? sourceEventId,
     String? primaryEventId,
@@ -55,7 +58,7 @@ void main() {
         body: 'Flagged message (${concernTypes.join(', ')})',
         metadata: {
           'app': app,
-          'contact': 'Test Group',
+          'contact': contact,
           'concernTypes': concernTypes,
           if (sourceEventId != null) 'latestSourceEventId': sourceEventId,
           if (primaryEventId != null) 'primarySocialEventId': primaryEventId,
@@ -189,6 +192,62 @@ void main() {
     ));
     await tester.pumpAndSettle();
   }
+
+  group('Social sender labels (#1135)', () {
+    for (final language in ['en', 'ar']) {
+      testWidgets(
+          'legacy alert detail labels the missing sender at 200% in $language',
+          (tester) async {
+        final l10n = lookupAppLocalizations(Locale(language));
+        await pumpDetail(
+          tester,
+          api: apiWith(),
+          initialAlert: sampleSocialAlert(contact: '  '),
+          lang: language,
+          width: 320,
+          textScale: 2.0,
+        );
+        final sender = find.byKey(const ValueKey('alertDetailCountSub'));
+        await tester.scrollUntilVisible(sender, 120,
+            scrollable: find.byType(Scrollable).first);
+        expect(
+            find.text(l10n
+                .socialAlertFromContactOnly(l10n.socialAlertUnknownContact)),
+            findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets(
+        'shared alert card masks a numeric sender and labels an absent sender',
+        (tester) async {
+      final missing = sampleSocialAlert(id: 'no-sender', contact: '');
+      final numeric =
+          sampleSocialAlert(id: 'numeric-sender', contact: '+1 202 555 0124');
+      final profile =
+          sampleSocialAlert(id: 'profile-sender', contact: '~Sample profile');
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: ListView(children: [
+            AlertTile(alert: missing),
+            AlertTile(alert: numeric),
+            AlertTile(alert: profile),
+          ]),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final l10n = lookupAppLocalizations(const Locale('en'));
+      expect(
+          find.text(
+              l10n.socialAlertFromContactOnly(l10n.socialAlertUnknownContact)),
+          findsOneWidget);
+      expect(find.textContaining('•••• 0124'), findsOneWidget);
+      expect(find.textContaining('202 555'), findsNothing);
+      expect(find.textContaining('~Sample profile'), findsOneWidget);
+    });
+  });
 
   group('AlertDetailScreen (#972)', () {
     test(
@@ -628,7 +687,12 @@ void main() {
       expect(find.byKey(const ValueKey('alertDetailGeneralScroll')),
           findsOneWidget);
       expect(find.byKey(const ValueKey('alertDetailBody')), findsOneWidget);
-      expect(find.text('TikTok was blocked by your schedule.'), findsOneWidget);
+      expect(find.text('TikTok was blocked by your schedule.'), findsNothing);
+      expect(
+        find.text(
+            '\u{2068}Alex\u{2069} tried to open it. Nothing for you to do.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('alertDetailOpenSocial')), findsNothing);
       expect(find.byKey(const ValueKey('alertDetailFraming')), findsNothing);
       expect(socialEventsCalls, 0);

@@ -103,6 +103,7 @@ class NotificationCaptureService : NotificationListenerService() {
                 text = capture.text,
                 nowMs = if (capture.postedAtMs > 0L) capture.postedAtMs else System.currentTimeMillis(),
                 source = ScanQueuePolicy.SOURCE_NOTIFICATION,
+                occurrenceId = "${capture.key}:${capture.postedAtMs}",
             )
         }
     }
