@@ -411,22 +411,28 @@ class WebFilterP12Screen extends ConsumerWidget {
     return Padding(
       key: ValueKey('p12-recent-${site.domain}'),
       padding: const EdgeInsets.symmetric(vertical: AppSpace.xxs),
-      child: Row(
+      // Wrap, not Row: at 200 % text the Allow button's label is wider than the
+      // space left beside the domain, and a Row cannot shrink it. Wrap keeps the
+      // two on one line when they fit and stacks them when they do not.
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: AppSpace.sm,
+        runSpacing: AppSpace.xxs,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  ltrIsolateHost(site.domain),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
-                ),
-                Text(
-                  l10n.blockedTimes(site.count),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
-                ),
-              ],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                ltrIsolateHost(site.domain),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
+              ),
+              Text(
+                l10n.blockedTimes(site.count),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.onSurfaceVariant),
+              ),
+            ],
           ),
           TextButton(
             key: ValueKey('p12-allow-${site.domain}'),
@@ -587,15 +593,18 @@ class WebFilterP12Screen extends ConsumerWidget {
             const SizedBox(width: AppSpace.sm),
             Expanded(
               child: iosOnly
-                  ? Row(
+                  // Wrap, not Row: the pill is icon + label and has no width of
+                  // its own, so at 200 % it pushed past the card's right edge.
+                  // Wrapping lets the pill drop below the title instead.
+                  ? Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: AppSpace.sm,
+                      runSpacing: AppSpace.xxs,
                       children: [
-                        Flexible(
-                          child: Text(
-                            l10n.tabWebFilter,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
-                          ),
+                        Text(
+                          l10n.tabWebFilter,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
                         ),
-                        const SizedBox(width: AppSpace.sm),
                         _pill(
                           context,
                           key: const ValueKey('p12-iphone-not-available'),

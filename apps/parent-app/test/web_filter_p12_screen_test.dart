@@ -377,4 +377,43 @@ void main() {
           reason: 'Failed on $locale $mode $size @ ${scale}x');
     }
   });
+
+  testWidgets(
+      'Bureau compact rows: at 320x568 @2.0 the recently-blocked row and the iPhone pill stay inside the screen '
+      '(mutant: put either Wrap back to a Row — measured: the recently-blocked Row overflows 41 px and the iPhone pill Row 476 px, at 320x568 @2.0 EN)',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    for (final locale in const [Locale('en'), Locale('ar')]) {
+      // The rows live below the fold and the list is lazy, so the top-only
+      // matrix never laid them out; scroll to each one before asserting.
+      await _pumpScreen(
+        tester,
+        api: _makeApi(overview: _overview(features: const {'web_filter': 'degraded'})),
+        locale: locale,
+        textScale: 2.0,
+      );
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-recent-example.com')));
+      expect(tester.takeException(), isNull, reason: 'recently-blocked row overflowed ($locale)');
+      final allow = tester.getRect(find.byKey(const ValueKey('p12-allow-example.com')));
+      expect(allow.right, lessThanOrEqualTo(320.0),
+          reason: 'Allow site button past the right edge ($locale)');
+      expect(allow.height, greaterThanOrEqualTo(47.9),
+          reason: '48 dp touch target lost ($locale)');
+
+      await _pumpScreen(
+        tester,
+        api: _makeApi(overview: _overview(platform: 'ios')),
+        locale: locale,
+        textScale: 2.0,
+      );
+      await _scrollTo(tester, find.byKey(const ValueKey('p12-browsers-card')));
+      expect(tester.takeException(), isNull, reason: 'iPhone pill row overflowed ($locale)');
+      final pill = tester.getRect(find.byKey(const ValueKey('p12-iphone-not-available')));
+      expect(pill.right, lessThanOrEqualTo(320.0),
+          reason: 'iPhone "Not yet available" pill past the right edge ($locale)');
+    }
+  });
 }
