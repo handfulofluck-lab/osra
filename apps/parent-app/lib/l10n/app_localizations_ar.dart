@@ -3961,6 +3961,69 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String timeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة إضافية',
+      many: '$minutes دقيقة إضافية',
+      few: '$minutes دقائق إضافية',
+      two: 'دقيقتان إضافيتان',
+      one: 'دقيقة إضافية واحدة',
+    );
+    return 'طلب من $child: $_temp0 اليوم';
+  }
+
+  @override
+  String timeRequestGrant(String minutes) {
+    return '+$minutes دقيقة';
+  }
+
+  @override
+  String get timeRequestDecline => 'ليس اليوم';
+
+  @override
+  String timeRequestGrantedBy(String actor, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرار من $actor: $_temp0';
+  }
+
+  @override
+  String timeRequestGrantedByYou(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes دقيقة',
+      many: '$minutes دقيقة',
+      few: '$minutes دقائق',
+      two: 'دقيقتان',
+      one: 'دقيقة واحدة',
+    );
+    return 'سبق منح وقت إضافي اليوم بقرارك: $_temp0';
+  }
+
+  @override
+  String timeRequestDeclinedBy(String actor) {
+    return 'سبق رفض هذا الطلب بقرار من $actor';
+  }
+
+  @override
+  String get timeRequestDeclinedByYou => 'سبق رفض هذا الطلب بقرارك';
+
+  @override
+  String timeRequestDecidedAt(String time) {
+    return 'وقت القرار: $time';
+  }
+
+  @override
   String get p12NotBlockingYet => 'لم يبدأ الحظر بعد';
 
   @override
