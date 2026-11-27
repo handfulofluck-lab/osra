@@ -24,7 +24,7 @@ object TamperScreenPolicy {
     private val VPN_DISCONNECT_ACTIONS = setOf("disconnect", "قطع الاتصال")
 
     /** System packages that host the three screens (AOSP, Google and Samsung variants). */
-    private val SYSTEM_PACKAGES = setOf(
+    internal val SYSTEM_PACKAGES = setOf(
         "com.android.settings",
         "com.android.packageinstaller",
         "com.google.android.packageinstaller",

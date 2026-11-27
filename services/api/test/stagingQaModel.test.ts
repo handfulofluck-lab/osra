@@ -140,3 +140,51 @@ describe("Parent-saved X / twitter socialMonitoring key (#1036)", () => {
     }
   });
 });
+
+describe("consented staging own-model scoring", () => {
+  const { OSRA_STAGING_QA_EXPIRES_AT: _expiry, OSRA_STAGING_QA_FIXTURE_SHA256: _fixtures, ...base } = env;
+  const broad = {
+    ...base,
+    OSRA_STAGING_AI_ALL_CHILDREN: "1",
+    OSRA_STAGING_QA_ENGINE: "own",
+    OSRA_OWN_MODEL_REGION: "eu-north-1",
+  };
+  const other = {
+    id: "second-paired-device",
+    childId: "second-test-child",
+  };
+  const sample = {
+    ...capture, device: other, deviceId: other.id, childId: other.childId,
+    app: "discord", source: "screen", socialMonitoring: { discord: true },
+  };
+
+  it("selects the existing private analyzer for a second opted-in pairing without fixture expiry", () => {
+    const selected = stagingQaModel(sample, broad, now);
+    expect(selected).toMatchObject({ providerMode: "own", allChildren: true, fixtureNumber: null });
+    expect(selected?.endpoint.pathname).toBe("/analyze/staging-qa");
+    expect(stagingQaDeadline(selected!, now + 25_000, now)).toBe(now + 10_000);
+  });
+
+  it.each([
+    { OSRA_DEPLOYMENT_SCOPE: "production" },
+    { OSRA_DEPLOYMENT_SCOPE: undefined },
+    { OSRA_STAGING_AI_ALL_CHILDREN: undefined },
+    { OSRA_STAGING_QA_ANALYZER_ENABLED: "0" },
+    { OSRA_STAGING_QA_ENGINE: "both" },
+    { OSRA_STAGING_QA_ENGINE: "bedrock" },
+    { OSRA_OWN_MODEL_REGION: "eu-central-1" },
+    { AWS_REGION: "eu-central-1" },
+    { OSRA_STAGING_QA_ANALYZER_URL: "http://qa.local" },
+  ])("fails closed when the broad deployment setting is invalid: %j", (override) => {
+    expect(stagingQaModel(sample, { ...broad, ...override }, now)).toBeNull();
+  });
+
+  it.each([
+    { socialMonitoring: { discord: false } }, { socialMonitoring: { discord: "true" } },
+    { socialMonitoring: {} }, { childId: "unpaired-child" }, { device: null },
+    { source: undefined }, { app: "sms", socialMonitoring: { sms: true } },
+    { text: "🙂".repeat(257) }, { text: "   " },
+  ])("does not authorize an ineligible capture: %j", (override) => {
+    expect(stagingQaModel({ ...sample, ...override }, broad, now)).toBeNull();
+  });
+});
