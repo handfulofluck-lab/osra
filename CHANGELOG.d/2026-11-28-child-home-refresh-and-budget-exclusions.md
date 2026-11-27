@@ -1,0 +1,3 @@
+### Child Android — live Child Home foreground refresh and daily-budget OS-chrome exclusions (#1283)
+- Added a shared explicit daily-budget exclusion list (`EssentialPackages.DAILY_BUDGET_EXCLUDED_PACKAGES` / `sumDailyBudgetMinutes`) used by `RuleEngine`, `ChildHomePolicy`, and `BlockExplainPolicy` so launcher, SystemUI, Settings, and OSRA itself do not inflate "Used today" or trigger the daily screen-time limit, while keeping all user/escape apps countable.
+- Added `ChildHomeRefreshController` in `PairingActivity` so Child Home refreshes on a 60-second foreground tick and on incoming `rulesChangedListener` updates, tearing both down cleanly in `onPause()`.
