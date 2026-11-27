@@ -3723,6 +3723,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appsNoMatch => 'لا توجد تطبيقات مطابقة';
 
   @override
+  String get appsSentToPhone => 'أُرسلت إلى الهاتف';
+
+  @override
+  String get appsNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
   String get appAboutThisApp => 'عن هذا التطبيق';
 
   @override
