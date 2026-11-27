@@ -493,4 +493,155 @@ void main() {
       }
     }
   });
+
+  // Mutant: removing `normalizeDigits(...)` from `AlertTile`'s `DateFormat.MMMd().add_Hm()`
+  // in `child_detail_screen.dart` renders Arabic-Indic digits (`\u0660-\u0669`) in the
+  // Requests card subtitle and fails this test.
+  testWidgets('P-14 Requests subtitle in Arabic uses Western digits only (no Arabic-Indic digits)', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/family': (_) => _familyJson(),
+      'GET /v1/alerts': (_) => {
+            'items': [
+              _sampleAlert(
+                id: 'r-ar-digits',
+                childId: 'child-1',
+                severity: 'info',
+                category: 'app_blocked',
+                createdAt: '2026-11-27T09:25:00Z',
+                metadata: {
+                  'requestType': 'access',
+                  'packageId': 'com.roblox.client',
+                  'appName': 'Roblox',
+                },
+              ),
+            ],
+            'total': 1,
+            'page': 1,
+            'limit': 20,
+          },
+    });
+
+    await tester.pumpWidget(
+      _p14RouterHarness(
+        api: api,
+        p14Enabled: true,
+        initialLocation: '/alerts?segment=requests',
+        locale: const Locale('ar'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final allTexts = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((w) => w.data ?? '')
+        .join('\n');
+    expect(RegExp(r'[\u0660-\u0669]').hasMatch(allTexts), isFalse,
+        reason: 'Found Arabic-Indic digits in P-14 Requests Arabic view:\n$allTexts');
+    expect(RegExp(r'\d{2}:\d{2}').hasMatch(allTexts), isTrue);
+  });
+
+  // Mutant: passing only `alert.id` without `extra: alert` (or dropping group
+  // metadata) leaves `AlertDetailScreen.initialAlert` without the grouped
+  // `socialMessageCount` / `attemptCount` fields needed by P-15 (#1215).
+  testWidgets('Tapping a grouped alert row opens AlertDetailScreen (P-15) with full group alert metadata and 0 /ack calls', (tester) async {
+    var ackCalls = 0;
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/family': (_) => _familyJson(),
+      'GET /v1/alerts': (_) => {
+            'items': [
+              _sampleAlert(
+                id: 'a-group-social',
+                childId: 'child-1',
+                severity: 'warning',
+                category: 'cyberbullying',
+                attemptCount: 3,
+                createdAt: '2026-11-27T08:00:00Z',
+                metadata: {
+                  'app': 'whatsapp',
+                  'flaggedCount': 3,
+                  'contactCount': 2,
+                  'latestAt': '2026-11-27T09:20:00Z',
+                },
+              ),
+            ],
+            'total': 1,
+            'page': 1,
+            'limit': 20,
+          },
+      'GET /v1/alerts/a-group-social': (_) => _sampleAlert(
+            id: 'a-group-social',
+            childId: 'child-1',
+            severity: 'warning',
+            category: 'cyberbullying',
+            attemptCount: 3,
+            createdAt: '2026-11-27T08:00:00Z',
+            metadata: {
+              'app': 'whatsapp',
+              'flaggedCount': 3,
+              'contactCount': 2,
+              'latestAt': '2026-11-27T09:20:00Z',
+            },
+          ),
+      'POST /v1/alerts/a-group-social/ack': (_) {
+        ackCalls++;
+        return {'ok': true};
+      },
+    });
+
+    await tester.pumpWidget(_p14RouterHarness(api: api, p14Enabled: true));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('p14-row-a-group-social')));
+    await tester.pumpAndSettle();
+
+    final detail = tester.widget<AlertDetailScreen>(find.byType(AlertDetailScreen));
+    expect(detail.alertId, 'a-group-social');
+    expect(detail.initialAlert?.socialMessageCount, 3);
+    expect(detail.initialAlert?.socialContactCount, 2);
+    expect(detail.initialAlert?.metadata['app'], 'whatsapp');
+    expect(ackCalls, 0);
+  });
+
+  // Mutant: reverting `dayOrder.sort` to plain `b.compareTo(a)` sorts 'Unknown'
+  // above dated ISO keys ('U' > '2') and fails the Y-position assertion.
+  testWidgets('Unknown day bucket sorts below dated days (#1253 review)', (tester) async {
+    final api = FakeApiClient({
+      ...standardRoutes(),
+      'GET /v1/family': (_) => _familyJson(),
+      'GET /v1/alerts': (_) => {
+            'items': [
+              {
+                'id': 'a-no-ts',
+                'childId': 'child-1',
+                'severity': 'info',
+                'category': 'web_threat',
+                'title': 'Blocked site attempted',
+                'body': '',
+                'metadata': {},
+                'acknowledged': false,
+                'attemptCount': 1,
+              },
+              _sampleAlert(
+                id: 'a-dated',
+                childId: 'child-1',
+                severity: 'critical',
+                category: 'sos',
+                createdAt: '2026-11-27T09:10:00Z',
+              ),
+            ],
+            'total': 2,
+            'page': 1,
+            'limit': 20,
+          },
+    });
+
+    await tester.pumpWidget(_p14RouterHarness(api: api, p14Enabled: true));
+    await tester.pumpAndSettle();
+
+    final datedY = tester.getTopLeft(find.byKey(const ValueKey('p14-row-a-dated'))).dy;
+    final unknownY = tester.getTopLeft(find.byKey(const ValueKey('p14-row-a-no-ts'))).dy;
+    expect(datedY, lessThan(unknownY));
+  });
 }

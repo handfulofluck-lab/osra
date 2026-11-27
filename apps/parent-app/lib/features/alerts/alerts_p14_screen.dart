@@ -387,7 +387,12 @@ class _AlertsP14ScreenState extends ConsumerState<AlertsP14Screen> {
       }
       groups[day]!.add(a);
     }
-    dayOrder.sort((a, b) => b.compareTo(a));
+    dayOrder.sort((a, b) {
+      if (a == 'Unknown' && b == 'Unknown') return 0;
+      if (a == 'Unknown') return 1;
+      if (b == 'Unknown') return -1;
+      return b.compareTo(a);
+    });
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.alertsTitle)),
