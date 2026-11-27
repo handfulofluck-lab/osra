@@ -1843,8 +1843,8 @@ describe("auth routes", () => {
       const token0Rotated = preCommitRefreshCheck.json().token as string;
 
       // Post-commit failure path: once the MFA + recovery-hash + `sessionVersion` transaction commits, even if
-      // both `parentPushToken.deleteMany` AND Redis `incrby` fail, `/mfa/verify` returns 200 + all 10 codes,
-      // reconciles the cache marker, and fences pre-MFA push rows.
+      // both `parentPushToken.deleteMany` AND Redis reconciliation (`incrby`) fail, `/mfa/verify` returns 200 + all 10 codes,
+      // drops the stale cache marker via `DEL`, and fences pre-MFA push rows.
       const totpCode = totpAtCounter(totpSecret, counterNow);
       prismaMock.parentPushToken.deleteMany.mockRejectedValueOnce(new Error("transient push cleanup failure"));
       redis.incrby.mockRejectedValueOnce(new Error("OOM command not allowed"));
@@ -1858,6 +1858,7 @@ describe("auth routes", () => {
       expect(verifyRes.json().mfaEnabled).toBe(true);
       expect(verifyRes.json().recoveryCodes).toHaveLength(10);
       expect(p1SessionVersion).toBe(1);
+      expect(await getRedis().get("auth:session-version:parent-1")).toBeNull();
       // The row is still in `pushRows` because `deleteMany` failed once...
       expect(pushRows.size).toBe(1);
 

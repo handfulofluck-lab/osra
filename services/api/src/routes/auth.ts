@@ -45,7 +45,6 @@ import {
   reconcileSessionVersionCacheAfterCommit,
   revokeTokenOnce,
   signParentToken,
-  warmSessionVersionCacheBestEffort,
   withParentSessionLock,
 } from "../lib/sessions.js";
 import { encryptSecret, isEncryptedSecret } from "../lib/secretVault.js";
@@ -498,7 +497,6 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const issuedAt = new Date();
     const { codes, rows } = newRecoveryCodeRows(parent.id, issuedAt);
-    const cacheWarmed = await warmSessionVersionCacheBestEffort(parent.id);
     const priorVersion = typeof (parent as { sessionVersion?: unknown }).sessionVersion === "number"
       ? (parent as { sessionVersion: number }).sessionVersion
       : 0;
@@ -525,7 +523,7 @@ export async function authRoutes(app: FastifyInstance) {
     if (user.purpose === "mfa_recovery" && user.jti) {
       await getRedis().del(recoveryKey(user.jti)).catch(() => undefined);
     }
-    await reconcileSessionVersionCacheAfterCommit(parent.id, cacheWarmed);
+    await reconcileSessionVersionCacheAfterCommit(parent.id, committedCutoff);
     await prisma.parentPushToken.deleteMany({
       where: { parentId: parent.id, sessionVersion: { lt: committedCutoff } },
     }).catch((err) => {

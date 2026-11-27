@@ -249,45 +249,88 @@ export interface InvalidateSessionsOptions {
 }
 
 /**
- * Best-effort pre-warm of `auth:session-version:<parentId>` before an external transaction increments
- * `Parent.sessionVersion` (used by `/v1/auth/mfa/verify`). Never throws on Redis failure.
+ * Raise `auth:session-version:<parentId>` monotonically to at least `committedVersion`:
+ *  - Preserves `DELETED_SESSION_MARKER` (`"deleted"`), including if written concurrently during a cold load.
+ *  - Preserves any cached numeric generation already rebuilt at or above `committedVersion` (no overshoot or rollback).
+ *  - On a cold/missing cache entry, loads unexpired `RevokedToken` single-logout keys first (ADR-0032
+ *    marker invariant) and places the floor with `SET NX` before reconciling any racing writer.
  */
-export async function warmSessionVersionCacheBestEffort(parentId: string): Promise<boolean> {
-  const redis = getRedis();
-  try {
-    const cached = await redis.get(sessionVersionKey(parentId));
-    if (cached === DELETED_SESSION_MARKER) return false;
-    if (cached === null) {
-      const loaded = await loadSessionState(parentId, redis);
-      return Number.isFinite(loaded);
+async function applySessionVersionFloor(
+  redis: Redis,
+  parentId: string,
+  committedVersion: number,
+): Promise<"deleted" | "updated"> {
+  const floor = Math.max(0, Math.floor(committedVersion));
+  const key = sessionVersionKey(parentId);
+  const initial = await redis.get(key);
+  if (initial === DELETED_SESSION_MARKER) return "deleted";
+  if (initial === null) {
+    const now = Date.now();
+    const tokens = (await prisma.revokedToken.findMany({
+      where: { parentId, expiresAt: { gt: new Date(now) } },
+      select: { jti: true, expiresAt: true },
+    })) ?? [];
+    for (const token of tokens) {
+      const ttl = Math.ceil((new Date(token.expiresAt).getTime() - now) / 1000);
+      if (ttl > 0) await redis.set(revokedTokenKey(token.jti), "1", "EX", ttl);
     }
-    return true;
-  } catch {
-    return false;
+    const placed = await redis.set(key, String(floor), "NX");
+    if (placed === "OK") return "updated";
+    const raced = await redis.get(key);
+    if (raced === DELETED_SESSION_MARKER) return "deleted";
+    if (raced === null) {
+      await redis.set(key, String(floor));
+      return "updated";
+    }
+    if (!/^\d+$/.test(raced)) {
+      await redis.set(key, String(floor));
+      return "updated";
+    }
+    const racedNum = parseVersion(raced);
+    if (racedNum < floor) {
+      await redis.incrby(key, floor - racedNum);
+    }
+    return "updated";
   }
+  if (!/^\d+$/.test(initial)) {
+    await redis.set(key, String(floor));
+    return "updated";
+  }
+  const current = parseVersion(initial);
+  if (current < floor) {
+    await redis.incrby(key, floor - current);
+  }
+  return "updated";
 }
 
 /**
  * Reconcile `auth:session-version:<parentId>` after a confirmed durable `Parent.sessionVersion` increment
- * committed alongside one-time recovery codes (`/v1/auth/mfa/verify`). Drops the cache marker if Redis was
- * not warmed or refuses `INCRBY`, so the next read rebuilds from Postgres without failing the response.
+ * committed alongside one-time recovery codes (`/v1/auth/mfa/verify`).
+ *
+ * Uses `committedVersion` as a monotonic floor rather than incrementing a pre-transaction counter:
+ *  - Preserves `DELETED_SESSION_MARKER` (`"deleted"`).
+ *  - Preserves any cached generation already rebuilt at or above `committedVersion`.
+ *  - On a cold/missing cache entry, loads unexpired `RevokedToken` single-logout keys first (ADR-0032
+ *    marker invariant) before establishing the floor at `committedVersion`.
+ *  - If Redis refuses writes (`OOM` under `noeviction`), drops the marker via `DEL` so the next session
+ *    read rebuilds from `Parent.sessionVersion` without discarding the caller's recovery codes.
  */
 export async function reconcileSessionVersionCacheAfterCommit(
   parentId: string,
-  cacheWarmed: boolean,
+  committedVersion: number,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<void> {
+  if (!Number.isFinite(committedVersion)) return;
   const redis = getRedis();
-  if (!cacheWarmed) {
-    await redis.del(sessionVersionKey(parentId)).catch(() => {});
-    return;
-  }
+  const key = sessionVersionKey(parentId);
+  let outcome: "deleted" | "updated";
   try {
-    await redis.incrby(sessionVersionKey(parentId), 1);
+    outcome = await applySessionVersionFloor(redis, parentId, committedVersion);
   } catch {
-    await redis.del(sessionVersionKey(parentId)).catch(() => {});
+    await redis.del(key).catch(() => {});
     return;
   }
+  if (outcome === "deleted") return;
   await redis.set(invalidBeforeKey(parentId), String(nowSeconds), "EX", 8 * 24 * 3600).catch(() => {});
 }
 
@@ -318,8 +361,9 @@ export async function invalidateSessionsBefore(
     }),
   );
   opts.onDurableCommit?.(committedVersion);
+  let outcome: "deleted" | "updated";
   try {
-    await redis.incrby(sessionVersionKey(parentId), 1);
+    outcome = await applySessionVersionFloor(redis, parentId, committedVersion);
   } catch (err) {
     // The column moved and the cache did not: drop the marker so the next read rebuilds from the
     // column. This is not hypothetical — with `noeviction` a full node refuses writes but still
@@ -328,7 +372,9 @@ export async function invalidateSessionsBefore(
     await redis.del(sessionVersionKey(parentId)).catch(() => {});
     throw err;
   }
-  await redis.set(invalidBeforeKey(parentId), String(nowSeconds), "EX", 8 * 24 * 3600).catch(() => {});
+  if (outcome !== "deleted") {
+    await redis.set(invalidBeforeKey(parentId), String(nowSeconds), "EX", 8 * 24 * 3600).catch(() => {});
+  }
   return committedVersion;
 }
 
