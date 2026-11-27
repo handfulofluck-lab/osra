@@ -789,7 +789,8 @@ console.log("\n── G2. location & rules authorization ──");
 // #1127 / ADR-0047: the server, not the phone, decides the bounded setup window. A grant-matched
 // tamper is persisted quietly, an unrelated SOS remains visible, and authenticated all-ready
 // telemetry completes setup once. The parent list is the same surface a family would read.
-const setupCapabilities = (accessibility) => ({
+// osra-security#82 / #1230: a Full build requires notification access as its eighth grant.
+const setupCapabilities = (accessibility, notificationListener = "granted") => ({
   client: { app: "child-android", version: "0.2.0", build: 42, flavour: "full" },
   grants: {
     accessibility,
@@ -799,6 +800,7 @@ const setupCapabilities = (accessibility) => ({
     web_filter: "granted",
     location: "granted",
     private_dns: "granted",
+    notification_listener: notificationListener,
   },
   features: {},
 });
@@ -824,6 +826,13 @@ const setupSosBody = JSON.stringify({ childId: kidA2, deviceId: d2.deviceId, sev
 const setupSos = await call("POST", "/v1/alerts/internal", { rawBody: setupSosBody, headers: signV2(d2.secret, setupSosBody) });
 const setupSosList = await call("GET", `/v1/alerts?childId=${kidA2}&category=sos`, { token: tokenA });
 check("G31 SOS remains visible during the same setup window", setupSos.status === 201 && (setupSosList.data?.items ?? []).some((row) => row.category === "sos" && row.heldDuringSetup === false), `alert=${setupSos.status} listed=${setupSosList.data?.items?.length}`);
+// The seven older grants alone no longer complete a Full build: it stays open until notification access.
+const setupSevenReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
+  token: d2.token,
+  body: { capabilities: setupCapabilities("granted", "missing") },
+});
+const setupSevenDevice = await call("GET", `/v1/devices/${d2.deviceId}`, { token: tokenA });
+check("G32a a Full report with seven grants but no notification access stays incomplete", setupSevenReport.status === 202 && setupSevenDevice.status === 200 && setupSevenDevice.data?.device != null && setupSevenDevice.data.device.setupCompletedAt === null, `telemetry=${setupSevenReport.status} read=${setupSevenDevice.status} completed=${setupSevenDevice.data?.device?.setupCompletedAt}`);
 const setupCompleteReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
   token: d2.token,
   body: { capabilities: setupCapabilities("granted") },

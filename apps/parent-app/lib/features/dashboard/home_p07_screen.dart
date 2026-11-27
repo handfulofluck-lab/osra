@@ -69,6 +69,15 @@ String formatHomeDuration(
   return genitive ? _arabicDualGenitive(raw) : raw;
 }
 
+String _formatRelativeAgo(AppLocalizations l10n, Duration age) {
+  final mins = age.isNegative ? 0 : age.inMinutes;
+  if (mins < 1) return l10n.relativeJustNow;
+  if (mins < 60) return l10n.relativeMinutesAgo(mins);
+  final hours = mins ~/ 60;
+  if (hours < 24) return l10n.relativeHoursAgo(hours);
+  return l10n.relativeDaysAgo(hours ~/ 24);
+}
+
 String formatHomeElapsed(
   AppLocalizations l10n,
   Duration age, {
@@ -1107,7 +1116,7 @@ class _HomeSafetyAlertsCard extends StatelessWidget {
     final ts = newest.effectiveTimestamp ?? newest.createdAt;
     final ageStr = ts == null
         ? null
-        : formatHomeElapsed(l10n, now.difference(ts.toLocal()));
+        : _formatRelativeAgo(l10n, now.difference(ts.toLocal()));
     final subtitleParts = <String>[
       childName,
       _categoryLabel(l10n, newest.category),
@@ -1648,7 +1657,7 @@ class _HomeP07ChildCardState extends ConsumerState<HomeP07ChildCard> {
       }
     }
     if (device.batteryPct > 0) {
-      parts.add(l10n.homeBatteryPct(ltrIsolate('${device.batteryPct}')));
+      parts.add(l10n.homeBatteryPct('${device.batteryPct}'));
     }
     return parts.isEmpty ? null : parts.join(' · ');
   }
@@ -1897,14 +1906,14 @@ class _ChildActionGroup extends StatelessWidget {
         context,
         key: ValueKey('homeActionPlus15-$childId'),
         icon: Icons.more_time,
-        label: ltrIsolate(l10n.homeBonusPlus15),
+        label: l10n.homeBonusPlus15,
         onPressed: bonusBusy ? null : onPlus15,
       ),
       _actionButton(
         context,
         key: ValueKey('homeActionPlus30-$childId'),
         icon: Icons.more_time,
-        label: ltrIsolate(l10n.homeBonusPlus30),
+        label: l10n.homeBonusPlus30,
         onPressed: bonusBusy ? null : onPlus30,
       ),
       _actionButton(
