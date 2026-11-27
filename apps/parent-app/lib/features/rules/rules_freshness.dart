@@ -1,21 +1,40 @@
 import '../../api/models.dart';
 
-/// Issue #475: is the child's phone still running rules from before the parent's last change?
+/// Issue #475 & #1157: freshness state of a child's applied rules compared to the server's ruleset.
+enum RulesFreshness {
+  /// Current (`applied >= rules`), unpaired (no phone paired to apply rules yet), or older server (`rulesVersion == null`).
+  current,
+
+  /// A paired phone exists and the server has rules (`rulesVersion != null`), but no device has
+  /// reported an applied rules version yet (`appliedRulesVersion == null`).
+  waitingForFirstApply,
+
+  /// Both versions are known and `appliedRulesVersion < rulesVersion`.
+  behind,
+}
+
+/// Issue #475 & #1157: classify how fresh a child's applied rules are for the parent banner.
 ///
-/// The parent app can answer this from two numbers it already has: the ruleset's version (bumped by the
-/// server on every ruleset write) and the version the phone reports it has **saved and applied**.
-///
-/// **Three states, and only one of them warns:**
-/// - both known and `applied < rules` → the phone is behind;
-/// - `applied == rules` → the phone has the change;
-/// - `applied` is null → the phone has never reported, which is not the same as being behind. A warning
-///   here would fire on every fresh install and teach the parent to ignore it.
-///
-/// `applied > rules` cannot happen through the server (it only stores a version it issued), and is treated
-/// as "not behind": a number we did not issue is a bug, and a warning built on it would be a second one.
-bool rulesAreBehind(Child child) {
+/// **Three outcomes:**
+/// - `rulesVersion == null` → [RulesFreshness.current] (older server that does not send versions);
+/// - `appliedRulesVersion == null` and [hasPairedDevice] → [RulesFreshness.waitingForFirstApply]
+///   (paired phone has not applied its first rules version yet; unpaired children stay [RulesFreshness.current]);
+/// - both known and `applied < rules` → [RulesFreshness.behind];
+/// - both known and `applied >= rules` → [RulesFreshness.current] (`applied > rules` cannot come from the
+///   server and is treated as not behind rather than raising a bogus warning).
+RulesFreshness rulesFreshness(Child child, {required bool hasPairedDevice}) {
   final rules = child.rulesVersion;
   final applied = child.appliedRulesVersion;
-  if (rules == null || applied == null) return false;
-  return applied < rules;
+  if (rules == null) return RulesFreshness.current;
+  if (applied == null) {
+    return hasPairedDevice ? RulesFreshness.waitingForFirstApply : RulesFreshness.current;
+  }
+  return applied < rules ? RulesFreshness.behind : RulesFreshness.current;
 }
+
+/// Issue #475: is the child's phone still running rules from before the parent's last change?
+///
+/// Only `applied != null && applied < rules` is "behind" — a phone that has never reported is
+/// [RulesFreshness.waitingForFirstApply], not behind.
+bool rulesAreBehind(Child child) =>
+    rulesFreshness(child, hasPairedDevice: false) == RulesFreshness.behind;
