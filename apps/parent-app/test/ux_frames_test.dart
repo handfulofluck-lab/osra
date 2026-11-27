@@ -263,6 +263,8 @@ void main() {
           reason: 'no overflow at ${config.width} px / ${config.scale}x');
       expect(find.byKey(const ValueKey('homeSettingsP22')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsAppearance')), findsNothing);
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget,
+          reason: 'UI/UX Bureau 17:29: Privacy and data survives the swap');
       await maybeCaptureFrame(tester, 'p07-p22-tab-${config.tag}.png');
       await tester.pumpWidget(const SizedBox());
     });

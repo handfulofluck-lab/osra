@@ -643,6 +643,9 @@ void main() {
       expect(find.byKey(const ValueKey('homeSettingsDigests')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsMfa')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsDeleteAccount')), findsOneWidget);
+      // UI/UX Bureau, 17:29: "Privacy and data" is the only entry the P-07 home would otherwise strand, since
+      // its other way in is the dashboard menu this screen replaces. It shows in both switch states.
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget);
     });
 
     // P-22 (`#1179`): the P-07 home replaces the dashboard, so the dashboard's Settings menu entry does not
@@ -665,6 +668,8 @@ void main() {
       expect(find.byKey(const ValueKey('homeSettingsAppearance')), findsNothing);
       expect(find.byKey(const ValueKey('homeSettingsSignOut')), findsOneWidget,
           reason: 'signing out is not a Settings row and stays');
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget,
+          reason: 'Privacy and data has no P-22 row, so it survives the swap');
     });
   });
 
@@ -972,6 +977,48 @@ void main() {
                 greaterThanOrEqualTo(tester.getRect(b1).bottom - 0.5),
               );
               expect(drainExceptions(tester), isEmpty);
+              // U86 (#650): at 320px and 200% text, the bottom bar stays one row
+              // (all four tabs share the same top Y and total bar height <= 80).
+              // Mutant: restoring `twoRows = scale > 1.35 || width < 340` puts
+              // `p07Tab-family` on a second row and fails these assertions.
+              final homeRect = tester.getRect(find.byKey(const ValueKey('p07Tab-home')));
+              for (final tabKey in const [
+                ValueKey('p07Tab-alerts'),
+                ValueKey('p07Tab-family'),
+                ValueKey('p07Tab-settings'),
+              ]) {
+                final r = tester.getRect(find.byKey(tabKey));
+                expect((r.top - homeRect.top).abs(), lessThanOrEqualTo(1.0));
+              }
+              expect(
+                tester.getRect(find.byKey(const ValueKey('p07BottomNav'))).height,
+                lessThanOrEqualTo(80.0),
+              );
+              // U86 (#650, UI/UX 7214846306): Alerts badge text scale is clamped
+              // to <= 1.3x so the badge does not hide the bell icon at 200% text.
+              // Mutant: removing `MediaQuery.withClampedTextScaling(maxScaleFactor: 1.3)`
+              // around `Badge` leaves the badge's textScaler at 2.0 and fails this check.
+              final badgeFinder = find.byKey(const ValueKey('p07AlertsBadge'));
+              expect(badgeFinder, findsOneWidget);
+              final badgeCtx = tester.element(badgeFinder);
+              expect(
+                MediaQuery.textScalerOf(badgeCtx).scale(1.0),
+                lessThanOrEqualTo(1.3),
+              );
+              // Mutant: using bare const TextStyle(fontSize: 10, ...) on Badge.textStyle
+              // drops the app theme's fontFamily (null/platform default) and fails this check.
+              final badgeWidget = tester.widget<Badge>(badgeFinder);
+              final badgeLabelFinder = find.descendant(
+                of: badgeFinder,
+                matching: find.byType(Text),
+              );
+              expect(badgeLabelFinder, findsOneWidget);
+              final expectedFamily =
+                  Theme.of(badgeCtx).textTheme.labelSmall?.fontFamily;
+              expect(badgeWidget.textStyle?.fontFamily, equals(expectedFamily));
+              if (expectedFamily != null) {
+                expect(badgeWidget.textStyle?.fontFamily, isNotNull);
+              }
               if (framesDir != null && framesDir.isNotEmpty) {
                 final boundary = tester.renderObject<RenderRepaintBoundary>(
                   find.byKey(frameBoundaryKey),

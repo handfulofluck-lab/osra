@@ -2030,6 +2030,15 @@ class _HomeSettingsTab extends ConsumerWidget {
           () => context.push('/settings/delete-account'),
         ),
       ],
+      // "Privacy and data" has no row in P-22's approved list and its only other way in is the dashboard menu,
+      // which the P-07 home replaces. It therefore shows in **both** states: the 17:06 rule says a shipped,
+      // signed entry does not drop out without an equivalent in its place (UI/UX Bureau, 17:29).
+      (
+        const ValueKey('homeSettingsPrivacy'),
+        Icons.privacy_tip_outlined,
+        l10n.privacyMenu,
+        () => context.push('/settings/privacy'),
+      ),
       (
         const ValueKey('homeSettingsSignOut'),
         Icons.logout,
@@ -2088,17 +2097,25 @@ class _P07BottomNavigationBar extends StatelessWidget {
 
     Widget iconWidget = Icon(selected ? selectedIcon : icon, size: 22, color: fg);
     if (badgeCount > 0) {
-      iconWidget = MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
-        ),
+      // U86 (#650, UI/UX 7214846306): clamp the badge's text scale so the count
+      // pill never obscures the bell icon at 200% text while keeping Material's
+      // default top-end offset.
+      iconWidget = MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
         child: Badge(
+          key: const ValueKey('p07AlertsBadge'),
           isLabelVisible: true,
+          largeSize: 16,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
           label: Text(ltrIsolate('$badgeCount')),
           child: iconWidget,
         ),
       );
     }
+
+    final isCompact = MediaQuery.sizeOf(context).width < 340 ||
+        MediaQuery.textScalerOf(context).scale(1.0) > 1.35;
 
     return Semantics(
       button: true,
@@ -2111,11 +2128,11 @@ class _P07BottomNavigationBar extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(
             minWidth: kMinInteractiveDimension,
-            minHeight: 52,
+            minHeight: kMinInteractiveDimension,
           ),
           child: Container(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: AppSpace.xs,
+            padding: EdgeInsetsDirectional.symmetric(
+              horizontal: isCompact ? 2 : AppSpace.xs,
               vertical: AppSpace.xs,
             ),
             decoration: BoxDecoration(
@@ -2128,14 +2145,25 @@ class _P07BottomNavigationBar extends StatelessWidget {
               children: [
                 iconWidget,
                 const SizedBox(height: 2),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: fg,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w400,
-                      ),
+                MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    textScaler: MediaQuery.textScalerOf(context)
+                        .clamp(maxScaleFactor: 1.25),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: fg,
+                            fontWeight:
+                                selected ? FontWeight.w600 : FontWeight.w400,
+                          ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -2149,9 +2177,6 @@ class _P07BottomNavigationBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final tokens = context.tokens;
-    final scale = MediaQuery.textScalerOf(context).scale(1.0);
-    final width = MediaQuery.sizeOf(context).width;
-    final twoRows = scale > 1.35 || width < 340;
 
     final tabs = <Widget>[
       _tabItem(
@@ -2199,47 +2224,22 @@ class _P07BottomNavigationBar extends StatelessWidget {
             border: Border(top: BorderSide(color: tokens.border)),
           ),
           padding: const EdgeInsetsDirectional.symmetric(
-            horizontal: AppSpace.sm,
+            horizontal: AppSpace.xs,
             vertical: AppSpace.xs,
           ),
-          child: twoRows
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: tabs[0]),
-                          const SizedBox(width: AppSpace.xs),
-                          Expanded(child: tabs[1]),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.xxs),
-                    IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: tabs[2]),
-                          const SizedBox(width: AppSpace.xs),
-                          Expanded(child: tabs[3]),
-                        ],
-                      ),
-                    ),
-                  ],
-                )
-              : IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var i = 0; i < tabs.length; i++) ...[
-                        if (i > 0) const SizedBox(width: AppSpace.xxs),
-                        Expanded(child: tabs[i]),
-                      ],
-                    ],
-                  ),
-                ),
+          // U86 (#650): always keep the bottom navigation bar on one compact row,
+          // including at 320 px width and 200% text scale.
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < tabs.length; i++) ...[
+                  if (i > 0) const SizedBox(width: AppSpace.xxs),
+                  Expanded(child: tabs[i]),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

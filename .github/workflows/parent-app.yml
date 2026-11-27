@@ -175,7 +175,9 @@ jobs:
           esac
           # Play refuses a versionCode it already has, so the bundle number rises with every run: the
           # workflow's own run number only ever increases, and each app is published by one workflow.
-          flutter build appbundle --release --build-number="${{ github.run_number }}" --dart-define=API_BASE="$OSRA_API_BASE"
+          # OSRA_UX_FINAL turns on every merged UX-final screen (P-07, P-09, P-12, P-14, P-15, P-17, P-20, ...): each
+          # per-screen OSRA_UX_Pxx switch falls back to it, so a test build shows the screens the team signed off.
+          flutter build appbundle --release --build-number="${{ github.run_number }}" --dart-define=API_BASE="$OSRA_API_BASE" --dart-define=OSRA_UX_FINAL=true
       - name: Release manifest must declare INTERNET
         run: |
           unzip -p build/app/outputs/bundle/release/app-release.aab base/manifest/AndroidManifest.xml > /tmp/manifest.bin
@@ -326,7 +328,7 @@ jobs:
           echo "CocoaPods target confirmed: no SPM reference, Podfile present"
       - run: flutter pub get
       - name: Build the iOS target unsigned
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --dart-define=OSRA_UX_FINAL=true
       - name: The bundle identifiers are the Play ids (decision 2B)
         run: |
           # The App Store id equals the Android applicationId, com.osratech.parent (#452); the test
