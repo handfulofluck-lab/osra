@@ -1178,6 +1178,12 @@ abstract class AppLocalizations {
   /// **'Tick the box to confirm you\'re this child\'s parent or guardian.'**
   String get p04GuardianRequired;
 
+  /// No description provided for @p04AgeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Age'**
+  String get p04AgeLabel;
+
   /// No description provided for @p04AgeRange.
   ///
   /// In en, this message translates to:

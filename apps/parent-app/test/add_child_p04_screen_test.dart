@@ -254,9 +254,33 @@ void main() {
     expect(find.text(en.p04AddTitle), findsOneWidget);
   });
 
+  // Mutant: reverting `labelText: l10n.p04AgeLabel` back to `l10n.p04AgeRange(...)`
+  // fails `find.text('Age')` and duplicates the range sentence twice on invalid age (B1).
+  testWidgets(
+      'B1 Age field uses short Age label with number keyboard and shows range sentence once as error',
+      (tester) async {
+    final api = FakeApiClient(standardRoutes());
+    await pumpForm(tester, api);
+
+    final ageField =
+        tester.widget<TextField>(find.byKey(const ValueKey('p04ChildAge')));
+    expect(ageField.keyboardType, TextInputType.number);
+    expect(find.text(en.p04AgeLabel), findsOneWidget);
+    expect(find.textContaining('Enter an age from'), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('p04ChildAge')), '99');
+    await tester.ensureVisible(find.byKey(const ValueKey('p04Submit')));
+    await tester.tap(find.byKey(const ValueKey('p04Submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text(en.p04AgeLabel), findsOneWidget);
+    expect(find.textContaining('Enter an age from'), findsOneWidget);
+  });
+
   testWidgets('Arabic catalog carries the same P-04 keys and age placeholders',
       (tester) async {
     final ar = lookupAppLocalizations(const Locale('ar'));
+    expect(ar.p04AgeLabel, 'العمر');
     expect(ar.p04WhatWeCollect, isNotEmpty);
     expect(ar.p04GuardianConfirm, isNotEmpty);
     expect(ar.p04GuardianRequired, isNotEmpty);

@@ -683,6 +683,9 @@ class AppLocalizationsAr extends AppLocalizations {
       'حدّد المربع لتأكيد أنك وليّ أمر هذا الطفل.';
 
   @override
+  String get p04AgeLabel => 'العمر';
+
+  @override
   String p04AgeRange(String min, String max) {
     return 'أدخل عمرًا من $min إلى $max.';
   }

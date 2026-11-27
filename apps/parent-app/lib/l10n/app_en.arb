@@ -390,6 +390,7 @@
   "p04WhatWeCollect": "What we collect",
   "p04GuardianConfirm": "I'm this child's parent or legal guardian.",
   "p04GuardianRequired": "Tick the box to confirm you're this child's parent or guardian.",
+  "p04AgeLabel": "Age",
   "p04AgeRange": "Enter an age from {min} to {max}.",
   "@p04AgeRange": {
     "placeholders": {

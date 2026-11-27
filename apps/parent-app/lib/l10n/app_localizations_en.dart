@@ -658,6 +658,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Tick the box to confirm you\'re this child\'s parent or guardian.';
 
   @override
+  String get p04AgeLabel => 'Age';
+
+  @override
   String p04AgeRange(String min, String max) {
     return 'Enter an age from $min to $max.';
   }

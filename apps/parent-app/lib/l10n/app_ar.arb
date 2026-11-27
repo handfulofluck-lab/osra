@@ -187,6 +187,7 @@
   "p04WhatWeCollect": "البيانات التي نجمعها",
   "p04GuardianConfirm": "أنا وليّ أمر هذا الطفل (أحد والديه أو الوصي القانوني عليه).",
   "p04GuardianRequired": "حدّد المربع لتأكيد أنك وليّ أمر هذا الطفل.",
+  "p04AgeLabel": "العمر",
   "p04AgeRange": "أدخل عمرًا من {min} إلى {max}.",
   "@p04AgeRange": {
     "placeholders": {

@@ -217,8 +217,7 @@ class _AddChildP04FormState extends ConsumerState<AddChildP04Form> {
           },
           onSubmitted: (_) => _createChild(),
           decoration: InputDecoration(
-            labelText: l10n.p04AgeRange(
-                ltrIsolate('$kChildAgeMin'), ltrIsolate('$kChildAgeMax')),
+            labelText: l10n.p04AgeLabel,
             errorText: _ageError,
             border: const OutlineInputBorder(),
           ),
