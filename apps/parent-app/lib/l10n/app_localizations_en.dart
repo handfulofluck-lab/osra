@@ -1134,7 +1134,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get youtubeRestrictedDesc =>
-      'Filters out potentially mature content on YouTube across child devices.';
+      'Hides most mature videos. YouTube\'s own filter misses some, so to be sure, block YouTube or set a time limit in Apps.';
 
   @override
   String get strict => 'Strict';
@@ -3164,7 +3164,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get grantDeviceAdmin => 'Device admin';
 
   @override
-  String get grantWebFilter => 'Web filter (VPN consent)';
+  String get grantWebFilter => 'Web filter';
 
   @override
   String get grantLocation => 'Location (allow all the time)';
@@ -3505,6 +3505,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appsNoMatch => 'No apps match';
 
   @override
+  String get appsSentToPhone => 'Sent to phone';
+
+  @override
+  String get appsNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
   String get appAboutThisApp => 'About this app';
 
   @override
@@ -3815,4 +3821,332 @@ class AppLocalizationsEn extends AppLocalizations {
   String timeRequestDecidedAt(String time) {
     return 'Decided $time';
   }
+
+  @override
+  String get p15CanBeWrong =>
+      'Possible concern — automatic checks can be wrong.';
+
+  @override
+  String get p15PreviewLoadFailed =>
+      'Couldn\'t load the preview. Check your connection and try again.';
+
+  @override
+  String get p15ActionsHeader => 'What you can do';
+
+  @override
+  String p15TalkWithChild(String child) {
+    return 'Talk with $child';
+  }
+
+  @override
+  String p15HelpChildBlockContact(String child, String contact) {
+    return 'Help $child block $contact';
+  }
+
+  @override
+  String p15HelpBlockGuideBody(String child, String app, String contact) {
+    return 'Sit with $child and open $app together to block $contact and mute their messages.';
+  }
+
+  @override
+  String get p15AdjustLimits => 'Adjust screen time & bedtime';
+
+  @override
+  String get p15ReviewAppRules => 'Review app rules';
+
+  @override
+  String get p15IphoneNotYet => 'Not yet available on iPhone';
+
+  @override
+  String get p14SegmentRequests => 'Requests';
+
+  @override
+  String get p14LevelUrgent => 'Urgent';
+
+  @override
+  String get p14LevelCheckSoon => 'Check soon';
+
+  @override
+  String get p14LevelInfo => 'Info';
+
+  @override
+  String get p14FilterAll => 'All';
+
+  @override
+  String get p14NoRequestsYet => 'No requests yet';
+
+  @override
+  String p14GroupedCount(int count, String time) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count times · last $time',
+      one: '1 time · last $time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get p12NotBlockingYet => 'Not blocking yet';
+
+  @override
+  String get p12AllowSite => 'Allow site';
+
+  @override
+  String get p12RecentlyBlocked => 'Recently blocked';
+
+  @override
+  String get p12BlockSiteTitle => 'Block a site';
+
+  @override
+  String get p12AllowSiteTitle => 'Allow a site';
+
+  @override
+  String get privacyMenu => 'Privacy and data';
+
+  @override
+  String get privacyTitle => 'Privacy and data';
+
+  @override
+  String get privacyKeptHeader => 'Kept, then deleted automatically';
+
+  @override
+  String get privacyFullDetails => 'Full details';
+
+  @override
+  String get privacyRowExcerpts => 'Flagged message parts';
+
+  @override
+  String get privacyRowAlerts => 'Alerts';
+
+  @override
+  String get privacyRowLocation => 'Location history';
+
+  @override
+  String get privacyRowStoredIn => 'Stored in';
+
+  @override
+  String get privacyStorageFrankfurt => 'European Union (Frankfurt, Germany)';
+
+  @override
+  String get privacyStorageStockholm => 'European Union (Stockholm, Sweden)';
+
+  @override
+  String get privacyStorageIreland => 'European Union (Ireland)';
+
+  @override
+  String privacyDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String privacyMonths(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count months',
+      one: '1 month',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get privacyWhoCanSee => 'Who can see data';
+
+  @override
+  String get privacyWhoCanSeeDesc =>
+      'Adults in the family and what each can see';
+
+  @override
+  String get privacyManage => 'Manage';
+
+  @override
+  String get privacyCopyTitle => 'Get a copy of your family data';
+
+  @override
+  String get privacyCopyDesc =>
+      'Email us from the address you sign in with. We answer within one month.';
+
+  @override
+  String get privacyCopyAction => 'Email';
+
+  @override
+  String get privacyConsentTitle => 'Consent for each child';
+
+  @override
+  String get privacyConsentDesc => 'Review or withdraw, child by child';
+
+  @override
+  String get privacyOpen => 'Open';
+
+  @override
+  String get privacyChooseChild => 'Choose a child';
+
+  @override
+  String get privacyNoChildren => 'No children added yet.';
+
+  @override
+  String get privacyDeleteFamilyTitle => 'Delete family account';
+
+  @override
+  String get privacyDeleteFamilyDesc =>
+      'Deletes the whole family, including the data of every child, at once. Asks for your password.';
+
+  @override
+  String get privacyDeleteSelfTitle => 'Delete my account';
+
+  @override
+  String get privacyDeleteSelfDesc =>
+      'Deletes only your own account. The family carries on.';
+
+  @override
+  String get privacyDeleteAction => 'Delete…';
+
+  @override
+  String get privacyLoadFailed =>
+      'Could not load what is kept. Check your connection and try again.';
+
+  @override
+  String get privacyLoadFailedServer =>
+      'Couldn\'t load this right now. Try again in a moment.';
+
+  @override
+  String get privacyRetry => 'Try again';
+
+  @override
+  String get homeTabHome => 'Home';
+
+  @override
+  String get homeTabFamily => 'Family';
+
+  @override
+  String get homeTabSettings => 'Settings';
+
+  @override
+  String get homeFilterAll => 'All';
+
+  @override
+  String get homeNeedsYou => 'Needs you';
+
+  @override
+  String homeSafetyAlertsToReview(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count safety alerts to review',
+      one: '1 safety alert to review',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeDurationHoursMinutes(String hours, String minutes) {
+    return '$hours $minutes';
+  }
+
+  @override
+  String homeTimeLeft(String duration) {
+    return '$duration left';
+  }
+
+  @override
+  String homeOfLimit(String limit) {
+    return 'of $limit';
+  }
+
+  @override
+  String get homeSeenJustNow => 'Seen just now';
+
+  @override
+  String homeSeenAgo(String duration) {
+    return 'Seen $duration ago';
+  }
+
+  @override
+  String homeOfflineFor(String duration) {
+    return 'Offline for $duration';
+  }
+
+  @override
+  String get homeStateAtSchool => 'At school';
+
+  @override
+  String get homeStateBedtime => 'Bedtime';
+
+  @override
+  String get homeStateFreeTime => 'Free time';
+
+  @override
+  String get homeStateHomework => 'Homework';
+
+  @override
+  String get homeStatePaused => 'Paused';
+
+  @override
+  String homeBatteryPct(String pct) {
+    return 'Battery $pct';
+  }
+
+  @override
+  String get homeBonusPlus15 => '+15 min';
+
+  @override
+  String get homeBonusPlus30 => '+30 min';
+
+  @override
+  String get homePauseInternet => 'Pause internet';
+
+  @override
+  String get homeResumeInternet => 'Resume internet';
+
+  @override
+  String get homeLockAllDevices => 'Lock';
+
+  @override
+  String get homeUnlockAllDevices => 'Unlock';
+
+  @override
+  String get homeNotYetAvailable => 'Not yet available';
+
+  @override
+  String get homeNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
+  String get homeKeepBlocked => 'Keep blocked';
+
+  @override
+  String get homeNotToday => 'Not today';
+
+  @override
+  String homeTimeRequestTitle(String child, int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$child asked for $minutes more minutes of screen time',
+      one: '$child asked for 1 more minute of screen time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeAccessRequestTitle(String child, String app) {
+    return '$child asked to open $app';
+  }
+
+  @override
+  String get homeSentToPhone => 'Sent to phone';
+
+  @override
+  String homeSendingBonusSnack(String duration) {
+    return 'Adding $duration for today';
+  }
+
+  @override
+  String get homeExampleBadge => 'Example';
 }

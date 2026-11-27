@@ -358,6 +358,7 @@ class DeviceCommand {
   /// Issue #231: what the agent reported when it settled the row — `{'reason': ...}` for a
   /// device-side refusal, `{'fix': 'fresh'|'cached'}` for a locate that produced a fix. Null for
   /// rows settled before this contract or by the server (a `locate_now` refused at the POST).
+  final Map<String, dynamic>? payload;
   final Map<String, dynamic>? result;
 
   const DeviceCommand({
@@ -370,6 +371,7 @@ class DeviceCommand {
     this.deliveredAt,
     this.ackedAt,
     this.attempts = 0,
+    this.payload,
     this.result,
   });
 
@@ -383,6 +385,9 @@ class DeviceCommand {
         deliveredAt: DateTime.tryParse(_str(json['deliveredAt'])),
         ackedAt: DateTime.tryParse(_str(json['ackedAt'])),
         attempts: _int(json['attempts']),
+        payload: json['payload'] is Map
+            ? Map<String, dynamic>.from(json['payload'] as Map)
+            : null,
         result: json['result'] is Map
             ? Map<String, dynamic>.from(json['result'] as Map)
             : null,
@@ -1641,7 +1646,16 @@ class ReportSummary {
     this.socialConcerns = 0,
     this.calls = 0,
     this.sms = 0,
+    this.blockedDomainsVisible = false,
   });
+
+  /// True when the server sent `topBlockedDomains` at all.
+  ///
+  /// The key is absent — not empty — when host names may not be shown: the
+  /// site-names flag is off (`SITE_NAMES_ENABLED`), or the reader has no
+  /// `social` permission (`services/api/src/routes/reports.ts`). P-12 must hide
+  /// the whole recently-blocked list in that case rather than say "no sites".
+  final bool blockedDomainsVisible;
 
   factory ReportSummary.fromJson(Map<String, dynamic> json) => ReportSummary(
         totalAppMinutes: _int(json['totalAppMinutes']),
@@ -1654,6 +1668,7 @@ class ReportSummary {
             BlockedDomain.fromJson(m)
         ],
         socialConcerns: _int(json['socialConcerns']),
+        blockedDomainsVisible: json.containsKey('topBlockedDomains'),
         calls: _int(json['calls']),
         sms: _int(json['sms']),
       );
