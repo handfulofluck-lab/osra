@@ -123,7 +123,7 @@
   "searchSafetyTooltip": "أمان البحث والويب",
   "editRules": "تعديل القواعد",
   "bornYear": "مواليد {year}",
-  "socialMonitoringTitle": "مراقبة وسائل التواصل الاجتماعي",
+  "socialMonitoringTitle": "مراقبة التواصل",
   "devices": "الأجهزة",
   "pairADevice": "إقران جهاز",
   "noDevicesRegistered": "لا توجد أجهزة مسجّلة",
@@ -293,7 +293,7 @@
   "alertCategoryInstallRequest": "طلب تثبيت تطبيق",
   "alertCategoryUnknownContact": "جهة غير معروفة",
   "tabScreenTime": "وقت الشاشة",
-  "tabWebFilter": "تصفية الويب",
+  "tabWebFilter": "تصفية المواقع",
   "tabRoutines": "الروتين",
   "dailyLimit": "الحد اليومي: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
   "weekendLimit": "الحد الأقصى لوقت الشاشة في عطلة نهاية الأسبوع: {minutes, plural, =1{دقيقة واحدة} =2{دقيقتان} few{{minutes} دقائق} many{{minutes} دقيقة} other{{minutes} دقيقة}}",
@@ -331,8 +331,8 @@
   "allowedDomainsLabel": "النطاقات المسموح بها (مفصولة بفواصل)",
   "blockedDomainsLabel": "النطاقات المحظورة (مفصولة بفواصل)",
   "enforceSafeSearch": "فرض البحث الآمن",
-  "youtubeRestrictedMode": "الوضع المقيّد في يوتيوب",
-  "youtubeRestrictedDesc": "يزيل المحتوى غير المناسب المحتمل على يوتيوب عبر أجهزة الأطفال.",
+  "youtubeRestrictedMode": "الوضع المحظور في يوتيوب",
+  "youtubeRestrictedDesc": "يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب نفسها تفوّت بعضها، فللتأكد احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».",
   "strict": "صارم",
   "moderate": "متوسط",
   "off": "إيقاف",
@@ -1067,7 +1067,7 @@
   "grantUsageAccess": "الوصول إلى بيانات الاستخدام",
   "grantOverlay": "العرض فوق التطبيقات الأخرى",
   "grantDeviceAdmin": "مسؤول الجهاز",
-  "grantWebFilter": "تصفية المواقع (موافقة VPN)",
+  "grantWebFilter": "تصفية المواقع",
   "grantLocation": "الموقع (السماح دائمًا)",
   "grantPrivateDns": "DNS الخاص",
   "grantBattery": "البطارية: بدون قيود",
@@ -1253,9 +1253,9 @@
   "timeRequestDeclinedBy": "سبق رفض هذا الطلب بقرار من {actor}",
   "timeRequestDeclinedByYou": "سبق رفض هذا الطلب بقرارك",
   "timeRequestDecidedAt": "وقت القرار: {time}",
-  "p15CanBeWrong": "ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.",
+  "p15CanBeWrong": "مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.",
   "p15ActionsHeader": "ما يمكنك فعله",
-  "p15TalkWithChild": "تحدّث مع {child}",
+  "p15TalkWithChild": "التحدث مع {child}",
   "@p15TalkWithChild": {
     "placeholders": {
       "child": {
@@ -1263,7 +1263,7 @@
       }
     }
   },
-  "p15HelpChildBlockContact": "ساعد {child} على حظر {contact}",
+  "p15HelpChildBlockContact": "مساعدة {child} على حظر {contact}",
   "@p15HelpChildBlockContact": {
     "placeholders": {
       "child": {
@@ -1274,7 +1274,7 @@
       }
     }
   },
-  "p15HelpBlockGuideBody": "اجلس مع {child} وافتحا {app} معًا لحظر {contact} وكتم رسائله.",
+  "p15HelpBlockGuideBody": "الجلوس مع {child} وفتح {app} معًا لحظر {contact} وكتم رسائله.",
   "@p15HelpBlockGuideBody": {
     "placeholders": {
       "child": {
@@ -1291,6 +1291,65 @@
   "p15AdjustLimits": "تعديل وقت الشاشة ووقت النوم",
   "p15ReviewAppRules": "مراجعة قواعد التطبيقات",
   "p15IphoneNotYet": "غير متاح بعد على آيفون",
+  "p14SegmentRequests": "الطلبات",
+  "p14LevelUrgent": "عاجل",
+  "p14LevelCheckSoon": "للمراجعة قريبًا",
+  "p14LevelInfo": "للعلم",
+  "p14FilterAll": "الكل",
+  "p14NoRequestsYet": "لا توجد طلبات بعد",
+  "p14GroupedCount": "{count, plural, =1{مرة واحدة · آخرها {time}} =2{مرتان · آخرها {time}} few{{count} مرات · آخرها {time}} many{{count} مرة · آخرها {time}} other{{count} مرة · آخرها {time}}}",
+  "p12NotBlockingYet": "لم يبدأ الحظر بعد",
+  "p12AllowSite": "السماح بالموقع",
+  "p12RecentlyBlocked": "المواقع المحظورة مؤخرًا",
+  "p12BlockSiteTitle": "حظر موقع",
+  "p12AllowSiteTitle": "السماح بموقع",
+  "privacyMenu": "الخصوصية والبيانات",
+  "privacyTitle": "الخصوصية والبيانات",
+  "privacyKeptHeader": "نحتفظ بها ثم تُحذف تلقائيًا",
+  "privacyFullDetails": "التفاصيل الكاملة (بالإنجليزية)",
+  "privacyRowExcerpts": "مقتطفات الرسائل التي أثارت تنبيهًا",
+  "privacyRowAlerts": "التنبيهات",
+  "privacyRowLocation": "سجل المواقع",
+  "privacyRowStoredIn": "مكان التخزين",
+  "privacyStorageFrankfurt": "الاتحاد الأوروبي (فرانكفورت، ألمانيا)",
+  "privacyStorageStockholm": "الاتحاد الأوروبي (ستوكهولم، السويد)",
+  "privacyStorageIreland": "الاتحاد الأوروبي (أيرلندا)",
+  "privacyDays": "{count, plural, =1{يوم واحد} =2{يومان} few{{count} أيام} many{{count} يومًا} other{{count} يوم}}",
+  "@privacyDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyMonths": "{count, plural, =1{شهر واحد} =2{شهران} few{{count} أشهر} many{{count} شهرًا} other{{count} شهر}}",
+  "@privacyMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyWhoCanSee": "من يمكنه رؤية البيانات",
+  "privacyWhoCanSeeDesc": "البالغون في العائلة وما يمكن لكل منهم رؤيته",
+  "privacyManage": "إدارة",
+  "privacyCopyTitle": "احصل على نسخة من بيانات عائلتك",
+  "privacyCopyDesc": "راسلنا من البريد الإلكتروني الذي تسجّل الدخول به، ونردّ خلال شهر.",
+  "privacyCopyAction": "مراسلة",
+  "privacyConsentTitle": "الموافقة لكل طفل",
+  "privacyConsentDesc": "راجِعها أو اسحبها لكل طفل على حدة",
+  "privacyOpen": "فتح",
+  "privacyChooseChild": "اختر طفلًا",
+  "privacyNoChildren": "لم تُضِف أي طفل بعد.",
+  "privacyDeleteFamilyTitle": "حذف حساب العائلة",
+  "privacyDeleteFamilyDesc": "يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. ويلزم إدخال كلمة المرور لذلك.",
+  "privacyDeleteSelfTitle": "حذف حسابي",
+  "privacyDeleteSelfDesc": "يحذف حسابك أنت فقط، وتبقى العائلة كما هي.",
+  "privacyDeleteAction": "حذف…",
+  "privacyLoadFailed": "تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.",
+  "privacyLoadFailedServer": "تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.",
+  "privacyRetry": "إعادة المحاولة",
+  "p15PreviewLoadFailed": "تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.",
   "homeTabHome": "الرئيسية",
   "homeTabFamily": "العائلة",
   "homeTabSettings": "الإعدادات",

@@ -77,11 +77,12 @@ if (anyReleaseEnv && !hasReleaseKey) {
     throw GradleException("release signing is half configured; missing or unusable: ${missing.joinToString()}")
 }
 
-// #409: a **signed** release must not ship without Firebase config — no `google_app_id`, so `getToken()`
-// returns nothing and no token can register, silently. Debug variants stay config-less by design (#317).
-if (hasReleaseKey && !file("google-services.json").exists()) {
+// #409 / #1217: a **signed** release (Play OR Full) must not ship without Firebase config — no
+// `google_app_id`/`gcm_defaultSenderId`, so `getToken()` returns nothing and commands fall back to
+// 60 s polling silently. Debug variants stay config-less by design (#317).
+if ((hasReleaseKey || hasFullKey) && !file("google-services.json").exists()) {
     throw GradleException(
-        "google-services.json is missing for a signed release build (a release keystore is configured). " +
+        "google-services.json is missing for a signed release build (a release or Full keystore is configured). " +
             "Add app/google-services.json (the child agent's layout), or build a debug variant.",
     )
 }

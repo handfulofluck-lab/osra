@@ -1,0 +1,1 @@
+- **Parent app (P-15 Arabic copy follow-up, #1215):** Updated four P-15 Arabic strings (`p15TalkWithChild`, `p15HelpChildBlockContact`, `p15CanBeWrong`, `p15HelpBlockGuideBody`) to the Arabic Language Bureau's verbal-noun wording (`7211110580`).
