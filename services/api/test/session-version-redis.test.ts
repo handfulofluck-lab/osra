@@ -12,6 +12,7 @@ import {
   revokedTokenKey,
   sessionVersionKey,
 } from "../src/lib/sessions.js";
+import { getRedis } from "../src/redis.js";
 import { prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
@@ -52,9 +53,7 @@ describeRedis("session-version atomic Lua floor and conditional cleanup against 
   beforeAll(async () => {
     process.env.REDIS_URL = redisUrl!;
     client = new Redis(redisUrl!, { maxRetriesPerRequest: 2 });
-    await client.ping();
-    const { closeRedis } = await import("../src/redis.js");
-    await closeRedis();
+    expect(await client.ping()).toBe("PONG");
   });
 
   beforeEach(() => {
@@ -69,9 +68,8 @@ describeRedis("session-version atomic Lua floor and conditional cleanup against 
   });
 
   afterAll(async () => {
-    const { closeRedis } = await import("../src/redis.js");
-    await closeRedis();
-    await client.quit();
+    await getRedis().quit().catch(() => undefined);
+    await client.quit().catch(() => undefined);
     if (savedRedisUrl === undefined) delete process.env.REDIS_URL;
     else process.env.REDIS_URL = savedRedisUrl;
   });
