@@ -25,6 +25,7 @@ import '../auth/mfa_reset_messages.dart';
 import '../children/consent_step.dart';
 import '../map/child_location_view.dart';
 import '../settings/settings_screen.dart' show p22SettingsEnabledProvider;
+import 'home_p07_screen.dart';
 
 /// Parent dashboard: grid of child cards with live status, pull-to-refresh
 /// and a consent-first "Add child" flow.
@@ -33,6 +34,9 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(p07HomeEnabledProvider)) {
+      return const HomeP07Screen();
+    }
     final family = ref.watch(familyProvider);
     final unread = ref.watch(alertsBadgeCountProvider);
     // ADR-0031 step 3b: a signed-in owner/co-parent is told on open that
@@ -40,6 +44,9 @@ class DashboardScreen extends ConsumerWidget {
     // provider, so this is absent rather than an error.
     final pendingResets = ref.watch(mfaResetPendingProvider).valueOrNull ?? const <MfaResetPendingRequest>[];
     final l10n = context.l10n;
+    // P-22: read once in build. Watching inside `itemBuilder` happens outside the build phase, which is why
+    // the flag-on menu still rendered the four old links.
+    final p22Settings = ref.watch(p22SettingsEnabledProvider);
     // Keep the live WS channel subscribed so the activity chips update (#29).
     ref.watch(wsProvider);
     return Scaffold(
@@ -71,12 +78,13 @@ class DashboardScreen extends ConsumerWidget {
               'settings' => '/settings',
               'appearance' => '/settings/appearance',
               'mfa' => '/settings/mfa',
+              'privacy' => '/settings/privacy',
               'delete-account' => '/settings/delete-account',
               _ => '/settings/digests',
             }),
             itemBuilder: (_) => [
               PopupMenuItem(value: 'family', child: Text(l10n.familyMembersMenu)),
-              if (ref.watch(p22SettingsEnabledProvider))
+              if (p22Settings)
                 PopupMenuItem(
                   key: const ValueKey('dashboardMenu-settings'),
                   value: 'settings',
@@ -86,8 +94,13 @@ class DashboardScreen extends ConsumerWidget {
                 PopupMenuItem(value: 'appearance', child: Text(l10n.appearanceMenu)),
                 PopupMenuItem(value: 'digests', child: Text(l10n.digestPreferencesMenu)),
                 PopupMenuItem(value: 'mfa', child: Text(l10n.mfaMenu)),
-                PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
               ],
+              // P-22 replaces the links that now live inside Settings, and only those. "Privacy and data"
+              // arrived on main while this branch was open and has no row in P-22's approved list, so it
+              // stays reachable in both states rather than disappearing when the switch is on.
+              PopupMenuItem(value: 'privacy', child: Text(l10n.privacyMenu)),
+              if (!p22Settings)
+                PopupMenuItem(value: 'delete-account', child: Text(l10n.deleteAccountTitle)),
             ],
           ),
           IconButton(

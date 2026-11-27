@@ -1,4 +1,5 @@
 import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
+import 'package:familyshield_parent/features/dashboard/home_p07_screen.dart';
 import 'package:familyshield_parent/features/settings/settings_screen.dart';
 import 'package:familyshield_parent/features/social/social_screen.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
@@ -39,6 +40,7 @@ void main() {
     required double textScale,
     required Map<String, dynamic> family,
     bool uxP22 = true,
+    bool p07 = false,
   }) async {
     // B1: seed the two preferences the Settings values read, so the frame shows a chosen
     // language and theme rather than 'System' on both rows.
@@ -79,6 +81,7 @@ void main() {
         apiClientProvider.overrideWithValue(api),
         p17SocialEnabledProvider.overrideWithValue(true),
         p22SettingsEnabledProvider.overrideWithValue(uxP22),
+        p07HomeEnabledProvider.overrideWithValue(p07),
       ],
       child: app,
     ));
@@ -237,6 +240,30 @@ void main() {
       expect(tester.takeException(), isNull,
           reason: 'no overflow at ${config.width} px / ${config.scale}x');
       await maybeCaptureFrame(tester, 'p22-settings-${config.tag}.png');
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // P-22 x P-07 (UI/UX Bureau, 16:39): the P-07 home replaces the dashboard, so P-22's dashboard menu entry
+    // does not exist there. With both switches on, the settings tab must offer one Settings row; the four it
+    // replaces must be gone. Mutant: drop the `p22` branch in `_HomeSettingsTab` and these rows fail.
+    testWidgets('P-07 settings tab under P-22 ${config.tag}', (tester) async {
+      await pumpFrame(
+        tester,
+        const DashboardScreen(),
+        locale: Locale(config.locale),
+        dark: config.dark,
+        width: config.width,
+        textScale: config.scale,
+        family: familyWith(twoStepOn: false),
+        p07: true,
+      );
+      await tester.tap(find.byKey(const ValueKey('p07Tab-settings')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull,
+          reason: 'no overflow at ${config.width} px / ${config.scale}x');
+      expect(find.byKey(const ValueKey('homeSettingsP22')), findsOneWidget);
+      expect(find.byKey(const ValueKey('homeSettingsAppearance')), findsNothing);
+      await maybeCaptureFrame(tester, 'p07-p22-tab-${config.tag}.png');
       await tester.pumpWidget(const SizedBox());
     });
   }

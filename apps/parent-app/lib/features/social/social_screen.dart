@@ -288,6 +288,9 @@ class _MonitoringTogglesSectionState
     final value = _draft![app.appKey] ?? true;
     final state = value
         ? switch (scanState) {
+            // Ahmed's point 1 (14:16) and Claude's ruling at 14:18: a phone that reports `ready` said so, and
+            // the changelog promises the word. "Checking" stays for a phone that has not reported at all.
+            'ready' => l10n.phoneSetupStateReady,
             'degraded' => l10n.phoneSetupStateDegraded,
             'unavailable' => l10n.phoneSetupStateUnavailable,
             'not_supported' => l10n.phoneSetupStateNotSupported,
@@ -373,10 +376,20 @@ class _MonitoringTogglesSectionState
         uxP17 && devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
     // The server's word for the notification access this section depends on (ADR-0034): `ready`, `degraded`,
     // `unavailable`, `not_supported`. Absent means the phone never reported, and the row stays "Checking".
+    // With more than one phone the row shows the **weakest** reported state — never "Ready" while another of
+    // the child's phones cannot scan (Ahmed's point 2, Claude's ruling at 14:18: not_supported < unavailable <
+    // degraded < ready). A state this build does not know ranks weakest, so it can never read as Ready.
+    const stateRank = {'not_supported': 0, 'unavailable': 1, 'degraded': 2, 'ready': 3};
     final scanState = devices
         .map((d) => d.setup?.feature('notification_scan'))
         .whereType<String>()
-        .firstOrNull;
+        .fold<String?>(
+          null,
+          (worst, state) => worst == null ||
+                  (stateRank[state] ?? 0) < (stateRank[worst] ?? 0)
+              ? state
+              : worst,
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -438,6 +451,9 @@ class _MonitoringTogglesSectionState
             key: const ValueKey('socialNewAppsBanner'),
             content: Text(l10n.socialNewAppsBanner),
             leading: const Icon(Icons.new_releases_outlined),
+            // UI/UX Bureau, 14:09: at 320 px and 200% text, an action beside the content squeezed it into a
+            // seven-line column. On its own row the text keeps its width.
+            forceActionsBelow: true,
             actions: [
               TextButton(
                 onPressed: _dismissNewAppsBanner,
