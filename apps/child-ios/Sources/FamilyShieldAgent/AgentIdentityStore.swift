@@ -66,6 +66,7 @@ public enum AgentIdentityStore {
     public static func saveNewPairing(_ identity: AgentIdentity) -> Bool {
         RuleStore.clear()
         PushTokenRegistrar.forget()
+        ShieldSet.clearAllStores() // osra-security#93: no earlier pairing's Lock or Pause survives
         return save(identity)
     }
 

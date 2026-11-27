@@ -27,6 +27,17 @@ extension ShieldSet {
 }
 #endif
 
+extension ShieldSet {
+    /// osra-security#93: a parent's Lock or Pause belongs to one pairing. Consent withdrawal, revocation and a
+    /// new pairing clear both command stores, so a lock never outlives the relationship that set it. Ordinary
+    /// Unlock and Resume still clear only their own store. The package tests replace this.
+    public static var clearAllStores: () -> Void = {
+        #if os(iOS)
+        for set in ShieldSet.allCases { set.store.clearAllSettings() }
+        #endif
+    }
+}
+
 /// What one write to a Screen Time store did. `failed` carries the server-side reason, never a bare `false`:
 /// the parent panel shows it in Delivery status, and a silent failure is the bug #1089 exists to end.
 public enum ShieldOutcome: Equatable, Sendable {

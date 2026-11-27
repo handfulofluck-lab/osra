@@ -28,6 +28,7 @@ public enum DeviceRevocation {
         LocationBuffer.clear()
         AgentIdentityStore.clearOrphanedSecrets()
         clearShields()
+        ShieldSet.clearAllStores()
     }
 
     /// Unpairs when the answer is `device_revoked`, and says whether it did.
