@@ -1,9 +1,12 @@
 package com.familyshield.agent.setup
 
 import androidx.compose.ui.unit.dp
+import com.familyshield.agent.ui.pairing.ChecklistRowPresentation
+import com.familyshield.agent.ui.pairing.ChecklistRowUi
 import com.familyshield.agent.ui.pairing.LARGE_TEXT_FONT_SCALE_THRESHOLD
 import com.familyshield.agent.ui.pairing.PermissionStepActionPlacement
 import com.familyshield.agent.ui.pairing.PermissionStepActionSlot
+import com.familyshield.agent.ui.pairing.checklistRowPresentation
 import com.familyshield.agent.ui.pairing.permissionStepActionPlacement
 import com.familyshield.agent.ui.pairing.shouldScrollSecondaryActions
 import com.familyshield.agent.ui.theme.OsraTokens
@@ -245,6 +248,67 @@ class OnboardingWelcomeAndStepsTest {
                 .substringAfter("Spacer(modifier = Modifier.height(if (placement.scrollable.isNotEmpty())")
                 .contains("OutlinedButton("),
         )
+    }
+
+    @Test
+    fun `U101 granted checklist row shows Done pill and no button while ungranted row shows reason and button`() {
+        // Mutant: dropping the Done pill branch for granted rows sets showDonePill=false,
+        // or showing the grant button on a granted row sets showGrantButton=true; either
+        // fails these assertions.
+        val en = loadStrings("src/main/res/values/strings.xml")
+        val ar = loadStrings("src/main/res/values-ar/strings.xml")
+        assertEquals("Done", en["setup_done"])
+        assertEquals("تم", ar["setup_done"])
+
+        val grantedRow = ChecklistRowUi(
+            title = "Private DNS setting",
+            whyOneSentence = "Keeps web filtering working reliably.",
+            granted = true,
+            required = false,
+            optionalBadge = "Recommended",
+            oemHint = "Open Private DNS and choose Off.",
+            grantLabel = "Open Private DNS",
+            onGrant = {},
+        )
+        assertEquals(
+            ChecklistRowPresentation(
+                showDonePill = true,
+                donePillLabel = en.getValue("setup_done"),
+                optionalBadge = null,
+                showReason = false,
+                showOemHint = false,
+                showGrantButton = false,
+            ),
+            checklistRowPresentation(grantedRow, en.getValue("setup_done")),
+        )
+        assertEquals(
+            ar.getValue("setup_done"),
+            checklistRowPresentation(grantedRow, ar.getValue("setup_done")).donePillLabel,
+        )
+
+        val ungrantedRow = grantedRow.copy(granted = false)
+        assertEquals(
+            ChecklistRowPresentation(
+                showDonePill = false,
+                donePillLabel = null,
+                optionalBadge = "Recommended",
+                showReason = true,
+                showOemHint = true,
+                showGrantButton = true,
+            ),
+            checklistRowPresentation(ungrantedRow, en.getValue("setup_done")),
+        )
+
+        val screenSrc = locate("src/main/java/com/familyshield/agent/ui/pairing/OnboardingWelcomeAndStepsScreen.kt").readText()
+        val checklistFn = screenSrc
+            .substringAfter("fun OnboardingChecklistScreen(")
+            .substringBefore("/**")
+        assertTrue(checklistFn.contains("stringResource(R.string.setup_done)"))
+        assertTrue(checklistFn.contains("checklistRowPresentation(row, doneLabel)"))
+        assertTrue(checklistFn.contains("Icons.Rounded.Check"))
+        assertTrue(checklistFn.contains("contentDescription = null"))
+        assertTrue(checklistFn.contains("tint = palette.ok"))
+        assertTrue(checklistFn.contains("color = palette.ok"))
     }
 
     private fun loadStrings(relativeToModule: String): Map<String, String> {
