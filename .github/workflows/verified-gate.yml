@@ -13,7 +13,7 @@ name: verified-gate
 #      this PR under the MESH POLICY (maintainer 2026-11-13 15:42Z, AGENTS.md §6.6, scripts/verified-gate-policy.mjs):
 #      never the author; a different model family from the author for R2; for R3 two signers, one cross-family
 #      and one security key (Ahmed, Fable or Antigravity); plus the UI/UX and Arabic Bureau lines when the diff needs them.
-#      Signer names: Claude, Fable, Kimi Code, K31, K31-Mac, Ahmed, Antigravity, Hydrogen, Codex.
+#      Signer names: Claude, Fable, Kimi Code, Kimi-Mac, K31, K31-Mac, Ahmed, Antigravity, Hydrogen, Neon, Codex.
 # (2) is what makes rule 4 of §6.5 ("the verified sha is the merged sha") mechanical: any push after
 # verification — a fix, a rebase, a merge of main — changes the head, and the gate goes red again
 # until the new head is verified. No label removal is needed for that, so this job needs no write

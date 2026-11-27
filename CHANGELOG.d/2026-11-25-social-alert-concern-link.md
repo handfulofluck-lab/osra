@@ -1,0 +1,1 @@
+- Parent app (#1140): Open Social activity from an alert to see the original concern expanded. Older alerts without a message link and concerns whose previews have expired show a clear unavailable message.

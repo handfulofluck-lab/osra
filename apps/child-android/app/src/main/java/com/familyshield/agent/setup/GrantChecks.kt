@@ -28,7 +28,7 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
     fun isGranted(grant: OnboardingPolicy.Grant): Boolean = when (grant) {
         OnboardingPolicy.Grant.ACCESSIBILITY -> accessibilityEnabled()
         OnboardingPolicy.Grant.USAGE_ACCESS -> usageAccessGranted()
-        OnboardingPolicy.Grant.OVERLAY -> Settings.canDrawOverlays(context)
+        OnboardingPolicy.Grant.OVERLAY -> Settings.canDrawOverlays(context) && MiuiBackgroundPopupPolicy.isGranted(context)
         OnboardingPolicy.Grant.DEVICE_ADMIN -> deviceAdmin.isAdminActive()
         OnboardingPolicy.Grant.WEB_FILTER -> VpnService.prepare(context) == null && VpnState.isEnabled(context)
         OnboardingPolicy.Grant.LOCATION -> locationGranted()
@@ -46,7 +46,11 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
         return when (grant) {
             OnboardingPolicy.Grant.ACCESSIBILITY -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             OnboardingPolicy.Grant.USAGE_ACCESS -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-            OnboardingPolicy.Grant.OVERLAY -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg)
+            OnboardingPolicy.Grant.OVERLAY -> if (!Settings.canDrawOverlays(context)) {
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg)
+            } else {
+                MiuiBackgroundPopupPolicy.miuiPermEditorIntent(context)
+            }
             OnboardingPolicy.Grant.DEVICE_ADMIN -> null
             OnboardingPolicy.Grant.WEB_FILTER -> null
             OnboardingPolicy.Grant.LOCATION -> null
@@ -57,13 +61,16 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
         }.let { it?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
     }
 
+    /** Opens OSRA's App info screen so the parent can grant "Allow restricted settings" (#1131). */
+    fun appInfoIntent(): Intent = RestrictedSettingsPolicy.appInfoIntent(context.packageName)
+
     private fun accessibilityEnabled(): Boolean {
         val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-            ?: return false
-        return AccessibilityServiceListPolicy.isEnabled(
-            enabled,
-            context.packageName,
-            AccessibilityMonitorService::class.java.name,
+        return RestrictedSettingsPolicy.isAccessibilityBoundAndEnabled(
+            enabledServicesSetting = enabled,
+            packageName = context.packageName,
+            serviceClassName = AccessibilityMonitorService::class.java.name,
+            isServiceRunning = AccessibilityMonitorService.isRunning,
         )
     }
 

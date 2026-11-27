@@ -75,6 +75,7 @@ export const FAMILY_SCOPED_DELETES: Record<string, (s: FamilyScope) => unknown> 
   parentPushToken: (s) => ({ parentId: { in: s.parentIds } }),
   parentMfaRecoveryCode: (s) => ({ parentId: { in: s.parentIds } }),
   accountDeletionToken: (s) => ({ parentId: { in: s.parentIds } }),
+  socialEventFeedback: (s) => ({ parentId: { in: s.parentIds } }),
   parent: (s) => ({ familyId: s.familyId }),
 };
 
@@ -94,6 +95,7 @@ export const PARENT_SCOPED_DELETES: Record<string, (s: ParentScope) => unknown> 
   // makes the decision explicit to the §4 coverage guard — and it is the decision that matches the
   // account-deletion promise: the proof of a consent goes with the account it authorised.
   parentConsentEvent: (s) => ({ parentId: s.parentId }),
+  socialEventFeedback: (s) => ({ parentId: s.parentId }),
   parent: (s) => ({ id: s.parentId }),
 };
 

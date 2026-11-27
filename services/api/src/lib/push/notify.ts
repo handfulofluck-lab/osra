@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { FcmProvider, loadServiceAccountFromEnv } from "./fcm.js";
 import { ApnsProvider, loadApnsConfigFromEnv } from "./apns.js";
@@ -20,10 +21,12 @@ export interface AlertLike {
   title: string;
   body: string;
   createdAt?: Date | string;
+  metadata?: unknown;
 }
 
 type Severity = "info" | "warning" | "critical";
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
+const GROUPED_DELIVERY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Alerts at or above this severity are pushed. Env `PUSH_MIN_SEVERITY`, default "info". */
 export function minPushSeverity(env: NodeJS.ProcessEnv = process.env): Severity {
@@ -52,24 +55,43 @@ export function shouldPush(alert: Pick<AlertLike, "severity" | "category"> | nul
  *
  * - **Android**: `dataOnly`, `{ w: "1" }` and nothing else, `HIGH` priority because the app has to wake to
  *   fetch, and a constant collapse key because one wake reads every unseen alert.
- * - **iOS**: a visible alert built from localization keys, plus `content-available` and the same data. The
- *   bundle decides the words, so `aps` carries no literal text either.
+ * - **iOS**: a visible alert built from localization keys, plus `content-available`. The bundle decides
+ *   the words. For grouped social deliveries, the content-free `g` marker selects native presentation,
+ *   and an opaque UUID lets APNs collapse retries of that delivery independently of the display thread.
  *
  * The child-device wake keeps its own builder: it must never display anything, which is a different rule.
  */
-export function buildParentAlertMessage(platform: PushPlatform): PushMessage {
+export function buildParentAlertMessage(
+  platform: PushPlatform,
+  alert?: Pick<AlertLike, "category" | "metadata">,
+): PushMessage {
   const data = { w: "1" };
   if (platform === "ios") {
+    const deliveryId = groupedDeliveryId(alert);
     return {
-      data,
+      data: deliveryId ? { ...data, g: "1" } : data,
       locKeys: { titleKey: "PUSH_ALERT_TITLE", bodyKey: "PUSH_ALERT_BODY" },
       priority: "high",
       collapseKey: PARENT_WAKE_COLLAPSE_KEY,
-      // APNs takes the collapse id from `threadId`; FCM from `collapseKey`. Same constant for both.
       threadId: PARENT_WAKE_COLLAPSE_KEY,
+      ...(deliveryId ? { apnsCollapseId: deliveryId } : {}),
     };
   }
   return { data, dataOnly: true, priority: "high", collapseKey: PARENT_WAKE_COLLAPSE_KEY, threadId: PARENT_WAKE_COLLAPSE_KEY };
+}
+
+function groupedDeliveryId(alert: Pick<AlertLike, "category" | "metadata"> | undefined): string | undefined {
+  if (alert?.category !== "social_concern" && alert?.category !== "gaming_chat") return undefined;
+  const metadata = alert.metadata;
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return undefined;
+  const { pushDeliveryId, pushDeliverySeq } = metadata as Record<string, unknown>;
+  if (typeof pushDeliverySeq !== "number" || !Number.isSafeInteger(pushDeliverySeq) || pushDeliverySeq < 1) {
+    return undefined;
+  }
+  // Only server-issued v4 UUIDs fit this contract. They are opaque, ASCII and within the APNs limit.
+  return typeof pushDeliveryId === "string" && pushDeliveryId.length === 36 && GROUPED_DELIVERY_ID.test(pushDeliveryId)
+    ? pushDeliveryId
+    : undefined;
 }
 
 /** One constant key: every unseen alert is read by the same wake, so a second pending wake is redundant. */
@@ -297,14 +319,54 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
     // ADR-0014 amendment, decision 3: a guardian without `alerts` must not be pushed an alert either,
     // or the gate on `GET /v1/alerts` would be cosmetic — the push *is* the alert text on a lock
     // screen. Owners and co-parents are unaffected, which is why only guardians are filtered.
-    const parents = await prisma.parent.findMany({
-      where: {
-        familyId,
-        OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+    const { parents, rawTokens } = await prisma.$transaction(
+      async (tx) => {
+        const eligibleParents = await tx.parent.findMany({
+          where: {
+            familyId,
+            OR: [{ role: { not: "guardian" } }, { role: "guardian", permissions: { has: "alerts" } }],
+          },
+          select: { id: true, sessionVersion: true },
+        });
+        const candidateTokens = eligibleParents.length === 0
+          ? []
+          : await tx.parentPushToken.findMany({
+              where: { parentId: { in: eligibleParents.map((p) => p.id) } },
+            });
+        return { parents: eligibleParents, rawTokens: candidateTokens };
       },
-      select: { id: true },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    const minSessionVersionByParent = new Map(
+      parents.map((p) => [p.id, typeof p.sessionVersion === "number" ? p.sessionVersion : 0]),
+    );
+    const retired: Array<{ id: string; parentId: string; minVersion: number }> = [];
+    const tokens = rawTokens.filter((row) => {
+      const minVersion = minSessionVersionByParent.get(row.parentId);
+      // Exclude any row whose parent is not in the eligible snapshot (never default a missing parent to version 0).
+      if (minVersion === undefined) {
+        return false;
+      }
+      const rowVersion = typeof (row as { sessionVersion?: unknown }).sessionVersion === "number"
+        ? ((row as { sessionVersion: number }).sessionVersion)
+        : 0;
+      if (rowVersion < minVersion) {
+        retired.push({ id: row.id, parentId: row.parentId, minVersion });
+        return false;
+      }
+      return true;
     });
-    const tokens = await prisma.parentPushToken.findMany({ where: { parentId: { in: parents.map((p) => p.id) } } });
+    if (retired.length > 0) {
+      await prisma.parentPushToken.deleteMany({
+        where: {
+          OR: retired.map(({ id, parentId, minVersion }) => ({
+            id,
+            parentId,
+            sessionVersion: { lt: minVersion },
+          })),
+        },
+      }).catch(() => undefined);
+    }
     if (tokens.length === 0) {
       logParentAlertOutcome({
         recipients: 0,
@@ -343,7 +405,7 @@ export async function notifyParentsOfAlert(familyId: string, alert: AlertLike, c
           return;
         }
         // #410: per-platform, and never the alert's text. `childName` is deliberately unused here now.
-        const message = buildParentAlertMessage(t.platform as PushPlatform);
+        const message = buildParentAlertMessage(t.platform as PushPlatform, alert);
         try {
           const result = await provider.send(t.token, message);
           if (result.ok) {

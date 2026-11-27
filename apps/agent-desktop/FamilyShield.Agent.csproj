@@ -1,5 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <OutputType>Library</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -8,7 +9,16 @@
     <AssemblyName>OSRA.Agent</AssemblyName>
     <Product>OSRA</Product>
     <AssemblyTitle>OSRA Agent</AssemblyTitle>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.1</AssemblyVersion>
+    <FileVersion>0.1.0.1</FileVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
@@ -17,15 +27,19 @@
     <PackageReference Include="Titanium.Web.Proxy" Version="3.2.3" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The xunit test project lives under tests/; keep it out of the worker assembly. -->
+    <!-- The xunit test project lives under tests/; keep it out of the shared library. -->
     <Compile Remove="tests/**/*.cs" />
     <EmbeddedResource Remove="tests/**/*" />
     <None Remove="tests/**/*" />
+    <Compile Remove="src/**/*.cs" />
+    <EmbeddedResource Remove="src/**/*" />
+    <None Remove="src/**/*" />
     <!-- Emergency proxy reset shipped beside the exe (BUG-007). -->
     <None Include="reset-proxy.bat" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <!-- Command dispatch mapping (Feature #11) is tested from the xunit project. -->
     <InternalsVisibleTo Include="FamilyShield.Agent.Tests" />
+    <InternalsVisibleTo Include="OSRA" />
   </ItemGroup>
 </Project>

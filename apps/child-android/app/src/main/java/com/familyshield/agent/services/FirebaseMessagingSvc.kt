@@ -8,6 +8,7 @@ import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.PushTokenDto
 import com.familyshield.agent.push.PushTokenUploadPolicy
+import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.push.PushWakeHandler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -54,6 +55,16 @@ class FirebaseMessagingSvc : FirebaseMessagingService() {
                 fallback = { CommandPollWorker.requestFetchNow(applicationContext) },
             )
         }
+        // Issue #864: a rules change reaches the child as a push, but nothing here asked for the new rules —
+        // `RulesSyncWorker` is a six-hour periodic job and `syncNow()` was only ever called right after pairing,
+        // so a domain rule added from the parent applied at the next tick or at the next restart. That is B6 on
+        // the Flip4. `syncNow` is unique (`KEEP`) and network-constrained, so a burst of pushes collapses into
+        // one fetch rather than one per message.
+        //
+        // Deliberately unconditional rather than keyed on a payload field: `PushWakeHandler` does not inspect
+        // `data` (by design), and a key that only the server knows today would fail silently the day it changes.
+        // The cost is a deduped rules fetch per push, and pushes are rare.
+        WorkScheduler.syncNow(applicationContext)
     }
 
     override fun onNewToken(token: String) {
