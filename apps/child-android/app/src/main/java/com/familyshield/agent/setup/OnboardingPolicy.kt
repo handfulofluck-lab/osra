@@ -26,18 +26,95 @@ import java.util.Locale
  */
 object OnboardingPolicy {
 
-    enum class Grant(@StringRes val titleRes: Int, @StringRes val whyRes: Int, val required: Boolean) {
-        ACCESSIBILITY(R.string.onboarding_grant_accessibility_title, R.string.onboarding_grant_accessibility_why, true),
-        USAGE_ACCESS(R.string.onboarding_grant_usage_title, R.string.onboarding_grant_usage_why, true),
-        OVERLAY(R.string.onboarding_grant_overlay_title, R.string.onboarding_grant_overlay_why, true),
-        DEVICE_ADMIN(R.string.onboarding_grant_device_admin_title, R.string.onboarding_grant_device_admin_why, true),
-        WEB_FILTER(R.string.onboarding_grant_web_filter_title, R.string.onboarding_grant_web_filter_why, true),
-        LOCATION(R.string.onboarding_grant_location_title, R.string.onboarding_grant_location_why, true),
-        PRIVATE_DNS(R.string.onboarding_grant_private_dns_title, R.string.onboarding_grant_private_dns_why, true),
-        BATTERY(R.string.onboarding_grant_battery_title, R.string.onboarding_grant_battery_why, false),
-        USB_DEBUGGING(R.string.onboarding_grant_usb_title, R.string.onboarding_grant_usb_why, false),
+    enum class Grant(
+        @StringRes val titleRes: Int,
+        @StringRes val whyRes: Int,
+        val required: Boolean,
+        @StringRes val c05TitleRes: Int,
+        @StringRes val c05WhyRes: Int,
+        @StringRes val c05ButtonRes: Int,
+    ) {
+        ACCESSIBILITY(
+            R.string.onboarding_grant_accessibility_title,
+            R.string.onboarding_grant_accessibility_why,
+            true,
+            R.string.c05_grant_accessibility_title,
+            R.string.c05_grant_accessibility_why,
+            R.string.c05_grant_accessibility_button,
+        ),
+        USAGE_ACCESS(
+            R.string.onboarding_grant_usage_title,
+            R.string.onboarding_grant_usage_why,
+            true,
+            R.string.c05_grant_usage_title,
+            R.string.c05_grant_usage_why,
+            R.string.c05_grant_usage_button,
+        ),
+        OVERLAY(
+            R.string.onboarding_grant_overlay_title,
+            R.string.onboarding_grant_overlay_why,
+            true,
+            R.string.c05_grant_overlay_title,
+            R.string.c05_grant_overlay_why,
+            R.string.c05_grant_overlay_button,
+        ),
+        DEVICE_ADMIN(
+            R.string.onboarding_grant_device_admin_title,
+            R.string.onboarding_grant_device_admin_why,
+            true,
+            R.string.c05_grant_device_admin_title,
+            R.string.c05_grant_device_admin_why,
+            R.string.c05_grant_device_admin_button,
+        ),
+        WEB_FILTER(
+            R.string.onboarding_grant_web_filter_title,
+            R.string.onboarding_grant_web_filter_why,
+            true,
+            R.string.c05_grant_web_filter_title,
+            R.string.c05_grant_web_filter_why,
+            R.string.c05_grant_web_filter_button,
+        ),
+        LOCATION(
+            R.string.onboarding_grant_location_title,
+            R.string.onboarding_grant_location_why,
+            true,
+            R.string.c05_grant_location_title,
+            R.string.c05_grant_location_why,
+            R.string.c05_grant_location_button,
+        ),
+        PRIVATE_DNS(
+            R.string.onboarding_grant_private_dns_title,
+            R.string.onboarding_grant_private_dns_why,
+            true,
+            R.string.c05_grant_private_dns_title,
+            R.string.c05_grant_private_dns_why,
+            R.string.c05_grant_private_dns_button,
+        ),
+        BATTERY(
+            R.string.onboarding_grant_battery_title,
+            R.string.onboarding_grant_battery_why,
+            false,
+            R.string.c05_grant_battery_title,
+            R.string.c05_grant_battery_why,
+            R.string.c05_grant_battery_button,
+        ),
+        USB_DEBUGGING(
+            R.string.onboarding_grant_usb_title,
+            R.string.onboarding_grant_usb_why,
+            false,
+            R.string.c05_grant_usb_title,
+            R.string.onboarding_grant_usb_why,
+            R.string.c05_grant_usb_button,
+        ),
         // osra-security#78: required on the Full build (rows() omits it on Play via BuildConfig.CAPTURE_NOTIFICATIONS).
-        NOTIFICATION_LISTENER(R.string.onboarding_grant_notification_title, R.string.onboarding_grant_notification_why, true),
+        NOTIFICATION_LISTENER(
+            R.string.onboarding_grant_notification_title,
+            R.string.onboarding_grant_notification_why,
+            true,
+            R.string.c05_grant_notification_title,
+            R.string.c05_grant_notification_why,
+            R.string.c05_grant_notification_button,
+        ),
     }
 
     data class Row(val grant: Grant, val granted: Boolean)

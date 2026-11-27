@@ -161,6 +161,36 @@
     <string name="c05_cat_ai_chatbots">AI chatbots</string>
     <string name="c05_cat_social_media">Social media</string>
     <string name="c05_cat_chat">Chat</string>
+    <!-- C-05 (#1208 B7): child-facing per-step permission titles, explanations, and buttons. -->
+    <string name="c05_grant_accessibility_title">Accessibility</string>
+    <string name="c05_grant_accessibility_why">Lets OSRA block apps and keep limits. OSRA can\'t work without it.</string>
+    <string name="c05_grant_accessibility_button">Allow accessibility</string>
+    <string name="c05_grant_usage_title">Usage access</string>
+    <string name="c05_grant_usage_why">Counts screen time for each app so limits are right.</string>
+    <string name="c05_grant_usage_button">Allow usage access</string>
+    <string name="c05_grant_overlay_title">Display over other apps</string>
+    <string name="c05_grant_overlay_why">Shows the lock and pause screens on top of other apps.</string>
+    <string name="c05_grant_overlay_button">Allow display over apps</string>
+    <string name="c05_grant_device_admin_title">Device admin</string>
+    <string name="c05_grant_device_admin_why">Stops OSRA being removed without your parent.</string>
+    <string name="c05_grant_device_admin_button">Allow device admin</string>
+    <string name="c05_grant_web_filter_title">Web filter</string>
+    <string name="c05_grant_web_filter_why">Blocks unsafe sites and keeps searches safe.</string>
+    <string name="c05_grant_web_filter_button">Allow web filter</string>
+    <string name="c05_grant_location_title">Location</string>
+    <string name="c05_grant_location_why">Lets your parent see where this phone is, even when OSRA is closed.</string>
+    <string name="c05_grant_location_button">Allow location all the time</string>
+    <string name="c05_grant_private_dns_title">Private DNS</string>
+    <string name="c05_grant_private_dns_why">A Private DNS provider gets around the web filter. Set it to Automatic or Off.</string>
+    <string name="c05_grant_private_dns_button">Open Private DNS settings</string>
+    <string name="c05_grant_battery_title">Battery</string>
+    <string name="c05_grant_battery_why">Lets OSRA keep running in the background so your parent\'s changes arrive on time.</string>
+    <string name="c05_grant_battery_button">Allow background use</string>
+    <string name="c05_grant_usb_title">USB debugging</string>
+    <string name="c05_grant_usb_button">Open Developer options</string>
+    <string name="c05_grant_notification_title">Notification access</string>
+    <string name="c05_grant_notification_why">Lets OSRA check messages from chat apps for safety.</string>
+    <string name="c05_grant_notification_button">Allow notification access</string>
 
     <!-- PairingActivity: "protect this device", setup complete, the checklist and the status screen. -->
     <string name="setup_protect_title">Protect this device · أسرة</string>

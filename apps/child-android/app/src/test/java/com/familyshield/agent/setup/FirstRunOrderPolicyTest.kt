@@ -413,6 +413,16 @@ class FirstRunOrderPolicyTest {
         assertTrue(arStrings.contains("لا شيء مخفي"))
         assertTrue(arStrings.contains("لا يطّلع أهلك إلا على الرسائل الخطرة، لا على كل محادثاتك."))
 
+        assertTrue(arStrings.contains("<string name=\"c05_rule_time_window\">من %1\$s إلى %2\$s</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_rule_blocked_categories_title\">الفئات المحظورة</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_grant_web_filter_button\">Allow web filter</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_grant_location_button\">Allow location all the time</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_grant_battery_button\">Allow background use</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_grant_web_filter_button\">السماح بتصفية المواقع</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_grant_location_button\">السماح بالموقع طوال الوقت</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_grant_battery_button\">السماح بالعمل في الخلفية</string>"))
+        assertTrue(activity.contains("g.c05ButtonRes"))
+
         val c05Keys = listOf(
             "c05_step_badge_1",
             "c05_step_badge_2",

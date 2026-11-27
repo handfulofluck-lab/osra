@@ -1158,14 +1158,19 @@ class PairingActivity : ComponentActivity() {
             intro = if (firstRun) getString(R.string.setup_checklist_intro) else null,
             rows = rows.map { row ->
                 val g = row.grant
+                val c05 = ChildUxFlags.c05FirstRunEnabled
                 ChecklistRowUi(
-                    title = getString(g.titleRes),
-                    whyOneSentence = getString(g.whyRes),
+                    title = getString(if (c05) g.c05TitleRes else g.titleRes),
+                    whyOneSentence = getString(if (c05) g.c05WhyRes else g.whyRes),
                     granted = row.granted,
                     required = g.required,
                     optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
                     oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
-                    grantLabel = getString(R.string.setup_grant_button, getString(g.titleRes)),
+                    grantLabel = if (c05) {
+                        getString(g.c05ButtonRes)
+                    } else {
+                        getString(R.string.setup_grant_button, getString(g.titleRes))
+                    },
                     onGrant = { triggerGrant(g) },
                 )
             },
@@ -1230,12 +1235,17 @@ class PairingActivity : ComponentActivity() {
         } else {
             null
         }
+        val c05 = ChildUxFlags.c05FirstRunEnabled
         val copy = PermissionStepCopy(
             brandLabel = brand,
             progressLine = progressLine(rows),
-            title = getString(g.titleRes),
-            whyOneSentence = getString(g.whyRes),
-            grantButton = getString(R.string.setup_grant_button, getString(g.titleRes)),
+            title = getString(if (c05) g.c05TitleRes else g.titleRes),
+            whyOneSentence = getString(if (c05) g.c05WhyRes else g.whyRes),
+            grantButton = if (c05) {
+                getString(g.c05ButtonRes)
+            } else {
+                getString(R.string.setup_grant_button, getString(g.titleRes))
+            },
             optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
             oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
             restrictedSettingsGuide = restrictedGuide,

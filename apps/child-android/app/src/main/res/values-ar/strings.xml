@@ -146,7 +146,7 @@
     <string name="c05_agreement_body">اقرؤوا هذه القواعد معًا قبل البدء باستخدام هاتفك.</string>
     <string name="c05_agreement_finish">تم، لنبدأ</string>
     <string name="c05_rule_daily_limit_title">الحد اليومي</string>
-    <string name="c05_rule_time_window">%1$s – %2$s</string>
+    <string name="c05_rule_time_window">من %1$s إلى %2$s</string>
     <string name="c05_rule_blocked_categories_title">الفئات المحظورة</string>
     <plurals name="c05_rule_hours">
         <item quantity="zero">%1$s ساعة</item>
@@ -180,6 +180,36 @@
     <string name="c05_cat_ai_chatbots">روبوتات الدردشة بالذكاء الاصطناعي</string>
     <string name="c05_cat_social_media">وسائل التواصل الاجتماعي</string>
     <string name="c05_cat_chat">الدردشة</string>
+    <!-- C-05 (#1208 B7): Arabic Bureau finals for child-facing per-step permission copy (7209156693). -->
+    <string name="c05_grant_accessibility_title">خدمة إمكانية الوصول</string>
+    <string name="c05_grant_accessibility_why">تتيح لتطبيق أسرة حظر التطبيقات وتطبيق الحدود. لا يعمل تطبيق أسرة بدونها.</string>
+    <string name="c05_grant_accessibility_button">السماح بخدمة إمكانية الوصول</string>
+    <string name="c05_grant_usage_title">الوصول إلى بيانات الاستخدام</string>
+    <string name="c05_grant_usage_why">يحسب وقت الشاشة لكل تطبيق لتكون الحدود دقيقة.</string>
+    <string name="c05_grant_usage_button">السماح بالوصول إلى بيانات الاستخدام</string>
+    <string name="c05_grant_overlay_title">العرض فوق التطبيقات الأخرى</string>
+    <string name="c05_grant_overlay_why">يعرض شاشتَي القفل والإيقاف المؤقت فوق التطبيقات الأخرى.</string>
+    <string name="c05_grant_overlay_button">السماح بالعرض فوق التطبيقات</string>
+    <string name="c05_grant_device_admin_title">مسؤول الجهاز</string>
+    <string name="c05_grant_device_admin_why">يمنع إزالة تطبيق أسرة دون موافقة أهلك.</string>
+    <string name="c05_grant_device_admin_button">تفعيل مسؤول الجهاز</string>
+    <string name="c05_grant_web_filter_title">تصفية المواقع</string>
+    <string name="c05_grant_web_filter_why">تحظر المواقع غير الآمنة وتُبقي البحث آمنًا.</string>
+    <string name="c05_grant_web_filter_button">السماح بتصفية المواقع</string>
+    <string name="c05_grant_location_title">الموقع</string>
+    <string name="c05_grant_location_why">يتيح لأهلك معرفة مكان هذا الهاتف، حتى عندما يكون تطبيق أسرة مغلقًا.</string>
+    <string name="c05_grant_location_button">السماح بالموقع طوال الوقت</string>
+    <string name="c05_grant_private_dns_title">DNS الخاص</string>
+    <string name="c05_grant_private_dns_why">إذا ضُبط DNS الخاص على مزوّد محدد، يمكن تجاوز تصفية المواقع. لذا يلزم ضبطه على «تلقائي» أو «إيقاف».</string>
+    <string name="c05_grant_private_dns_button">فتح إعدادات DNS الخاص</string>
+    <string name="c05_grant_battery_title">البطارية</string>
+    <string name="c05_grant_battery_why">تُبقي تطبيق أسرة يعمل في الخلفية، فتصل التغييرات التي يجريها أهلك في وقتها.</string>
+    <string name="c05_grant_battery_button">السماح بالعمل في الخلفية</string>
+    <string name="c05_grant_usb_title">تصحيح USB</string>
+    <string name="c05_grant_usb_button">فتح خيارات المطوّرين</string>
+    <string name="c05_grant_notification_title">الوصول إلى الإشعارات</string>
+    <string name="c05_grant_notification_why">يتيح لتطبيق أسرة فحص الرسائل الواردة من تطبيقات الدردشة حفاظًا على سلامتك.</string>
+    <string name="c05_grant_notification_button">السماح بالوصول إلى الإشعارات</string>
 
     <string name="setup_protect_title">احمِ هذا الجهاز</string>
     <string name="setup_protect_body">في الشاشة التالية، اضغط «تفعيل» ليصبح تطبيق أسرة للأطفال مسؤول الجهاز. بذلك لا يمكن إلغاء تثبيته دون رمز PIN للوالدين، ويمكن قفل الجهاز عن بُعد من تطبيق الوالدين. وبدونه تقتصر الحماية على التنبيه.</string>
