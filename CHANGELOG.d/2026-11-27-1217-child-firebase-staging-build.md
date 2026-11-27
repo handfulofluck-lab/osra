@@ -1,0 +1,1 @@
+- fix(child-android): fail closed when Full release signing lacks `google-services.json` and add verified Child Full staging APK build script + synthetic CI guard (#1217).

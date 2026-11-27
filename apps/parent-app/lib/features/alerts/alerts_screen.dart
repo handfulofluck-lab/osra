@@ -89,7 +89,6 @@ bool _isStaleSocialAggregate(Alert existing, Alert incoming) {
 /// reconciles social aggregate versions by freshness so out-of-order responses never roll
 /// a contact card backwards, and sorts descending by [Alert.effectiveTimestamp] so an alert
 /// updated in place during a throttle window moves to the top of the feed.
-@visibleForTesting
 List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
   final byId = <String, Alert>{
     for (final a in existing) a.id: a,
@@ -97,12 +96,27 @@ List<Alert> mergeAlertsInPlace(List<Alert> existing, Iterable<Alert> incoming) {
   for (final a in incoming) {
     final prev = byId[a.id];
     if (prev != null && _isStaleSocialAggregate(prev, a)) continue;
-    byId[a.id] = a;
+    if (prev != null &&
+        prev.requestedScreenTimeMinutes != null &&
+        prev.acknowledged &&
+        (!a.acknowledged ||
+            (prev.timeRequestResolution != null &&
+                a.timeRequestResolution == null))) {
+      continue;
+    }
+    final earlierReceipt = prev?.timeRequestResolution;
+    final nextReceipt = a.timeRequestResolution;
+    byId[a.id] = earlierReceipt?.decidedByViewer == true &&
+            nextReceipt != null &&
+            nextReceipt.decidedByViewer == null &&
+            earlierReceipt!.resolvedAt == nextReceipt.resolvedAt
+        ? a.copyWith(timeRequestResolution: earlierReceipt)
+        : a;
   }
   final merged = byId.values.toList();
   merged.sort((a, b) {
-    final aPinned = isAccessRequestAlert(a) && !a.acknowledged;
-    final bPinned = isAccessRequestAlert(b) && !b.acknowledged;
+    final aPinned = isParentDecisionAlert(a) && !a.acknowledged;
+    final bPinned = isParentDecisionAlert(b) && !b.acknowledged;
     if (aPinned != bPinned) return aPinned ? -1 : 1;
     final ta = a.effectiveTimestamp;
     final tb = b.effectiveTimestamp;
@@ -269,6 +283,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         'resolvedAt': at.toUtc().toIso8601String(),
       },
     );
+    _mergeRequestResolution(updated);
+  }
+
+  void _mergeRequestResolution(Alert updated) {
     final merged = mergeAlertsInPlace(_items, [updated]);
     setState(() {
       _items
@@ -589,7 +607,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       });
     });
     final pinned = _items
-        .where((alert) => isAccessRequestAlert(alert) && !alert.acknowledged)
+        .where((alert) => isParentDecisionAlert(alert) && !alert.acknowledged)
         .toList();
     // Group the remainder by local day; unanswered requests stay ahead of every day header.
     final groups = <String, List<Alert>>{};
@@ -608,6 +626,15 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
     Widget alertCard(Alert alert) {
       final index = _items.indexOf(alert);
+      final tile = AlertTile(
+        alert: alert,
+        newSinceCount: computeSocialNewSinceCount(alert, seen),
+        onRequestResolved: (resolution, at) =>
+            _requestResolved(alert, resolution, at),
+        onTimeRequestResolved: _mergeRequestResolution,
+        onTap: () => _showDetail(alert),
+      );
+      if (alert.requestedScreenTimeMinutes != null) return tile;
       return Dismissible(
         key: ValueKey(alert.id),
         background: Container(
@@ -617,13 +644,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           child: Icon(Icons.check, color: context.tokens.onOk),
         ),
         onDismissed: (_) => _ack(alert, index),
-        child: AlertTile(
-          alert: alert,
-          newSinceCount: computeSocialNewSinceCount(alert, seen),
-          onRequestResolved: (resolution, at) =>
-              _requestResolved(alert, resolution, at),
-          onTap: () => _showDetail(alert),
-        ),
+        child: tile,
       );
     }
 

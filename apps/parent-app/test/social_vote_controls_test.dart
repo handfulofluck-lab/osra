@@ -287,18 +287,25 @@ void main() {
   });
 
   testWidgets(
-      'compact unset icons are 48dp with a11y labels and selected pill reopens choices',
+      'compact unset buttons show visible labels with 48dp targets and selected pill reopens choices',
       (tester) async {
+    // Mutant: reverting _compactChoice to icon-only IconButton drops the visible
+    // 'Concerning' / 'Not concerning' text labels and breaks the OutlinedButton checks.
     await pumpControls(tester, compact: true);
 
+    expect(find.widgetWithText(OutlinedButton, 'Concerning'), findsOneWidget);
+    expect(
+        find.widgetWithText(OutlinedButton, 'Not concerning'), findsOneWidget);
     for (final label in ['Mark as concerning', 'Mark as not concerning']) {
       final button = find.byTooltip(label);
       expect(button, findsOneWidget);
       expect(find.bySemanticsLabel(label), findsOneWidget);
-      expect(tester.getSize(button), const Size(48, 48));
+      final size = tester.getSize(button);
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
     }
 
-    await tester.tap(find.byTooltip('Mark as concerning'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Concerning'));
     await tester.pumpAndSettle();
     final pill = find.widgetWithText(FilledButton, 'Concerning');
     expect(pill, findsOneWidget);
@@ -309,13 +316,47 @@ void main() {
     expect(find.byTooltip('Mark as concerning'), findsOneWidget);
     expect(
         tester
-            .widget<IconButton>(find.ancestor(
-              of: find.byTooltip('Mark as concerning'),
-              matching: find.byType(IconButton),
-            ))
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Concerning'))
             .onPressed,
         isNull);
     expect(find.byTooltip('Mark as not concerning'), findsOneWidget);
+    expect(
+        find.widgetWithText(OutlinedButton, 'Not concerning'), findsOneWidget);
+  });
+
+  testWidgets(
+      'U100: compact cast vote can be changed by tapping the chosen chip then the other button',
+      (tester) async {
+    // Mutant: disabling _selectedPill.onPressed or failing to reset _editing on
+    // _cast breaks reopening both choices or switching to Not concerning.
+    final api = await pumpControls(tester, compact: true);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Concerning'));
+    await tester.pumpAndSettle();
+    expect(api.calls('POST', '/v1/social/events/event-1/feedback'),
+        hasLength(1));
+    expect(api.calls('POST', '/v1/social/events/event-1/feedback').last.body,
+        {'verdict': 'concerning'});
+    final chosenChip = find.widgetWithText(FilledButton, 'Concerning');
+    expect(chosenChip, findsOneWidget);
+
+    await tester.tap(chosenChip);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Concerning'), findsOneWidget);
+    final notConcerningBtn =
+        find.widgetWithText(OutlinedButton, 'Not concerning');
+    expect(notConcerningBtn, findsOneWidget);
+
+    await tester.tap(notConcerningBtn);
+    await tester.pumpAndSettle();
+    final posts = api.calls('POST', '/v1/social/events/event-1/feedback');
+    expect(posts, hasLength(2));
+    expect(posts.last.body, {'verdict': 'not_concerning'});
+    expect(find.widgetWithText(FilledButton, 'Not concerning'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Concerning'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets(
@@ -439,17 +480,21 @@ void main() {
   testWidgets(
       'Arabic compact controls expose the approved labels, thanks and Undo',
       (tester) async {
+    // Mutant: omitting visible Arabic labels on compact buttons fails the
+    // OutlinedButton 'مقلقة' / 'غير مقلقة' assertions before voting.
     await pumpControls(tester,
         compact: true, locale: const Locale('ar'), width: 320, textScale: 2);
 
+    expect(find.widgetWithText(OutlinedButton, 'مقلقة'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'غير مقلقة'), findsOneWidget);
     expect(find.bySemanticsLabel('اعتبار الرسالة مقلقة'), findsOneWidget);
     expect(find.bySemanticsLabel('اعتبار الرسالة غير مقلقة'), findsOneWidget);
-    await tester.tap(find.byTooltip('اعتبار الرسالة مقلقة'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'مقلقة'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('شكرًا، سُجّلت إجابتك'), findsOneWidget);
     expect(find.text('تراجع'), findsOneWidget);
-    expect(find.text('مقلقة'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'مقلقة'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
