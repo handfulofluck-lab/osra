@@ -3,6 +3,7 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import { signV2 } from "../src/lib/internalAuth.js";
 import { decryptForFamily, encryptForFamily } from "@familyshield/crypto";
 import { localDay, socialRoutes } from "../src/routes/social.js";
+import { DEFAULT_RULESET } from "../src/lib/defaultRules.js";
 import { deviceRoutes } from "../src/routes/devices.js";
 import { reportsRoutes } from "../src/routes/reports.js";
 import { rulesRoutes } from "../src/routes/rules.js";
@@ -158,6 +159,48 @@ describe("social routes", () => {
     } finally {
       await app.close();
     }
+  });
+
+  it("scans the first message with the new child's saved defaults and no prior rules save (#1142)", async () => {
+    // Mutant: DEFAULT_RULESET.socialMonitoring = {} suppresses the staging analyzer and event.
+    const deviceId = "qa-first-message-device";
+    const syntheticKey = randomBytes(32).toString("hex");
+    const text = "A synthetic first message with no local keyword.";
+    vi.stubEnv("OSRA_DEPLOYMENT_SCOPE", "staging");
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_ENABLED", "1");
+    vi.stubEnv("OSRA_STAGING_QA_ANDROID_SOURCES", "1");
+    vi.stubEnv("OSRA_STAGING_QA_DEVICE_ID", deviceId);
+    vi.stubEnv("OSRA_STAGING_QA_CHILD_ID", CHILD.id);
+    vi.stubEnv("OSRA_STAGING_QA_FIXTURE_SHA256", createHash("sha256").update(text).digest("hex"));
+    vi.stubEnv("OSRA_STAGING_QA_EXPIRES_AT", new Date(Date.now() + 600_000).toISOString());
+    vi.stubEnv("OSRA_STAGING_QA_ANALYZER_URL", "http://qa.internal");
+    const analyze = vi.fn(async (_url: URL, options: RequestInit) => {
+      const request = JSON.parse(String(options.body)) as { trace_id: string };
+      return {
+        ok: true,
+        json: async () => ({
+          trace_id: request.trace_id, model: "openai.gpt-oss-20b-1:0", region: "eu-central-1",
+          flagged: true, severity: "warning", categories: { cyberbullying: 0.9 },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", analyze);
+    prismaMock.device.findUnique.mockResolvedValue({ id: deviceId, childId: CHILD.id, internalSecret: syntheticKey });
+    prismaMock.child.findUnique.mockResolvedValue({ ...CHILD, ruleSet: { socialMonitoring: DEFAULT_RULESET.socialMonitoring } });
+    prismaMock.socialEvent.create.mockResolvedValue({ id: "first-message-event" });
+    prismaMock.alert.create.mockResolvedValue({ id: "first-message-alert" });
+    const app = await buildApp(socialRoutes, "/v1/social");
+    const raw = JSON.stringify({ deviceId, items: [scanBody({ deviceId, text, source: "notification" })] });
+    const res = await app.inject({
+      method: "POST", url: "/v1/social/scan",
+      headers: { "content-type": "application/json", ...signV2(syntheticKey, raw) }, payload: raw,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().results[0]).toMatchObject({ flagged: true });
+    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(prismaMock.socialEvent.create).toHaveBeenCalledTimes(1);
+    await app.close();
   });
 
   it("records selected staging providers separately and creates one attributable alert", async () => {
@@ -1219,6 +1262,44 @@ describe("social routes", () => {
     expect(item.ownFeedback).toEqual({ verdict: "concerning", parentDisplayName: "Parent One", firstVotedAt: "2026-09-16T10:00:00Z", lastChangedAt: "2026-09-16T10:02:00Z", changeCount: 0 });
     expect(res.json().items[1].latestFeedback).toBeNull();
     expect(res.json().items[1].ownFeedback).toBeNull();
+    await app.close();
+  });
+
+  it("looks up the exact vault event for the child without substituting a different event", async () => {
+    const app = await buildApp(socialRoutes, "/v1/social");
+    prismaMock.child.findUnique.mockResolvedValue(CHILD);
+    const previewCipher = JSON.stringify(encryptForFamily("A synthetic event preview", VAULT_KEY));
+    const events = [
+      { id: "se-newer", childId: CHILD.id, createdAt: "2026-09-16T10:00:00Z" },
+      { id: "se-other-child", childId: "child-2", createdAt: "2026-09-16T09:30:00Z" },
+      { id: "se-target", childId: CHILD.id, createdAt: "2026-09-16T09:00:00Z" },
+    ].map((event) => ({ ...event, app: "whatsapp", contact: "c-1", severity: "warning", previewCipher, concernTypes: [] }));
+    prismaMock.socialEvent.findMany.mockImplementation(async ({ where, take }) => events
+      .filter((event) => (where.childId === undefined || event.childId === where.childId)
+        && (where.id === undefined || event.id === where.id))
+      .slice(0, take));
+
+    const get = (eventId: string) => app.inject({
+      method: "GET",
+      url: `/v1/social/events?childId=${CHILD.id}&eventId=${eventId}&limit=1`,
+      headers: authHeader(app),
+    });
+
+    const target = await get("se-target");
+    expect(target.statusCode).toBe(200);
+    expect(target.json().items.map((event: { id: string }) => event.id)).toEqual(["se-target"]);
+    expect(prismaMock.socialEvent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { childId: CHILD.id, id: "se-target" },
+      take: 1,
+    }));
+
+    for (const eventId of ["se-other-child", "se-missing"]) {
+      const response = await get(eventId);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ items: [] });
+    }
+
+    expect((await get("")).statusCode).toBe(400);
     await app.close();
   });
 

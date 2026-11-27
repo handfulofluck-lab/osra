@@ -66,7 +66,7 @@ void main() {
         alreadyShown: const {},
       );
 
-      expect(plan.toShow.map((a) => a.id), ['a', 'b', 'c']);
+      expect(plan.toShow.map((delivery) => delivery.alert.id), ['a', 'b', 'c']);
       expect(plan.remember, ['a', 'b', 'c']);
     });
 
@@ -76,20 +76,20 @@ void main() {
         alreadyShown: const {},
       );
 
-      expect(plan.toShow.map((a) => a.id), ['new']);
+      expect(plan.toShow.map((delivery) => delivery.alert.id), ['new']);
     });
 
     test('never shows the same alert twice across wakes', () {
       final plan = planNotifications(alerts: [alert('a'), alert('b')], alreadyShown: const {'a'});
 
-      expect(plan.toShow.map((a) => a.id), ['b']);
+      expect(plan.toShow.map((delivery) => delivery.alert.id), ['b']);
       expect(plan.remember, ['b']);
     });
 
     test('drops a duplicate id inside one page', () {
       final plan = planNotifications(alerts: [alert('a'), alert('a')], alreadyShown: const {});
 
-      expect(plan.toShow.map((a) => a.id), ['a']);
+      expect(plan.toShow.map((delivery) => delivery.alert.id), ['a']);
     });
 
     test('keeps the newest when the backlog is larger than the cap', () {
@@ -101,7 +101,7 @@ void main() {
         max: 3,
       );
 
-      expect(plan.toShow.map((a) => a.id), ['a5', 'a6', 'a7']);
+      expect(plan.toShow.map((delivery) => delivery.alert.id), ['a5', 'a6', 'a7']);
       // …and every fresh id is remembered, not only the three shown, so the
       // dropped backlog cannot dribble back out on a later wake (#395 review).
       expect(plan.remember, ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']);
@@ -113,7 +113,7 @@ void main() {
         alreadyShown: const {},
       );
 
-      expect(plan.toShow.map((a) => a.id), ['no-date', 'dated']);
+      expect(plan.toShow.map((delivery) => delivery.alert.id), ['no-date', 'dated']);
     });
 
     test('is empty when there is nothing new, and remembers nothing', () {

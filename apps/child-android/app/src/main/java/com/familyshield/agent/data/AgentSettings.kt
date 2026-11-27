@@ -46,6 +46,7 @@ class AgentSettings @Inject constructor(
     )
 
     @Volatile private var deviceIdCache: String? = null
+    @Volatile private var deviceIdLoaded: Boolean = false
     @Volatile private var childIdCache: String? = null
     @Volatile private var tokenCache: String? = null
     @Volatile private var hmacCache: String? = null
@@ -60,7 +61,23 @@ class AgentSettings @Inject constructor(
     @Volatile private var firstRevokedLoaded: Boolean = false
 
     /** Returns the enrolled device id, or null when not yet provisioned. */
-    suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also { deviceIdCache = it }
+    suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also {
+        deviceIdCache = it
+        deviceIdLoaded = true
+    }
+
+    /** Synchronous snapshot of the enrolled device id (loaded once per process, matching [baseUrlSync]). */
+    fun deviceIdSync(): String? {
+        if (!deviceIdLoaded) {
+            synchronized(this) {
+                if (!deviceIdLoaded) {
+                    deviceIdCache = runBlocking { read(KEY_DEVICE_ID) }
+                    deviceIdLoaded = true
+                }
+            }
+        }
+        return deviceIdCache
+    }
 
     /** Returns the enrolled child id, or null when not yet provisioned. */
     suspend fun childId(): String? = read(KEY_CHILD_ID).also { childIdCache = it }
@@ -252,6 +269,8 @@ class AgentSettings @Inject constructor(
     suspend fun savePairing(baseUrl: String, deviceJwt: String, deviceId: String, childId: String, hmacSecret: String? = null): Boolean {
         secure.reopenIfUnreadable()
         if (!secureWriter.writePairing(SECURE_DEVICE_TOKEN, deviceJwt, SECURE_HMAC_SECRET, hmacSecret)) return false
+        // osra-security#80: a fresh pairing saved on this build is never an upgrade from an earlier build.
+        com.familyshield.agent.setup.SetupCompletionStore.markUpgradeMigrated(context)
         store.edit {
             it[KEY_BASE_URL] = baseUrl
             it.remove(KEY_DEVICE_TOKEN)
@@ -262,6 +281,7 @@ class AgentSettings @Inject constructor(
         baseUrlCache = baseUrl
         tokenCache = deviceJwt
         deviceIdCache = deviceId
+        deviceIdLoaded = true
         childIdCache = childId
         if (hmacSecret != null) hmacCache = hmacSecret
         baseUrlLoaded = true
@@ -299,6 +319,7 @@ class AgentSettings @Inject constructor(
         // next blocked app reports their count — across enrolments, possibly across families.
         com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
         com.familyshield.agent.enforcement.AttemptCounter.clear(context)
+        com.familyshield.agent.setup.MiuiBackgroundPopupPolicy.clearParentConfirmation(context)
         // osra-security#24 / #792 (Antigravity B2): and a new enrolment inherits no wrong-PIN debt. Left
         // behind, eight tries from the previous PIN would refuse the new one during the old window and lock
         // for an hour on the first typo afterwards.
@@ -306,8 +327,11 @@ class AgentSettings @Inject constructor(
         baseUrlCache = null
         tokenCache = null
         deviceIdCache = null
+        deviceIdLoaded = true
         childIdCache = null
         tokenLoaded = true // loaded, and known to be null
+        com.familyshield.agent.setup.SetupCompletionStore.clear(context)
+        com.familyshield.agent.ui.request.AskParentActivity.clearPendingRequest(context)
         com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
     }
 

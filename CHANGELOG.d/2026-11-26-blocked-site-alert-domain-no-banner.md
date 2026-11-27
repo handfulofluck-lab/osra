@@ -1,0 +1,3 @@
+- **Blocked-site alert detail domain & rules-sync banner (#1128):**
+  - `formatGeneralAlertBody` in `apps/parent-app/lib/features/alerts/alert_detail_screen.dart` now handles `web_threat` alerts: when `metadata['domain']` is present, it displays the domain isolated LTR (`Site: <domain>` / `الموقع: <domain>`); when absent (`SITE_NAMES_ENABLED` off), it displays a clear localized notice that site names aren't collected yet.
+  - Removed `RulesBehindBanner` from alert detail views (`alert_detail_screen.dart` and `alerts_screen.dart` dialog) so a rules-sync banner never appears on an alert.

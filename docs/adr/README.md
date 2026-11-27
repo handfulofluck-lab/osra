@@ -52,6 +52,10 @@ Status is one of `accepted`, `superseded by ADR-XXXX`, `deprecated`, or `propose
 | [0043](0043-bounded-mac-metadata-access.md) | Separate Mac metadata principal, literal action/resource scope, deny ceilings, fixed authorization deadline and login-Keychain credential process; independent private review and runtime evidence precede any use | proposed implementation record |
 | [0044](0044-parent-feedback-on-flagged-messages.md) | Parent votes on flagged messages stay per-parent and editable, tied to the vault event with cascading deletion and counts-only, sub-five-suppressed evaluation; no message text or ids leave for analytics | accepted |
 | [0045](0045-parent-feedback-ownership-and-conflict-writes.md) | Event reads distinguish `ownFeedback` from family `latestFeedback`; conditional conflict writes preserve different racing verdicts, local-only hits use rules metadata, and only already-orphaned events are deleted before the child FK | accepted |
+| [0046](0046-consented-staging-own-model-scoring.md) | Explicit, consented staging own-model routing, atomic quotas and private collector rollout checks | proposed |
+| [0047](0047-server-owned-setup-window.md) | Initial Android setup is server-owned: exact grant-linked tamper events are audit-only for at most 30 minutes, authenticated capabilities complete setup once, and data-clear/reinstall stays visible | accepted |
+| [0048](0048-access-request-alerts.md) | Access requests use additive app metadata and existing rules + ACK: Allow writes `appRules: allow` before ACK, Keep blocked ACKs only, routines/Pause still apply; no new request backend | accepted |
+| [0049](0049-time-request-resolution.md) | Resolve a daily-limit request once by alert ID, with the grant, durable commands, decision receipt and acknowledgement in one database transaction (#1179) | accepted |
 
 ## Writing a new ADR
 

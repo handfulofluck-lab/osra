@@ -786,6 +786,62 @@ console.log("\n── G2. location & rules authorization ──");
   const appsAfterClear = await call("GET", `/v1/devices/${d2.deviceId}/apps`, { token: tokenA });
   check("G29 installed apps: a later report replaces the list and an empty report clears it", appsReplace.status === 202 && appsAfterReplace.data?.count === 1 && appsAfterReplace.data?.apps?.[0]?.packageId === "com.example.only" && appsClear.status === 202 && appsAfterClear.data?.count === 0, `replace=${appsReplace.status} count=${appsAfterReplace.data?.count} clear=${appsClear.status} after=${appsAfterClear.data?.count}`);
 
+// #1127 / ADR-0047: the server, not the phone, decides the bounded setup window. A grant-matched
+// tamper is persisted quietly, an unrelated SOS remains visible, and authenticated all-ready
+// telemetry completes setup once. The parent list is the same surface a family would read.
+// osra-security#82 / #1230: a Full build requires notification access as its eighth grant.
+const setupCapabilities = (accessibility, notificationListener = "granted") => ({
+  client: { app: "child-android", version: "0.2.0", build: 42, flavour: "full" },
+  grants: {
+    accessibility,
+    usage_access: "granted",
+    overlay: "granted",
+    device_admin: "granted",
+    web_filter: "granted",
+    location: "granted",
+    private_dns: "granted",
+    notification_listener: notificationListener,
+  },
+  features: {},
+});
+const setupMissingReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
+  token: d2.token,
+  body: { capabilities: setupCapabilities("missing") },
+});
+const setupTamperBody = JSON.stringify({
+  childId: kidA2,
+  deviceId: d2.deviceId,
+  severity: "critical",
+  category: "tamper",
+  title: "qa setup accessibility off",
+  body: "synthetic setup grant event",
+  metadata: { type: "accessibility_off" },
+  dedupeKey: `qa-1127|${stamp}`,
+});
+const setupHeld = await call("POST", "/v1/alerts/internal", { rawBody: setupTamperBody, headers: signV2(d2.secret, setupTamperBody) });
+const setupHeldList = await call("GET", `/v1/alerts?childId=${kidA2}&category=tamper`, { token: tokenA });
+const setupHeldHidden = !(setupHeldList.data?.items ?? []).some((row) => row.metadata?.type === "accessibility_off");
+check("G30 initial setup grant-matched tamper is audit-only, never parent-listed", setupMissingReport.status === 202 && setupHeld.status === 201 && setupHeld.data?.alert?.heldDuringSetup === true && setupHeldHidden, `telemetry=${setupMissingReport.status} alert=${setupHeld.status} held=${setupHeld.data?.alert?.heldDuringSetup} hidden=${setupHeldHidden}`);
+const setupSosBody = JSON.stringify({ childId: kidA2, deviceId: d2.deviceId, severity: "critical", category: "sos", title: "qa setup SOS control", body: "visible control" });
+const setupSos = await call("POST", "/v1/alerts/internal", { rawBody: setupSosBody, headers: signV2(d2.secret, setupSosBody) });
+const setupSosList = await call("GET", `/v1/alerts?childId=${kidA2}&category=sos`, { token: tokenA });
+check("G31 SOS remains visible during the same setup window", setupSos.status === 201 && (setupSosList.data?.items ?? []).some((row) => row.category === "sos" && row.heldDuringSetup === false), `alert=${setupSos.status} listed=${setupSosList.data?.items?.length}`);
+// The seven older grants alone no longer complete a Full build: it stays open until notification access.
+const setupSevenReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
+  token: d2.token,
+  body: { capabilities: setupCapabilities("granted", "missing") },
+});
+const setupSevenDevice = await call("GET", `/v1/devices/${d2.deviceId}`, { token: tokenA });
+check("G32a a Full report with seven grants but no notification access stays incomplete", setupSevenReport.status === 202 && setupSevenDevice.status === 200 && setupSevenDevice.data?.device != null && setupSevenDevice.data.device.setupCompletedAt === null, `telemetry=${setupSevenReport.status} read=${setupSevenDevice.status} completed=${setupSevenDevice.data?.device?.setupCompletedAt}`);
+const setupCompleteReport = await call("POST", `/v1/devices/${d2.deviceId}/telemetry`, {
+  token: d2.token,
+  body: { capabilities: setupCapabilities("granted") },
+});
+const setupCompletedDevice = await call("GET", `/v1/devices/${d2.deviceId}`, { token: tokenA });
+const setupCompleteList = await call("GET", `/v1/alerts?childId=${kidA2}&category=tamper`, { token: tokenA });
+const setupCompleteRows = (setupCompleteList.data?.items ?? []).filter((row) => row.metadata?.type === "setup_complete");
+check("G32 authenticated all-ready telemetry completes setup with one protected alert", setupCompleteReport.status === 202 && !!setupCompletedDevice.data?.device?.setupCompletedAt && setupCompleteRows.length === 1, `telemetry=${setupCompleteReport.status} completed=${setupCompletedDevice.data?.device?.setupCompletedAt} protected=${setupCompleteRows.length}`);
+
   // #319 (roadmap 1.5). `POST /:id/push-token` is the device's own registration path and nothing
   // else: Claude's decision (2026-10-23) keeps the path the Android client already calls and makes it
   // device-only — `requireFamily` + role `device` + `requireOwnDevice` — so the parent capability that

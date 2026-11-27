@@ -41,6 +41,13 @@ export interface RaiseAlertInput {
    * #225 event key, which keeps its duplicate-is-a-no-op rule.
    */
   attemptCount?: number | null;
+  /** ADR-0047: server-derived only. Persist for security audit without realtime, push or parent reads. */
+  heldDuringSetup?: boolean;
+  /**
+   * #1139: write and publish the row but do not push. The social window uses it once the (child, app)
+   * first-N budget is spent; its summary sweep pushes later.
+   */
+  skipPush?: boolean;
 }
 
 export type KeyedRaiseAlertInput = Omit<RaiseAlertInput, "bodyKey" | "params"> & {
@@ -59,6 +66,9 @@ const ALERT_BODY_REQUIRED_PARAMS = {
   // channel is a real case, and the English body already copes with an empty one. A required param here would
   // mean no alert at all for that video (#718 review).
   alertBodyYouTubeFlagged: [],
+  alertBodySetupCompleted: ["childName"],
+  alertBodySetupIncomplete: ["childName", "count"],
+  alertBodyDataCleared: ["model"],
 } as const satisfies Record<AlertBodyKey, readonly string[]>;
 
 /**
@@ -147,7 +157,9 @@ async function applyAttemptCount(existing: Alert, input: RaiseAlertInput): Promi
   if (count === 0) return existing;
   const alert = await prisma.alert.findUnique({ where: { id: existing.id } });
   if (!alert) return existing;
-  await publishFamilyEvent(input.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+  if (!alert.heldDuringSetup) {
+    await publishFamilyEvent(input.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+  }
   return alert;
 }
 
@@ -181,6 +193,7 @@ export async function raiseAlertOnce(
         metadata: (normalizedInput.metadata ?? {}) as Prisma.InputJsonValue,
         dedupeKey: dedupeKey ?? undefined,
         attemptCount: normalizedInput.attemptCount ?? 1,
+        heldDuringSetup: normalizedInput.heldDuringSetup ?? false,
       },
     });
   } catch (e) {
@@ -191,7 +204,10 @@ export async function raiseAlertOnce(
     throw e;
   }
 
+  if (alert?.heldDuringSetup) return { alert, deduplicated: false };
+
   await publishFamilyEvent(normalizedInput.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+  if (normalizedInput.skipPush) return { alert, deduplicated: false };
 
   let childName = normalizedInput.childName;
   if (!childName) {
@@ -203,6 +219,70 @@ export async function raiseAlertOnce(
   await notifyParentsOfAlert(normalizedInput.familyId, alert, childName);
   return { alert, deduplicated: false };
 }
+
+/** The alert table on either the shared client or an interactive transaction's client. */
+export type AlertStore = Pick<Prisma.TransactionClient, "alert">;
+
+export interface StoredAlert {
+  alert: Alert;
+  deduplicated: boolean;
+  /** Publish and push for a new row. The caller runs it only after its transaction has committed. */
+  dispatch: () => Promise<void>;
+}
+
+const NOTHING_TO_DISPATCH = async () => undefined;
+
+/** Publish + push for a newly written row, with the same rules as raiseAlertOnce. */
+export function newAlertDispatch(input: RaiseAlertInput, alert: Alert): () => Promise<void> {
+  if (alert.heldDuringSetup) return NOTHING_TO_DISPATCH;
+  return async () => {
+    await publishFamilyEvent(input.familyId, { type: "alert", payload: alert, ts: new Date().toISOString() });
+    if (input.skipPush) return;
+    let childName = input.childName;
+    if (!childName) {
+      const child = await prisma.child.findUnique({ where: { id: input.childId }, select: { displayName: true } });
+      childName = child?.displayName;
+    }
+    await notifyParentsOfAlert(input.familyId, alert, childName);
+  };
+}
+
+/**
+ * osra-security#87: the durable half of raiseAlertOnce, on the client the caller passes (a transaction's
+ * client when the write must commit or roll back with a lock). Side effects are returned, not run, so a
+ * rolled-back write can never have published or paged. Idempotency is the dedupe key: a duplicate returns
+ * the existing row with nothing to dispatch. A unique violation is rethrown (inside a Postgres transaction
+ * it aborts the transaction); callers that hold the row lock never race on their own key. Aggregate counts
+ * (#227) are not supported here.
+ */
+export async function storeAlertOnce(input: RaiseAlertInput, db: AlertStore): Promise<StoredAlert> {
+  if (input.attemptCount != null) throw new Error("storeAlertOnce does not apply aggregate counts");
+  const normalizedInput = { ...input, metadata: metadataWithAlertBody(input) };
+  const dedupeKey = normalizedInput.dedupeKey ?? null;
+  if (dedupeKey) {
+    const existing = await db.alert.findFirst({
+      where: { deviceId: normalizedInput.deviceId ?? null, category: normalizedInput.category, dedupeKey },
+    });
+    if (existing) return { alert: existing, deduplicated: true, dispatch: NOTHING_TO_DISPATCH };
+  }
+  const alert = await db.alert.create({
+    data: {
+      childId: normalizedInput.childId,
+      deviceId: normalizedInput.deviceId ?? undefined,
+      severity: normalizedInput.severity,
+      category: normalizedInput.category,
+      title: normalizedInput.title,
+      body: normalizedInput.body,
+      metadata: (normalizedInput.metadata ?? {}) as Prisma.InputJsonValue,
+      dedupeKey: dedupeKey ?? undefined,
+      attemptCount: 1,
+      heldDuringSetup: normalizedInput.heldDuringSetup ?? false,
+    },
+  });
+  return { alert, deduplicated: false, dispatch: newAlertDispatch(normalizedInput, alert) };
+}
+
+export { isUniqueViolation };
 
 /** Backwards-compatible wrapper for producers that do not use a dedupe key. */
 export async function raiseAlert(input: KeyedRaiseAlertInput) {

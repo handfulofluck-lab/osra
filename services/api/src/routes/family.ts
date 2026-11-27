@@ -16,6 +16,7 @@ import { isValidTimeZone, utcOffsetMinutes } from "../lib/digestSchedule.js";
 import { ReauthSchema, checkReauth, consentHeldElsewhere, eraseFamilyData } from "../lib/accountDeletion.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 import { entitlement, storeAccountIdFor } from "../lib/entitlement.js";
+import { privacySummary } from "../lib/privacySummary.js";
 
 const ConsentCreateSchema = z.object({
   method: z.enum(["sms_plus", "kba", "face_match", "credit_card"]),
@@ -60,6 +61,12 @@ export async function familyRoutes(app: FastifyInstance) {
     if (parent.role !== "owner") return plan;
     return { ...plan, store_account_id: await storeAccountIdFor(parent.familyId) };
   });
+
+  /**
+   * P-23: what is kept and for how long, and where it is stored, read from the same settings the cleanup
+   * job applies. Any parent of the family may read it; it holds no family data.
+   */
+  app.get("/privacy", { preHandler: requireParent }, async () => privacySummary());
 
   /** Return the authenticated parent's family envelope: family, parents, children (with devices) and a flat device list. */
   app.get("/me", { preHandler: requireParent }, async (req, reply) => {
@@ -389,7 +396,7 @@ export async function familyRoutes(app: FastifyInstance) {
             ruleSet: true,
             consents: true,
             geofences: true,
-            alerts: true,
+            alerts: { where: { heldDuringSetup: false } },
             pairingDecisions: true,
           },
         },

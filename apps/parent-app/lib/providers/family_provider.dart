@@ -12,6 +12,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api/models.dart';
 import 'auth_provider.dart';
+import 'social_provider.dart';
 import 'world_class_provider.dart';
 
 import '../api/permission_errors.dart';
@@ -489,11 +490,12 @@ final locationProvider = FutureProvider.family<LocationPing?, String>((ref, chil
 });
 
 /// Recent durable commands for one device (`GET /v1/devices/:id/commands/history`,
-/// newest first). The parent-facing counterpart of the agent's drain endpoint:
-/// it never consumes anything, so polling it is safe.
+/// newest first, up to the server's 100-row `listDeviceCommands` cap). The
+/// parent-facing counterpart of the agent's drain endpoint: it never consumes
+/// anything, so polling it is safe.
 final deviceCommandHistoryProvider = FutureProvider.family<List<DeviceCommand>, String>((ref, deviceId) async {
   final api = ref.watch(apiClientProvider);
-  final res = await api.raw.get('/v1/devices/$deviceId/commands/history', queryParameters: {'limit': 20});
+  final res = await api.raw.get('/v1/devices/$deviceId/commands/history', queryParameters: {'limit': 100});
   final data = res.data is Map ? res.data as Map : const <String, dynamic>{};
   final raw = data['items'];
   return [
@@ -530,6 +532,7 @@ abstract class RealtimeEffects {
   void invalidateAlerts();
   void invalidateUnacknowledgedCount();
   void invalidateFamily();
+  void invalidateSocialEvents(String childId);
   void invalidateLocation(String childId);
 
   /// Issue #253: an open consent screen watches `consentStatusProvider(childId)`, which nothing else
@@ -571,6 +574,10 @@ class RiverpodRealtimeEffects implements RealtimeEffects {
   void invalidateFamily() => _ref.invalidate(familyProvider);
 
   @override
+  void invalidateSocialEvents(String childId) =>
+      _ref.invalidate(socialEventsProvider(childId));
+
+  @override
   void invalidateLocation(String childId) => _ref.invalidate(locationProvider(childId));
 
   @override
@@ -595,6 +602,13 @@ void applyRealtimeMessage(RealtimeEffects effects, Map<String, dynamic> msg) {
       effects.invalidateAlerts();
       effects.invalidateUnacknowledgedCount();
       effects.invalidateFamily();
+      final payload = msg['payload'];
+      if (payload case {
+        'childId': final String childId,
+        'category': 'social_concern' || 'gaming_chat',
+      } when childId.isNotEmpty) {
+        effects.invalidateSocialEvents(childId);
+      }
     case 'location':
       final payload = msg['payload'];
       if (payload is Map && payload['childId'] != null) {

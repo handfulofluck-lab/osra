@@ -43,7 +43,12 @@ public final class ScreenTimeController {
         let store = ManagedSettingsStore(named: Self.rulesStoreName)
         let tokens = TokenResolver.applicationTokens(forBundleIdentifiers: packageIds)
         store.shield.applications = tokens.isEmpty ? nil : tokens
-        store.application.blockedApplications = Set(packageIds.map { Application(bundleIdentifier: $0) })
+        // #1090: hide only the apps no shield can cover. `blockedApplications` removes the icon from the Home Screen
+        // and the App Library, so hiding a shielded app moves it instead of blocking it.
+        let hidden = BlockedAppHiding.hiddenBundleIdentifiers(packageIds) {
+            Application(bundleIdentifier: $0).token != nil
+        }
+        store.application.blockedApplications = Set(hidden.map { Application(bundleIdentifier: $0) })
     }
 
     /// ADR-0037: shields exactly the apps, categories and websites of the blocked groups, nothing else. These are

@@ -11,6 +11,8 @@ import '../api/permission_errors.dart';
 import '../api/push_api.dart';
 import '../push/push_registration.dart';
 import '../push/fcm_push_token_source.dart';
+import '../push/notification_permission_service.dart'
+    show notificationPermissionPlatformProvider;
 import 'server_provider.dart';
 
 /// Injectable [ApiClient] source; overridden in tests with a fake.
@@ -98,7 +100,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
   PushRegistration get _pushRegistration =>
       _push ??= PushRegistration(api: PushApi(_api), source: defaultPushSource());
 
+  /// Synchronises push token registration when the signed-in parent has
+  /// finished onboarding or granted notifications in system settings (#1173).
+  Future<PushRegistrationOutcome> syncPushRegistration({
+    String? refreshedToken,
+  }) async {
+    if (_disposed || _loggingOut || !state.isAuthenticated) {
+      return PushRegistrationOutcome.unavailable;
+    }
+    return _pushRegistration.ensureRegistered(refreshedToken: refreshedToken);
+  }
+
   bool _disposed = false;
+  bool _loggingOut = false;
 
   @override
   void dispose() {
@@ -202,12 +216,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final res = await _api.raw.get('/v1/family/me');
       final overview = FamilyOverview.fromJson(Map<String, dynamic>.from(res.data as Map));
+      _loggingOut = false;
       _setState(AuthState(isAuthenticated: true, parent: overview.parent, family: overview.family));
-      // Fire-and-forget, deliberately: a push token is never a precondition for
-      // being signed in, and `register()` returns an outcome instead of throwing
-      // on every path. With no push SDK in the build it reports `unavailable`
-      // before the permission prompt, so it issues no request.
-      unawaited(_pushRegistration.register());
+      // #1173: Notification permission prompting and token registration are
+      // coordinated by NotificationPermissionController once the parent is
+      // signed in and past first-run family setup (never during onboarding or
+      // cold start before sign-in), and re-checked on AppLifecycleState.resumed.
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
         try {
@@ -224,20 +238,58 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Deletes the stored tokens and resets to the logged-out state.
   Future<void> logout() async {
-    // Before logout: `/v1/auth/logout` revokes the access token issued with this
-    // refresh token (`services/api/src/routes/auth.ts:1442`, ADR-0014), and
-    // `DELETE /v1/me/push-token` authenticates with it — so the removal has to
-    // go first or it is a 401 and the row survives on a signed-out phone.
+    _loggingOut = true;
     try {
-      await _push?.unregister();
+      // Before logout: `/v1/auth/logout` revokes the access token issued with this
+      // refresh token (`services/api/src/routes/auth.ts:1442`, ADR-0014), and
+      // `DELETE /v1/me/push-token` authenticates with it — so the removal has to
+      // go first or it is a 401 and the row survives on a signed-out phone.
+      try {
+        await _push?.unregister();
+      } catch (_) {}
+      // Handoff item 2: revoke the refresh token server-side before clearing locally.
+      try {
+        final refresh = await _storage.read(key: 'refresh');
+        if (refresh != null) {
+          await _api.raw.post('/v1/auth/logout', data: {'refreshToken': refresh});
+        }
+      } catch (_) {}
+      try {
+        await _storage.delete(key: 'jwt');
+        await _storage.delete(key: 'refresh');
+      } catch (_) {}
+      _setState(const AuthState());
+    } finally {
+      _loggingOut = false;
+    }
+  }
+
+  /// Account-wide sign-out (P-22). **Same ordering rule as [logout]**, which Codex caught on osra-security#92:
+  /// the push registration authenticates with the session this call is about to revoke, so it must be removed
+  /// first — after the revocation a removal is a 401 and the row survives on a signed-out phone, which
+  /// means that phone keeps receiving the family notifications.
+  Future<void> logoutEverywhere() async {
+    var pushRemoved = false;
+    try {
+      // Claude / Codex on osra-security#92 (7216597155): `unregister()` returns whether it actually removed
+      // a row. Read it instead of assuming: a session that never registered a token has nothing to put back,
+      // and re-registering one after a failed revoke would create a row the parent never had.
+      pushRemoved = await _push?.unregister() ?? false;
     } catch (_) {}
-    // Handoff item 2: revoke the refresh token server-side before clearing locally.
+    // A failed revocation must NOT clear the phone: the parent still holds a live session and has to be
+    // able to retry, so the exception is left to propagate and nothing is deleted here (Claude, 11:36).
+    // The push row was already retired, so it is put back before the failure is rethrown — otherwise a parent
+    // who could not sign out has also silently stopped receiving their family's alerts (osra-security#92).
     try {
-      final refresh = await _storage.read(key: 'refresh');
-      if (refresh != null) {
-        await _api.raw.post('/v1/auth/logout', data: {'refreshToken': refresh});
+      await _api.raw.post('/v1/auth/logout-all');
+    } catch (e) {
+      if (pushRemoved) {
+        try {
+          await _push?.register();
+        } catch (_) {}
       }
-    } catch (_) {}
+      rethrow;
+    }
     try {
       await _storage.delete(key: 'jwt');
       await _storage.delete(key: 'refresh');
@@ -278,10 +330,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
 }
 
 /// Global auth state; bootstrap() runs at creation to restore a saved session.
+/// Injectable [PushTokenSource] for [authProvider]; overridden in tests (#1173).
+final pushTokenSourceProvider = Provider<PushTokenSource>(
+  (_) => defaultPushSource(),
+);
+
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  final api = ref.watch(apiClientProvider);
   final notifier = AuthNotifier(
-    ref.watch(apiClientProvider),
+    api,
     serverUrl: ref.watch(serverUrlProvider.notifier),
+    push: PushRegistration(
+      api: PushApi(api),
+      source: ref.watch(pushTokenSourceProvider),
+      canPostRefreshedToken: () async =>
+          (await ref
+              .read(notificationPermissionPlatformProvider)
+              .areNotificationsEnabled()) ==
+          true,
+    ),
   );
   notifier.bootstrap();
   return notifier;

@@ -3,9 +3,12 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
-import { raiseAlertOnce } from "../lib/alerts.js";
+import { raiseAlertOnce, type RaiseAlertInput } from "../lib/alerts.js";
+import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
+import { AWAIT_REPORT, raisePhoneSetupNotice } from "../lib/deviceSetupTransitions.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
 import { assertProcessingAllowed } from "../lib/consent.js";
+import { resolveTimeRequest, timeDecisionSchema, timeRequestMinutes } from "../lib/timeRequests.js";
 import { guardianPermissions, requireFamily, requireGuardianRead, requireParent, requirePermission } from "../middleware/requireFamily.js";
 
 const ListQuerySchema = z.object({
@@ -64,6 +67,7 @@ export async function alertsRoutes(app: FastifyInstance) {
     const query = parsed.data;
     const where = {
       child: { familyId: user.familyId },
+      heldDuringSetup: false,
       ...(query.childId ? { childId: query.childId } : {}),
       ...(query.severity ? { severity: query.severity } : {}),
       ...(query.category ? { category: query.category } : {}),
@@ -75,6 +79,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "desc" },
       skip: (query.page - 1) * query.limit,
       take: query.limit,
+      include: { timeRequestResolution: true },
     });
     // Issue #672 review (Fable B1, ADR-0014 amendment decision 3): a guardian may be given `alerts`
     // without `location`. The alert is theirs to read; the child's coordinates are not, so the five keys
@@ -86,13 +91,45 @@ export async function alertsRoutes(app: FastifyInstance) {
   });
 
   /** Acknowledge an alert. */
-  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req) => {
+  app.post("/:id/ack", { preHandler: [requireParent, requirePermission("alerts"), requireFamily({ model: "alert" })] }, async (req, reply) => {
+    const target = (req as unknown as { alert?: { heldDuringSetup?: boolean; category: string; metadata: unknown } }).alert;
+    if (target?.heldDuringSetup) return reply.code(404).send({ error: "not_found" });
+    if (target && timeRequestMinutes(target) !== null) {
+      return reply.code(409).send({ error: "time_request_requires_decision" });
+    }
     const { id } = req.params as { id: string };
     const alert = await prisma.alert.update({ where: { id }, data: { acknowledged: true } });
     // Issue #672 review (Claude's B1b): the ack returns the row, so a guardian holding `alerts` without
     // `location` would read the place here even though the list withholds it. Same rule, same helper.
     const perms = await guardianPermissions(req);
     return { alert: perms !== null && !perms.includes("location") ? withoutAlertLocation(alert) : alert };
+  });
+
+  /** Resolve a daily-limit request exactly once, with the bonus grant and acknowledgement together. */
+  app.post("/:id/time-decision", {
+    preHandler: [requireParent, requirePermission("alerts"), requirePermission("rules"), requireFamily({ model: "alert" })],
+  }, async (req, reply) => {
+    const decision = timeDecisionSchema.safeParse(req.body);
+    if (!decision.success) return reply.code(400).send({ error: "invalid_time_request_decision" });
+
+    const { id } = req.params as { id: string };
+    const { sub, familyId } = req.user as AuthedUser & { sub: string };
+    const result = await resolveTimeRequest(id, sub, familyId, decision.data);
+    switch (result.status) {
+      case "not_found":
+        return reply.code(404).send({ error: "not_found" });
+      case "forbidden":
+        return reply.code(403).send({ error: "forbidden" });
+      case "consent_required":
+        return reply.code(428).send({
+          error: result.reason ?? "parental_consent_required",
+          ...(result.jurisdiction ? { jurisdiction: result.jurisdiction } : {}),
+        });
+      case "already_resolved":
+        return reply.code(409).send({ error: "time_request_already_resolved", resolution: result.resolution });
+      case "resolved":
+        return { resolution: result.resolution };
+    }
   });
 
   /** HMAC-signed endpoint for device/AI-originated alerts (ai-engine, child agents). */
@@ -109,8 +146,15 @@ export async function alertsRoutes(app: FastifyInstance) {
     const parsed = InternalAlertSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { childId, deviceId, severity, category, title, body, dedupeKey, attemptCount } = parsed.data;
-    // Provider attribution belongs to the server's validated analyzer reply.
-    const { providerOutcomes: _reserved, ...metadata } = parsed.data.metadata ?? {};
+    // Provider attribution and delivery identity are assigned by the server.
+    const {
+      providerOutcomes: _providerOutcomes,
+      pushDeliveryId: _pushDeliveryId,
+      pushDeliverySeq: _pushDeliverySeq,
+      pushDeliveries: _pushDeliveries,
+      summaryGroupedInto: _summaryGroupedInto,
+      ...metadata
+    } = parsed.data.metadata ?? {};
 
     if (auth.device) {
       // Revocation is not checked here: sessionGuard refuses device JWTs, and an unpaired phone has no
@@ -131,16 +175,28 @@ export async function alertsRoutes(app: FastifyInstance) {
     if (!(await assertProcessingAllowed(childId, reply))) return;
 
     const effectiveDeviceId = deviceId ?? auth.device?.id;
+    // #1208: the phone's setup notice shares the server reminder's key (handled below, under the device lock).
+    const setupNoticeDevice = auth.device && dedupeKey === incompleteDedupeKey(auth.device.id) ? auth.device : null;
+    const heldDuringSetup = auth.device
+      ? shouldHoldTamperDuringSetup(
+          auth.device as unknown as SetupDevice,
+          category,
+          typeof metadata.type === "string" ? metadata.type : null,
+          new Date(),
+        )
+      : false;
 
     // Claude's ruling on #841 finding 5: while the site-name flag is off, a blocked site is a count with no
     // host. The parent keeps the attempt; nothing in the row names a site, and the dedupe key groups by day.
     const redactSite = category === "web_threat" && !siteNamesEnabled();
     const safeMetadata = redactSite ? redactBlockedSiteHost(metadata) : metadata;
-    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : dedupeKey;
+    // ADR-0047: held retries share a separate namespace so a real post-setup event with the
+    // producer's original key creates a new visible row instead of deduplicating the held one.
+    const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : heldDuringSetup && dedupeKey ? `held|${dedupeKey}` : dedupeKey;
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.
-    const { alert, deduplicated } = await raiseAlertOnce({
+    const input: RaiseAlertInput = {
       childId,
       familyId: child.familyId,
       deviceId: effectiveDeviceId,
@@ -156,8 +212,24 @@ export async function alertsRoutes(app: FastifyInstance) {
       metadata: sanitizeAlertMetadata(safeMetadata),
       dedupeKey: safeDedupeKey,
       attemptCount,
+      heldDuringSetup,
       childName: child.displayName,
-    });
+    };
+
+    if (setupNoticeDevice) {
+      // Decided under the Device row lock with the server-validated grants (Codex, #1230 finding 2 and
+      // osra-security#82/#87): open setup dedupes onto the pairing's one notice; a completed pairing that the
+      // server sees missing a newly required grant gets one new notice with the latch kept; a completed pairing
+      // with every required grant is a stale retry and writes nothing. Publish and push run after commit.
+      const pairedAt = (setupNoticeDevice as unknown as SetupDevice).pairedAt;
+      const outcome = await raisePhoneSetupNotice(setupNoticeDevice.id, pairedAt, { ...input, attemptCount: undefined });
+      // Codex (osra-security#82 7204850059 point 1): the report explaining this notice may not be stored yet. A non-2xx
+      // answer keeps the phone's notice queued (its worker retries), where a 200 drop would mark it posted.
+      if (outcome === AWAIT_REPORT) return reply.code(409).header("Retry-After", "30").send({ retry: "awaiting_report" });
+      if (!outcome) return reply.code(200).send({ dropped: "setup_complete" });
+      return reply.code(outcome.deduplicated ? 200 : 201).send({ alert: outcome.alert });
+    }
+    const { alert, deduplicated } = await raiseAlertOnce(input);
     return reply.code(deduplicated ? 200 : 201).send({ alert });
   });
 

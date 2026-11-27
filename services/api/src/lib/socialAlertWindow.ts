@@ -25,6 +25,115 @@ export function pushEveryMessageEnabled(env: NodeJS.ProcessEnv = process.env): b
   return env.SOCIAL_ALERT_PUSH_EVERY_MESSAGE === "true";
 }
 
+/**
+ * Issue #1139 (Karim, 25 Nov): the first N flagged messages per (child, app) each push; after that the
+ * rest are grouped into one summary push per window. Env `SOCIAL_ALERT_FIRST_PUSHES`, default 3, clamped
+ * 1..20. A critical message or a severity step-up always pushes, budget or not.
+ */
+export const DEFAULT_SOCIAL_ALERT_FIRST_PUSHES = 3;
+export function socialAlertFirstPushes(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number.parseInt(env.SOCIAL_ALERT_FIRST_PUSHES ?? "", 10);
+  if (!Number.isFinite(n)) return DEFAULT_SOCIAL_ALERT_FIRST_PUSHES;
+  return Math.min(20, Math.max(1, n));
+}
+
+/**
+ * Issue #1139: the summary cadence, which is also the window length (a summary closes one window and
+ * opens the next). Env `SOCIAL_ALERT_SUMMARY_MINUTES`, default 10, clamped 1..60. The exported
+ * `SOCIAL_ALERT_WINDOW_*` constants stay as the 10-minute default.
+ */
+export function socialAlertSummaryMinutes(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number.parseInt(env.SOCIAL_ALERT_SUMMARY_MINUTES ?? "", 10);
+  if (!Number.isFinite(n)) return SOCIAL_ALERT_WINDOW_SECONDS / 60;
+  return Math.min(60, Math.max(1, n));
+}
+export function socialAlertWindowSeconds(env: NodeJS.ProcessEnv = process.env): number {
+  return socialAlertSummaryMinutes(env) * 60;
+}
+export function socialAlertWindowMs(env: NodeJS.ProcessEnv = process.env): number {
+  return socialAlertWindowSeconds(env) * 1000;
+}
+
+/** Per-(child, app) push budget slot key (#1139). No contact in the key: the budget spans contacts. */
+export function socialPushBudgetKey(childId: string, appName: string): string {
+  return `social:push-budget:${childId}:${appName.trim().toLowerCase()}`;
+}
+
+/**
+ * Take one slot of the (child, app) push budget (#1139). Each slot is its own `SET NX` with the window
+ * TTL, so concurrent scans on several replicas can never hand out more than N slots, and the budget
+ * refills once the window has been quiet. A Redis failure answers "push": a parent missing a first
+ * alert is worse than one extra push.
+ */
+export async function takeSocialPushBudget(
+  redis: ReturnType<typeof getRedis>,
+  childId: string,
+  appName: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<boolean> {
+  const key = socialPushBudgetKey(childId, appName);
+  const ttl = socialAlertWindowSeconds(env);
+  const slots = socialAlertFirstPushes(env);
+  try {
+    for (let slot = 1; slot <= slots; slot += 1) {
+      if ((await redis.set(`${key}:${slot}`, "1", "EX", ttl, "NX")) === "OK") return true;
+    }
+    // Budget used up: keep it closed while flagged messages keep coming, so a continuous conversation
+    // stays grouped into summaries. It refills only after one quiet window (SET XX never re-creates a slot).
+    for (let slot = 1; slot <= slots; slot += 1) {
+      await redis.set(`${key}:${slot}`, "1", "EX", ttl, "XX");
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * #1139: a summary push closes the (child, app) budget for one more window, so messages right after a
+ * summary are grouped into the next summary instead of starting another run of first pushes.
+ */
+export async function holdSocialPushBudget(
+  redis: ReturnType<typeof getRedis>,
+  childId: string,
+  appName: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const key = socialPushBudgetKey(childId, appName);
+  const ttl = socialAlertWindowSeconds(env);
+  const slots = socialAlertFirstPushes(env);
+  for (let slot = 1; slot <= slots; slot += 1) {
+    await redis.set(`${key}:${slot}`, "1", "EX", ttl).catch(() => undefined);
+  }
+}
+
+/**
+ * #1139: the delivery identity the parent app keys its notification on, set ONLY when a push actually
+ * fires (a first-N push, a critical or step-up push, a summary). A silent in-place count update keeps the
+ * previous pair, so the parent shows nothing new for it.
+ */
+export function nextPushDelivery(metadata: Record<string, unknown> | null | undefined, createdAt: string) {
+  const previous = metadata?.pushDeliverySeq;
+  const seq = typeof previous === "number" && Number.isSafeInteger(previous) && previous > 0 ? previous + 1 : 1;
+  const delivery = { id: randomUUID(), seq, createdAt };
+  const history: Array<typeof delivery> = [];
+  if (Array.isArray(metadata?.pushDeliveries)) {
+    for (const entry of metadata.pushDeliveries) {
+      if (entry && typeof entry.id === "string" &&
+          Number.isSafeInteger(entry.seq) && entry.seq > 0 && entry.seq < seq &&
+          typeof entry.createdAt === "string") {
+        history.push({ id: entry.id, seq: entry.seq, createdAt: entry.createdAt });
+      }
+    }
+  }
+  return {
+    pushDeliveryId: delivery.id,
+    pushDeliverySeq: seq,
+    // A coalesced wake can recover the newest ten issued deliveries on this card.
+    pushDeliveries: [...history.slice(-9), delivery],
+  };
+}
+
 export type SocialSeverity = "info" | "warning" | "critical";
 export const SOCIAL_SEVERITY_RANK: Record<SocialSeverity, number> = { info: 0, warning: 1, critical: 2 };
 
@@ -290,7 +399,7 @@ function parseRedisWindowState(raw: string | null): SocialWindowRedisState | nul
       alertId: parsed.alertId,
       ...(typeof parsed.claimId === "string" && parsed.claimId.length > 0 ? { claimId: parsed.claimId } : {}),
       windowStartedAt: typeof parsed.windowStartedAt === "string" ? parsed.windowStartedAt : new Date().toISOString(),
-      windowEndsAt: typeof parsed.windowEndsAt === "string" ? parsed.windowEndsAt : new Date(Date.now() + SOCIAL_ALERT_WINDOW_MS).toISOString(),
+      windowEndsAt: typeof parsed.windowEndsAt === "string" ? parsed.windowEndsAt : new Date(Date.now() + socialAlertWindowMs()).toISOString(),
       pushedSeverity: normalizeSocialSeverity(parsed.pushedSeverity),
     };
   } catch {
@@ -349,6 +458,8 @@ interface ApplyContext {
   redis: ReturnType<typeof getRedis>;
   /** #1061: push after every applied observation instead of waiting for the window summary. */
   pushEveryMessage?: boolean;
+  /** #1139: this observation took a slot of the (child, app) first-N push budget, so it pushes now. */
+  budgetAllowed?: boolean;
 }
 
 async function applyObservationsToAlert(
@@ -360,6 +471,7 @@ async function applyObservationsToAlert(
   let current: Alert = existing;
   let updatedAlert: Alert | null = null;
   let bypass = false;
+  let pushNow = false;
   let nextCount = existing.attemptCount ?? 1;
   let nextPushedSeverity: SocialSeverity = "warning";
   let effectiveWindowStart = ctx.nowIso;
@@ -432,8 +544,13 @@ async function applyObservationsToAlert(
         ? highestIncomingSeverity
         : normalizeSocialSeverity(current.severity);
     const pushEvery = ctx.pushEveryMessage === true;
-    const nextPushedCount = bypass || pushEvery ? nextCount : prevPushedCount;
-    nextPushedSeverity = bypass || pushEvery ? highestIncomingSeverity : prevPushedSeverity;
+    // #1139: a step-up or a critical message always pushes; otherwise only a message that took a slot of
+    // the (child, app) first-N budget does. Everything else waits for the window summary.
+    pushNow = bypass || pushEvery || ctx.budgetAllowed === true || highestIncomingSeverity === "critical";
+    const nextPushedCount = pushNow ? nextCount : prevPushedCount;
+    nextPushedSeverity = pushNow
+      ? (SOCIAL_SEVERITY_RANK[highestIncomingSeverity] > SOCIAL_SEVERITY_RANK[prevPushedSeverity] ? highestIncomingSeverity : prevPushedSeverity)
+      : prevPushedSeverity;
     const nextSummaryPending = nextCount > nextPushedCount;
     const mergedConcerns = [...new Set([...(existingMeta?.concernTypes ?? []), ...allIncomingConcerns])].slice(0, 5);
     const mergedAttribution = mergeProviderOutcomes(existingMeta?.providerOutcomes, combinedAttribution);
@@ -461,6 +578,8 @@ async function applyObservationsToAlert(
       bodyParams: { app: ctx.appName, ...(ctx.contact ? { contact: ctx.contact } : {}) },
       ...(nextAppliedIds.length > 0 ? { appliedDeferredIds: nextAppliedIds } : {}),
       ...(mergedAttribution ? { providerOutcomes: mergedAttribution } : {}),
+      // #1139: a new delivery identity only when this update is pushed.
+      ...(pushNow ? nextPushDelivery(existingMetaObj, ctx.nowIso) : {}),
     };
 
     const nextBody = `${nextCount} concerning messages on ${ctx.appName}`;
@@ -530,15 +649,17 @@ async function applyObservationsToAlert(
         ctx.throttleKey,
         JSON.stringify(nextRedisState),
         "EX",
-        Number.isFinite(remainingSeconds) ? remainingSeconds : SOCIAL_ALERT_WINDOW_SECONDS,
+        Number.isFinite(remainingSeconds) ? remainingSeconds : socialAlertWindowSeconds(),
       )
       .catch(() => undefined);
+  }
+  if (pushNow) {
     await notifyParentsOfAlert(ctx.familyId, updatedAlert, ctx.childName ?? undefined);
   }
 
   return {
     alertId: updatedAlert.id,
-    throttled: !bypass,
+    throttled: !pushNow,
     bypassed: bypass,
     retryable: false,
     flaggedCount: nextCount,
@@ -623,8 +744,10 @@ export async function recordFlaggedSocialAlert(
     const now = input.now ?? new Date();
     const nowMs = now.getTime();
     const nowIso = now.toISOString();
-    const windowEndsAtIso = new Date(nowMs + SOCIAL_ALERT_WINDOW_MS).toISOString();
+    const windowEndsAtIso = new Date(nowMs + socialAlertWindowMs()).toISOString();
     const redis = getRedis();
+    // #1139: a critical message (or the #1061 staging switch) always pushes and takes no budget slot.
+    const budgetAllowed = severity === "critical" || pushEvery ? true : await takeSocialPushBudget(redis, childId, appName);
     const observation: DeferredSocialObservation = {
       id: randomUUID(),
       severity,
@@ -645,12 +768,13 @@ export async function recordFlaggedSocialAlert(
       windowEndsAtIso,
       redis,
       pushEveryMessage: pushEvery,
+      budgetAllowed,
     };
 
     for (let claimPass = 0; claimPass < 2; claimPass += 1) {
       const claimId = randomUUID();
       const pendingToken = `${PENDING_PREFIX}${claimId}`;
-      const claimed = (await redis.set(throttleKey, pendingToken, "EX", SOCIAL_ALERT_WINDOW_SECONDS, "NX")) === "OK";
+      const claimed = (await redis.set(throttleKey, pendingToken, "EX", socialAlertWindowSeconds(), "NX")) === "OK";
       if (claimed) {
         const ownDeferredKey = socialAlertDeferredKey(throttleKey, claimId);
         let alert: Alert | undefined;
@@ -676,16 +800,21 @@ export async function recordFlaggedSocialAlert(
               concernTypes,
               flaggedCount: 1,
               latestAt: nowIso,
-              ...(sourceEventId ? { latestSourceEventId: sourceEventId } : {}),
+              // The alert link stays on its original event while feedback follows the latest event.
+              ...(sourceEventId ? { primarySocialEventId: sourceEventId, latestSourceEventId: sourceEventId } : {}),
               windowStartedAt: nowIso,
               windowEndsAt: windowEndsAtIso,
-              pushedCount: 1,
+              // #1139: past the (child, app) budget a new card is written and published but not pushed;
+              // the window summary carries it.
+              pushedCount: budgetAllowed ? 1 : 0,
               pushedSeverity: severity,
-              summaryPending: false,
+              summaryPending: !budgetAllowed,
               summaryPushed: false,
+              ...(budgetAllowed ? nextPushDelivery(null, nowIso) : { pushDeliverySeq: 0 }),
               ...(attribution && Object.keys(attribution).length > 0 && { providerOutcomes: attribution }),
             },
             childName: childName ?? undefined,
+            skipPush: !budgetAllowed,
           });
         } catch (err) {
           const released = await redis
@@ -713,7 +842,7 @@ export async function recordFlaggedSocialAlert(
               throttleKey,
               ownDeferredKey,
               payload,
-              String(SOCIAL_ALERT_WINDOW_SECONDS),
+              String(socialAlertWindowSeconds()),
             )
             .catch(() => null);
           let deferred: DeferredSocialObservation[] = [];
@@ -724,11 +853,12 @@ export async function recordFlaggedSocialAlert(
               .map(parseDeferredObservation)
               .filter((x): x is DeferredSocialObservation => x !== null && (!x.claimId || x.claimId === claimId));
           } else {
-            await redis.set(throttleKey, payload, "EX", SOCIAL_ALERT_WINDOW_SECONDS).catch(() => undefined);
+            await redis.set(throttleKey, payload, "EX", socialAlertWindowSeconds()).catch(() => undefined);
           }
 
           if (deferred.length > 0) {
-            const folded = await applyObservationsToAlert(alert, state, deferred, applyCtx);
+            // Observations handed off by another replica took no budget slot of their own.
+            const folded = await applyObservationsToAlert(alert, state, deferred, { ...applyCtx, budgetAllowed: false });
             // Acknowledge ONLY after DB commit or confirmed idempotent replay (Codex 7119141081).
             if (folded.committed) {
               await ackDeferredEntries(redis, ownDeferredKey, peekedRawCount);
@@ -745,7 +875,7 @@ export async function recordFlaggedSocialAlert(
             await ackDeferredEntries(redis, ownDeferredKey, peekedRawCount);
           }
         }
-        return { alertId: alert?.id, throttled: false, bypassed: false, flaggedCount: 1, throttleKey };
+        return { alertId: alert?.id, throttled: !budgetAllowed, bypassed: false, flaggedCount: 1, throttleKey };
       }
 
       // Window already open (or initial insert still in flight on another replica).
@@ -792,7 +922,7 @@ export async function recordFlaggedSocialAlert(
               targetDeferredKey,
               raw,
               JSON.stringify(boundObservation),
-              String(SOCIAL_ALERT_WINDOW_SECONDS),
+              String(socialAlertWindowSeconds()),
             )
             .catch(() => null);
           if (deferRes === "DEFERRED") {
@@ -819,7 +949,7 @@ export async function recordFlaggedSocialAlert(
           where: {
             childId,
             category,
-            createdAt: { gte: new Date(nowMs - SOCIAL_ALERT_WINDOW_MS) },
+            createdAt: { gte: new Date(nowMs - socialAlertWindowMs()) },
           },
           orderBy: { createdAt: "desc" },
           take: 25,
@@ -847,12 +977,7 @@ export async function recordFlaggedSocialAlert(
         : [];
       const batch = matchingPending.length > 0 ? [...matchingPending, observation] : [observation];
       const applied = await applyObservationsToAlert(existing, state, batch, applyCtx);
-      // Issue #1061: with the switch on, every applied observation is pushed now; the summary stays off because
-      // applyObservationsToAlert counts it as already pushed.
-      // `bypass` already pushed inside applyObservationsToAlert, so a severity step-up must not push twice.
-      if (pushEvery && applied.committed && applied.updatedAlert && !applied.bypassed) {
-        await notifyParentsOfAlert(familyId, applied.updatedAlert, childName ?? undefined);
-      }
+      // #1139: applyObservationsToAlert pushes by itself (budget slot, critical, step-up, or the #1061 switch).
       if (applied.committed && windowDeferredKey && pending.rawCount > 0) {
         await ackDeferredEntries(redis, windowDeferredKey, pending.rawCount);
       }
