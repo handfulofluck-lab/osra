@@ -53,6 +53,7 @@ object WebFilterConnectionReset {
         private val activeModeOnServiceThread: () -> String?,
         private val openModeOnServiceThread: (String, PolicySnapshot) -> Boolean,
         private val closeTunnelOnServiceThread: () -> Unit,
+        private val onTerminalTunnelLossOnServiceThread: (Long, String) -> Unit = { _, _ -> },
         private val isInternetPausedOnServiceThread: () -> Boolean,
         private val isConsentPausedOnServiceThread: () -> Boolean,
         private val isLockActiveOnServiceThread: () -> Boolean,
@@ -202,16 +203,22 @@ object WebFilterConnectionReset {
 
             when (entry) {
                 is EntryDecision.Immediate -> return entry.outcome
-                is EntryDecision.FailedEntry -> return withContext(NonCancellable) { recoverAfterFailedEntry(entry.hopEpoch) }
+                is EntryDecision.FailedEntry -> return withContext(NonCancellable) {
+                    recoverAfterFailedEntry(requestInstanceId = requestInstanceId, hopEpoch = entry.hopEpoch)
+                }
                 is EntryDecision.Entered -> {
                     var resolved: Pair<TransitionOutcome, PolicySnapshot?>? = null
                     try {
                         awaitWindowOrInterrupt(entry.signal, pauseMs)
-                        resolved = withContext(NonCancellable) { restoreAfterWindow(entry.hopEpoch) }
+                        resolved = withContext(NonCancellable) {
+                            restoreAfterWindow(requestInstanceId = requestInstanceId, hopEpoch = entry.hopEpoch)
+                        }
                     } finally {
                         currentDelaySignal = null
                         if (resolved == null) {
-                            resolved = withContext(NonCancellable) { restoreAfterWindow(entry.hopEpoch) }
+                            resolved = withContext(NonCancellable) {
+                                restoreAfterWindow(requestInstanceId = requestInstanceId, hopEpoch = entry.hopEpoch)
+                            }
                         }
                         runOnService { consentCleanedEpochs.remove(entry.hopEpoch) }
                     }
@@ -268,7 +275,7 @@ object WebFilterConnectionReset {
             }
         }
 
-        private suspend fun recoverAfterFailedEntry(hopEpoch: Long): TransitionOutcome {
+        private suspend fun recoverAfterFailedEntry(requestInstanceId: Long, hopEpoch: Long): TransitionOutcome {
             for (attempt in 0 until restoreRetries) {
                 if (attempt > 0) runCatching { waitMs(retryBackoffMs) }
                 runCatching { prepareCommittedPolicy() }
@@ -279,6 +286,9 @@ object WebFilterConnectionReset {
                             transientTunnelEpoch = null
                         }
                         return@runOnService RestoreStep.Done(TransitionOutcome.STOPPED, PolicySnapshot())
+                    }
+                    if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
+                        return@runOnService RestoreStep.Done(TransitionOutcome.EXPIRED_INSTANCE, PolicySnapshot())
                     }
                     val policy = readCommittedPolicyOnServiceThread()
                     applyPolicyOnServiceThread(policy)
@@ -311,16 +321,39 @@ object WebFilterConnectionReset {
                 }
                 if (step is RestoreStep.Done) return step.outcome
             }
-            runOnService {
+            return runOnService {
+                if (stopping) {
+                    if (transientTunnelEpoch == hopEpoch) {
+                        runCatching { closeTunnelOnServiceThread() }
+                        transientTunnelEpoch = null
+                    }
+                    return@runOnService TransitionOutcome.STOPPED
+                }
+                if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
+                    return@runOnService TransitionOutcome.EXPIRED_INSTANCE
+                }
+                val policy = readCommittedPolicyOnServiceThread()
+                val target = expectedAuthoritativeModeOnServiceThread()
+                if (transientTunnelEpoch != hopEpoch && activeModeOnServiceThread() == target) {
+                    applyPolicyOnServiceThread(policy)
+                    return@runOnService if (target == FilterVpnService.MODE_SINKHOLE_ALL) {
+                        TransitionOutcome.SUPERSEDED_BY_PAUSE
+                    } else {
+                        TransitionOutcome.FAILED_ENTRY_RECOVERED
+                    }
+                }
                 if (transientTunnelEpoch == hopEpoch) {
                     runCatching { closeTunnelOnServiceThread() }
                     transientTunnelEpoch = null
                 }
+                if (activeModeOnServiceThread() == null) {
+                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, target) }
+                }
+                TransitionOutcome.FAILED_ENTRY_CLOSED
             }
-            return TransitionOutcome.FAILED_ENTRY_CLOSED
         }
 
-        private suspend fun restoreAfterWindow(hopEpoch: Long): Pair<TransitionOutcome, PolicySnapshot?> {
+        private suspend fun restoreAfterWindow(requestInstanceId: Long, hopEpoch: Long): Pair<TransitionOutcome, PolicySnapshot?> {
             for (attempt in 0 until restoreRetries) {
                 if (attempt > 0) runCatching { waitMs(retryBackoffMs) }
                 runCatching { prepareCommittedPolicy() }
@@ -331,6 +364,9 @@ object WebFilterConnectionReset {
                             transientTunnelEpoch = null
                         }
                         return@runOnService RestoreStep.Done(TransitionOutcome.STOPPED, PolicySnapshot())
+                    }
+                    if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
+                        return@runOnService RestoreStep.Done(TransitionOutcome.EXPIRED_INSTANCE, PolicySnapshot())
                     }
                     val policy = readCommittedPolicyOnServiceThread()
                     applyPolicyOnServiceThread(policy)
@@ -375,13 +411,38 @@ object WebFilterConnectionReset {
                 }
                 if (step is RestoreStep.Done) return step.outcome to step.appliedPolicy
             }
-            runOnService {
+            return runOnService {
+                if (stopping) {
+                    if (transientTunnelEpoch == hopEpoch) {
+                        runCatching { closeTunnelOnServiceThread() }
+                        transientTunnelEpoch = null
+                    }
+                    return@runOnService TransitionOutcome.STOPPED to null
+                }
+                if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
+                    return@runOnService TransitionOutcome.EXPIRED_INSTANCE to null
+                }
+                val policy = readCommittedPolicyOnServiceThread()
+                val target = expectedAuthoritativeModeOnServiceThread()
+                val consentTriggered = isConsentPausedOnServiceThread() || consentCleanedEpochs.contains(hopEpoch)
+                if (transientTunnelEpoch != hopEpoch && activeModeOnServiceThread() == target) {
+                    applyPolicyOnServiceThread(policy)
+                    val out = when {
+                        target == FilterVpnService.MODE_SINKHOLE_ALL -> TransitionOutcome.SUPERSEDED_BY_PAUSE
+                        consentTriggered -> TransitionOutcome.CLEANED_UP_ON_CONSENT_CHANGE
+                        else -> TransitionOutcome.COMPLETED
+                    }
+                    return@runOnService out to policy
+                }
                 if (transientTunnelEpoch == hopEpoch) {
                     runCatching { closeTunnelOnServiceThread() }
                     transientTunnelEpoch = null
                 }
+                if (activeModeOnServiceThread() == null) {
+                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, target) }
+                }
+                TransitionOutcome.RESTORE_FAILED_CLOSED to null
             }
-            return TransitionOutcome.RESTORE_FAILED_CLOSED to null
         }
     }
 

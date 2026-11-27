@@ -104,7 +104,9 @@ class FilterVpnService : VpnService() {
     }
 
     private val transientResetController = WebFilterConnectionReset.TransientTunnelController(
-        serviceInstanceId = { if (serviceStopping) 0L else instanceId },
+        serviceInstanceId = {
+            if (serviceStopping || currentInstanceId != instanceId || activeInstance !== this) 0L else instanceId
+        },
         serviceDispatcher = WebFilterConnectionReset.ServiceDispatcher { block ->
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { block() }
         },
@@ -117,6 +119,9 @@ class FilterVpnService : VpnService() {
         activeModeOnServiceThread = { tunnelMode },
         openModeOnServiceThread = { wanted, snapshot -> openTunnelForMode(wanted, snapshot) },
         closeTunnelOnServiceThread = { stopTunnel() },
+        onTerminalTunnelLossOnServiceThread = { expectedInstance, _ ->
+            handleTerminalResetLossOnMain(expectedInstance)
+        },
         isInternetPausedOnServiceThread = { rules.isInternetPaused() },
         isConsentPausedOnServiceThread = { consent.isPaused() },
         isLockActiveOnServiceThread = { com.familyshield.agent.enforcement.LockState.isActive(this) },
@@ -158,9 +163,14 @@ class FilterVpnService : VpnService() {
                     return START_STICKY
                 }
                 scope.launch {
-                    val outcome = runCatching {
+                    val outcome = try {
                         transientResetController.executeReset(requestInstanceId = targetInstance)
-                    }.getOrDefault(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED)
+                    } catch (e: Exception) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                            handleTerminalResetLossOnMain(targetInstance)
+                        }
+                        WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED
+                    }
                     if (reqId != null) {
                         pendingResetRequests.remove(reqId)?.complete(outcome)
                     }
@@ -582,6 +592,33 @@ class FilterVpnService : VpnService() {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, n)
+        }
+    }
+
+    private fun handleTerminalResetLossOnMain(expectedInstanceId: Long) {
+        if (serviceStopping ||
+            expectedInstanceId <= 0L ||
+            expectedInstanceId != instanceId ||
+            currentInstanceId != instanceId ||
+            activeInstance !== this ||
+            tunnelMode != null
+        ) {
+            return
+        }
+        if (VpnState.recordFilterLoss(this, settings, consent, hadEstablishedTunnel.getAndSet(false))) {
+            TamperAlertWorker.enqueue(this, TamperAlertWorker.TYPE_VPN_REVOKED)
+        }
+        val restartInstanceId = instanceId
+        lifecycleHandler.post {
+            if (!serviceStopping &&
+                currentInstanceId == restartInstanceId &&
+                activeInstance === this &&
+                tunnelMode == null &&
+                VpnState.isEnabled(this) &&
+                !consent.isPaused()
+            ) {
+                start(this, VpnState.mode(this))
+            }
         }
     }
 

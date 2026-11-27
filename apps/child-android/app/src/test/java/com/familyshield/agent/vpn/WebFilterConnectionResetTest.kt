@@ -17,11 +17,15 @@ class WebFilterConnectionResetTest {
 
     private class SyntheticServiceHarness(
         var instanceId: Long = 1L,
+        var liveInstanceId: Long? = null,
         initialAuthorizedMode: String = FilterVpnService.MODE_DNS,
         var activeMode: String? = FilterVpnService.MODE_DNS,
         var internetPaused: Boolean = false,
         var consentPaused: Boolean = false,
         var lockActive: Boolean = false,
+        var vpnEnabled: Boolean = true,
+        var paired: Boolean = true,
+        var consentEpoch: Long = 0L,
         initialStopping: Boolean = false,
         var committedPolicy: WebFilterConnectionReset.PolicySnapshot = WebFilterConnectionReset.PolicySnapshot(),
         val onEstablish: (SyntheticServiceHarness, String, Int, WebFilterConnectionReset.PolicySnapshot) -> Boolean = { _, _, _, _ -> true },
@@ -31,16 +35,35 @@ class WebFilterConnectionResetTest {
         val log = mutableListOf<String>()
         var appliedDnsConfig: DnsFilterPolicy.Config = committedPolicy.dnsConfig
         var appliedBypassApps: List<String> = committedPolicy.alwaysAllowedApps
+        var persistedVpnMode: String = initialAuthorizedMode
+        var hadEstablishedTunnel: Boolean = activeMode != null
+        var recordedLossEpoch: Long? = null
+        var lossAlertsEnqueued: Int = 0
+        val scheduledAuthoritativeRestarts = mutableListOf<Pair<Long, String>>()
+        val isFilterLost: Boolean
+            get() = FilterLossPolicy.isLost(
+                recordedEpoch = recordedLossEpoch,
+                enabled = vpnEnabled,
+                paired = paired,
+                consentPaused = consentPaused,
+                consentEpoch = consentEpoch,
+            )
+        var beforeServiceDispatch: (() -> Unit)? = null
         private val attemptCounts = mutableMapOf<String, Int>()
         private val serviceThreadMutex = Mutex()
         private var currentThreadOnService: Boolean = false
 
         val controller: WebFilterConnectionReset.TransientTunnelController
 
+        private fun effectiveLiveInstanceId(): Long = liveInstanceId ?: instanceId
+
         init {
             controller = WebFilterConnectionReset.TransientTunnelController(
-                serviceInstanceId = { if (controllerStopping) 0L else instanceId },
+                serviceInstanceId = {
+                    if (controllerStopping || effectiveLiveInstanceId() != instanceId) 0L else instanceId
+                },
                 serviceDispatcher = WebFilterConnectionReset.ServiceDispatcher { block ->
+                    beforeServiceDispatch?.invoke()
                     serviceThreadMutex.withLock {
                         currentThreadOnService = true
                         try {
@@ -72,6 +95,8 @@ class WebFilterConnectionResetTest {
                     if (ok) {
                         activeMode = wanted
                         appliedBypassApps = snap.alwaysAllowedApps
+                        hadEstablishedTunnel = true
+                        recordedLossEpoch = null
                         log += "active:$wanted@${nowMs}"
                     } else {
                         log += "fail:$wanted#$n@${nowMs}"
@@ -82,6 +107,33 @@ class WebFilterConnectionResetTest {
                     assertTrue("closeTunnel must run on service thread", currentThreadOnService)
                     activeMode = null
                     log += "close@${nowMs}"
+                },
+                onTerminalTunnelLossOnServiceThread = { expectedInstanceId, _ ->
+                    assertTrue("terminal loss handler must run on service thread", currentThreadOnService)
+                    if (!controllerStopping &&
+                        expectedInstanceId > 0L &&
+                        expectedInstanceId == instanceId &&
+                        effectiveLiveInstanceId() == instanceId &&
+                        activeMode == null
+                    ) {
+                        val wasEstablished = hadEstablishedTunnel
+                        hadEstablishedTunnel = false
+                        if (FilterLossPolicy.shouldRecord(
+                                recordedEpoch = recordedLossEpoch,
+                                wasEstablished = wasEstablished,
+                                enabled = vpnEnabled,
+                                paired = paired,
+                                consentPaused = consentPaused,
+                                consentEpoch = consentEpoch,
+                            )
+                        ) {
+                            recordedLossEpoch = consentEpoch
+                            lossAlertsEnqueued += 1
+                        }
+                        if (vpnEnabled && !consentPaused) {
+                            scheduledAuthoritativeRestarts += (instanceId to persistedVpnMode)
+                        }
+                    }
                 },
                 isInternetPausedOnServiceThread = { internetPaused },
                 isConsentPausedOnServiceThread = { consentPaused },
@@ -128,6 +180,7 @@ class WebFilterConnectionResetTest {
                 try {
                     internetPaused = pausedFlag
                     lockActive = pausedFlag
+                    persistedVpnMode = wantedMode
                     controller.handleAuthoritativeStartOnServiceThread(wantedMode)
                 } finally {
                     currentThreadOnService = false
@@ -459,6 +512,110 @@ class WebFilterConnectionResetTest {
     }
 
     @Test
+    fun `terminal restore or entry failure records filter loss once and schedules authoritative MODE_DNS restart`() = runBlocking {
+        // Mutant A: omit onTerminalTunnelLossOnServiceThread on RESTORE_FAILED_CLOSED / FAILED_ENTRY_CLOSED ->
+        // tunnel closes silently with isFilterLost == false, 0 alerts enqueued, and 0 authoritative restarts scheduled.
+        // Mutant B: enqueue alert unconditionally without FilterLossPolicy.shouldRecord / hadEstablishedTunnel ->
+        // repeated loss within the same consent epoch enqueues >1 alert.
+        val restoreFailed = SyntheticServiceHarness(
+            onEstablish = { _, wanted, _, _ -> wanted != FilterVpnService.MODE_DNS },
+        )
+        val outRestore = restoreFailed.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, outRestore)
+        assertFalse(outRestore.acknowledged)
+        assertNull(restoreFailed.activeMode)
+        assertTrue("filter loss must be active after RESTORE_FAILED_CLOSED", restoreFailed.isFilterLost)
+        assertEquals(1, restoreFailed.lossAlertsEnqueued)
+        assertEquals(listOf(1L to FilterVpnService.MODE_DNS), restoreFailed.scheduledAuthoritativeRestarts)
+
+        // Follow-up failure without any intermediate tunnel establishment (e.g. subsequent revoke or failed entry
+        // while recordedLossEpoch == consentEpoch) keeps isFilterLost == true and never enqueues a second alert.
+        var failEverythingNow = false
+        val entryFailed = SyntheticServiceHarness(
+            onEstablish = { _, wanted, _, _ ->
+                if (failEverythingNow) false else wanted != FilterVpnService.MODE_DNS && false
+            },
+        )
+        val outEntry = entryFailed.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.FAILED_ENTRY_CLOSED, outEntry)
+        assertFalse(outEntry.acknowledged)
+        assertNull(entryFailed.activeMode)
+        assertTrue("filter loss must be active after FAILED_ENTRY_CLOSED", entryFailed.isFilterLost)
+        assertEquals(1, entryFailed.lossAlertsEnqueued)
+        assertEquals(listOf(1L to FilterVpnService.MODE_DNS), entryFailed.scheduledAuthoritativeRestarts)
+
+        // Even if another failure arrives in the same consent epoch without an established tunnel clearing loss,
+        // FilterLossPolicy.shouldRecord preserves single-alert behavior (still 1 alert).
+        failEverythingNow = true
+        entryFailed.activeMode = FilterVpnService.MODE_DNS
+        entryFailed.hadEstablishedTunnel = true
+        val secondEntryOut = entryFailed.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.FAILED_ENTRY_CLOSED, secondEntryOut)
+        assertTrue(entryFailed.isFilterLost)
+        assertEquals("single-alert invariant within one consent epoch", 1, entryFailed.lossAlertsEnqueued)
+    }
+
+    @Test
+    fun `replaced service instance or newer successful authoritative restore cannot emit stale filter loss`() = runBlocking {
+        // Mutant A: fail to fence terminal failure against effective live service instance ->
+        // superseded instance #7 emits filter loss / alert after instance #8 already took over.
+        val replacedHarness = SyntheticServiceHarness(
+            instanceId = 7L,
+            onEstablish = { _, wanted, _, _ -> wanted != FilterVpnService.MODE_DNS },
+            onWait = { ms ->
+                nowMs += ms
+                if (ms == 250L) {
+                    // Instance #8 replaced instance #7 while retry backoff was in progress.
+                    liveInstanceId = 8L
+                }
+            },
+        )
+        val replacedOut = replacedHarness.controller.executeReset(requestInstanceId = 7L)
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.EXPIRED_INSTANCE, replacedOut)
+        assertFalse(replacedOut.acknowledged)
+        assertFalse("replaced service instance must not emit filter loss", replacedHarness.isFilterLost)
+        assertEquals(0, replacedHarness.lossAlertsEnqueued)
+        assertTrue(replacedHarness.scheduledAuthoritativeRestarts.isEmpty())
+
+        // Mutant B: emit terminal loss after retry loop exits without checking whether a newer authoritative
+        // restore succeeded before terminal service-thread finalization -> false loss alert on an active tunnel.
+        var dnsAttempts = 0
+        var allowAuthoritative = false
+        var restoredRightAfterLastRetry = false
+        lateinit var newerRestoreHarness: SyntheticServiceHarness
+        newerRestoreHarness = SyntheticServiceHarness(
+            instanceId = 9L,
+            onEstablish = { _, wanted, _, _ ->
+                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL) {
+                    true
+                } else if (allowAuthoritative) {
+                    true
+                } else {
+                    dnsAttempts += 1
+                    false
+                }
+            },
+        )
+        newerRestoreHarness.beforeServiceDispatch = {
+            if (dnsAttempts == WebFilterConnectionReset.DEFAULT_RESTORE_RETRIES && !restoredRightAfterLastRetry) {
+                restoredRightAfterLastRetry = true
+                newerRestoreHarness.beforeServiceDispatch = null
+                allowAuthoritative = true
+                runBlocking {
+                    assertTrue(newerRestoreHarness.serviceAuthoritativeStart(FilterVpnService.MODE_DNS, pausedFlag = false))
+                }
+                allowAuthoritative = false
+            }
+        }
+        val newerOut = newerRestoreHarness.controller.executeReset(requestInstanceId = 9L)
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.COMPLETED, newerOut)
+        assertEquals(FilterVpnService.MODE_DNS, newerRestoreHarness.activeMode)
+        assertFalse("newer successful restore must not emit old filter loss", newerRestoreHarness.isFilterLost)
+        assertEquals(0, newerRestoreHarness.lossAlertsEnqueued)
+        assertTrue(newerRestoreHarness.scheduledAuthoritativeRestarts.isEmpty())
+    }
+
+    @Test
     fun `service owns TransientTunnelController, stamps instanceId, wires immediate consent callback, and avoids LockState drift`() {
         val dispatcher = stripComments(sourceFile("app/src/main/java/com/familyshield/agent/commands/CommandDispatcher.kt"))
         val rulesBranch = dispatcher.substringAfter("\"rules_updated\" ->").substringBefore("\"locate_now\" ->")
@@ -474,12 +631,25 @@ class WebFilterConnectionResetTest {
         assertFalse(helperCode.contains("LockActivity"))
         assertTrue(helperCode.contains("FilterVpnService.awaitConnectionReset("))
 
+        // Mutant: omit handleTerminalResetLossOnMain wiring, instance fence, recordFilterLoss guard, or start(this, VpnState.mode(this)).
         val vpn = stripComments(sourceFile("app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt"))
         assertTrue(vpn.contains("WebFilterConnectionReset.TransientTunnelController("))
         assertTrue(vpn.contains("EXTRA_TARGET_INSTANCE_ID"))
         assertTrue(vpn.contains("handleAuthoritativeStartOnServiceThread("))
         assertTrue(vpn.contains("handleConsentChangedOnServiceThread("))
         assertTrue(vpn.contains("handleServiceStopOnServiceThread()"))
+        assertTrue(vpn.contains("onTerminalTunnelLossOnServiceThread"))
+        val terminalHandler = vpn.substringAfter("private fun handleTerminalResetLossOnMain(").substringBefore("companion object")
+        assertTrue(terminalHandler.contains("currentInstanceId != instanceId"))
+        assertTrue(terminalHandler.contains("activeInstance !== this"))
+        assertTrue(terminalHandler.contains("tunnelMode != null"))
+        assertTrue(
+            Regex(
+                """if \(VpnState\.recordFilterLoss\(this, settings, consent, hadEstablishedTunnel\.getAndSet\(false\)\)\) \{\s+""" +
+                    """TamperAlertWorker\.enqueue\(this, TamperAlertWorker\.TYPE_VPN_REVOKED\)""",
+            ).containsMatchIn(terminalHandler),
+        )
+        assertTrue(terminalHandler.contains("start(this, VpnState.mode(this))"))
 
         val consentCode = stripComments(sourceFile("app/src/main/java/com/familyshield/agent/data/ConsentState.kt"))
         assertTrue(consentCode.contains("FilterVpnService.onConsentChanged("))
