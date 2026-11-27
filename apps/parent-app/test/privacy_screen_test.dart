@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -41,8 +43,9 @@ void main() {
         'policyUrls': {'en': 'https://osratech.com/privacy', 'ar': 'https://osratech.com/ar/privacy'},
       };
 
-  FakeApiClient api({FakeRoute? privacy, Map<String, dynamic>? me}) => FakeApiClient({
+  FakeApiClient api({FakeRoute? privacy, Map<String, dynamic>? me, FakeRoute? familyMeRoute}) => FakeApiClient({
         ...standardRoutes(familyMe: me),
+        if (familyMeRoute != null) 'GET /v1/family/me': familyMeRoute,
         'GET /v1/family/privacy': privacy ?? (_) => policy(),
       });
 
@@ -110,6 +113,67 @@ void main() {
 
     expect(find.text('Delete my account'), findsOneWidget);
     expect(find.text('Delete family account'), findsNothing);
+  });
+
+  testWidgets('P6b a failed family overview shows retry instead of guessing role or empty children',
+      (tester) async {
+    var attempts = 0;
+    final client = api(
+      familyMeRoute: (_) {
+        attempts += 1;
+        if (attempts == 1) {
+          return const FakeHttpError(503, {'error': 'service_unavailable'});
+        }
+        return familyMeTwoChildren();
+      },
+    );
+    await pump(tester, client);
+
+    expect(find.byKey(const ValueKey('privacyFamilyLoadFailed')), findsOneWidget);
+    expect(find.byKey(const ValueKey('privacyFamilyRetry')), findsOneWidget);
+    expect(find.byKey(const ValueKey('privacyDelete')), findsNothing);
+    expect(find.byKey(const ValueKey('privacyDeleteButton')), findsNothing);
+    expect(find.text('Delete my account'), findsNothing);
+    expect(find.text('Delete family account'), findsNothing);
+    expect(find.byKey(const ValueKey('privacyConsent')), findsNothing);
+    // Non-family-scoped rows still work while family overview is unavailable.
+    expect(find.byKey(const ValueKey('privacyRowExcerpts')), findsOneWidget);
+    expect(find.byKey(const ValueKey('privacyWhoCanSee')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('privacyFamilyRetry')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('privacyFamilyLoadFailed')), findsNothing);
+    expect(find.byKey(const ValueKey('privacyDelete')), findsOneWidget);
+    expect(find.text('Delete family account'), findsOneWidget);
+    expect(find.byKey(const ValueKey('privacyConsent')), findsOneWidget);
+  });
+
+  testWidgets('P6c while family overview is loading, delete and consent wait instead of guessing',
+      (tester) async {
+    final completer = Completer<Object?>();
+    final client = api(familyMeRoute: (_) => FakeDeferred(completer.future));
+
+    tester.view.physicalSize = const Size(1080, 6000);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(client)],
+      child: localizedTestApp(const PrivacyScreen(), locale: const Locale('en')),
+    ));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('privacyFamilyLoading')), findsOneWidget);
+    expect(find.byKey(const ValueKey('privacyDelete')), findsNothing);
+    expect(find.byKey(const ValueKey('privacyConsent')), findsNothing);
+    expect(find.text('Delete my account'), findsNothing);
+
+    completer.complete(familyMeTwoChildren());
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('privacyFamilyLoading')), findsNothing);
+    expect(find.byKey(const ValueKey('privacyDelete')), findsOneWidget);
+    expect(find.text('Delete family account'), findsOneWidget);
   });
 
   testWidgets('P7 with two children, consent asks which child first', (tester) async {

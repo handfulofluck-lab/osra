@@ -87,7 +87,8 @@ class PrivacyScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final summary = ref.watch(privacySummaryProvider);
-    final family = ref.watch(familyProvider).valueOrNull;
+    final familyAsync = ref.watch(familyProvider);
+    final family = familyAsync.valueOrNull;
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.privacyTitle)),
@@ -123,17 +124,26 @@ class PrivacyScreen extends ConsumerWidget {
             ),
           ]),
           const SizedBox(height: AppSpace.lg),
-          _Section(children: [
-            _ActionRow(
-              key: const ValueKey('privacyConsent'),
-              title: l10n.privacyConsentTitle,
-              subtitle: l10n.privacyConsentDesc,
-              action: l10n.privacyOpen,
-              onTap: () => _openConsent(context, family?.children ?? const []),
+          if (family != null) ...[
+            _Section(children: [
+              _ActionRow(
+                key: const ValueKey('privacyConsent'),
+                title: l10n.privacyConsentTitle,
+                subtitle: l10n.privacyConsentDesc,
+                action: l10n.privacyOpen,
+                onTap: () => _openConsent(context, family.children),
+              ),
+            ]),
+            const SizedBox(height: AppSpace.lg),
+            _DeleteCard(isOwner: family.parent.role == 'owner'),
+          ] else if (familyAsync.hasError)
+            _FamilyScopeLoadFailed(onRetry: () => ref.invalidate(familyProvider))
+          else
+            const Padding(
+              key: ValueKey('privacyFamilyLoading'),
+              padding: EdgeInsets.all(AppSpace.xl),
+              child: Center(child: CircularProgressIndicator()),
             ),
-          ]),
-          const SizedBox(height: AppSpace.lg),
-          _DeleteCard(isOwner: family?.parent.role == 'owner'),
         ],
       ),
     );
@@ -264,6 +274,40 @@ class _LoadFailed extends StatelessWidget {
         const SizedBox(height: AppSpace.sm),
         OutlinedButton(onPressed: onRetry, child: Text(l10n.privacyRetry)),
       ],
+    );
+  }
+}
+
+/// Shown in place of family-scoped actions (per-child consent + owner/self account deletion) when
+/// `GET /v1/family/me` fails so the screen never guesses "Delete my account" or "No children" while
+/// role and family scope are unknown (#1195 Codex finding 1).
+class _FamilyScopeLoadFailed extends StatelessWidget {
+  const _FamilyScopeLoadFailed({required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final tokens = context.tokens;
+    return Container(
+      key: const ValueKey('privacyFamilyLoadFailed'),
+      padding: const EdgeInsets.all(AppSpace.lg),
+      decoration: BoxDecoration(
+        border: Border.all(color: tokens.border),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.familyLoadFailed),
+          const SizedBox(height: AppSpace.sm),
+          OutlinedButton(
+            key: const ValueKey('privacyFamilyRetry'),
+            onPressed: onRetry,
+            child: Text(l10n.privacyRetry),
+          ),
+        ],
+      ),
     );
   }
 }
