@@ -33,6 +33,9 @@ object ClientHeader {
     const val FLAVOUR_PLAY = "play"
     const val FLAVOUR_FULL = "full"
 
+    /** The `versionNameSuffix` values `app/build.gradle.kts` can append; only `full` has one today. */
+    internal val FLAVOUR_SUFFIXES = listOf("-full")
+
     private val VERSION_PART = Regex("^\\d{1,4}$")
     private val FLAVOUR = Regex("^[a-z0-9-]{1,16}$")
 
@@ -60,6 +63,24 @@ object ClientHeader {
      * Public because the capability report's `client.version` and this header must be the **same string**: two
      * normalisers would eventually disagree, and the server compares the header against the report.
      */
+    /**
+     * The version name this build should **report**, which is not always the one it displays (#1080).
+     *
+     * `app/build.gradle.kts` appends `versionNameSuffix = "-full"` to the sideloaded artefact, so
+     * `BuildConfig.VERSION_NAME` is `0.2.0-full` there. [version] rightly refuses a non-numeric part, so the
+     * header — and with it the entire capability report — came out **null** on every Full build, the artefact
+     * that does the actual parental control, while the Play build (no suffix) reported fine.
+     *
+     * Display keeps the suffix: a parent comparing two installs can tell them apart. The wire must not, because
+     * the server's grammar has no place for it and a wrong build number is worse than none. One normaliser here
+     * beats a copy of the rule at each of the three call sites.
+     */
+    fun wireVersionName(versionName: String?): String? {
+        val raw = versionName?.trim().orEmpty()
+        if (raw.isEmpty()) return null
+        return FLAVOUR_SUFFIXES.firstOrNull { raw.endsWith(it) }?.let { raw.dropLast(it.length) } ?: raw
+    }
+
     fun version(versionName: String?): String? {
         val raw = versionName?.trim().orEmpty()
         if (raw.isEmpty()) return null

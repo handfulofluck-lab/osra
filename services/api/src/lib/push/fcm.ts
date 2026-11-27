@@ -93,6 +93,7 @@ export class FcmProvider implements PushProvider {
   /** The FCM v1 message body for one token. Exported shape so tests can assert it. */
   static buildMessage(token: string, message: PushMessage) {
     const collapse = message.collapseKey ?? message.threadId;
+    const thread = message.threadId ?? collapse;
     return {
       message: {
         token,
@@ -110,7 +111,10 @@ export class FcmProvider implements PushProvider {
         },
         // Flutter parent app on iOS registers through FCM too; keep APNs headers coherent.
         apns: {
-          headers: { "apns-priority": message.priority === "high" ? "10" : "5" },
+          headers: {
+            "apns-priority": message.priority === "high" ? "10" : "5",
+            ...(message.apnsCollapseId ? { "apns-collapse-id": message.apnsCollapseId } : {}),
+          },
           payload: {
             aps: message.dataOnly
               ? { "content-available": 1 }
@@ -121,9 +125,9 @@ export class FcmProvider implements PushProvider {
                     alert: { "title-loc-key": message.locKeys.titleKey, "loc-key": message.locKeys.bodyKey },
                     "content-available": 1,
                     sound: "default",
-                    ...(collapse ? { "thread-id": collapse } : {}),
+                    ...(thread ? { "thread-id": thread } : {}),
                   }
-                : { sound: "default", ...(collapse ? { "thread-id": collapse } : {}) },
+                : { sound: "default", ...(thread ? { "thread-id": thread } : {}) },
           },
         },
       },

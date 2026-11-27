@@ -17,8 +17,17 @@ export type ProviderAnalysis = {
   providers: ProviderReceipts;
   verdict: { flagged: boolean; severity: Severity; concernTypes: string[] } | null;
 };
+export type ProviderModelSnapshot = {
+  modelVersion: string;
+  lang: string | null;
+  topCategory: string | null;
+  topScore: number | null;
+  cutoff: number | null;
+  path: "own" | "hybrid_second_look";
+};
 
 const harmful = ["cyberbullying", "self_harm", "grooming", "violence", "sexual_content", "substance_use", "hate_speech"];
+const languages = new Set(["en", "id", "ms", "tr", "ur", "ar", "fr", "uncertain"]);
 const ownModels = new Set(["v9", "v9b", "v9+v9b"]);
 const selected = (mode: ProviderMode): Provider[] => mode === "both" ? ["bedrock", "own"] : [mode];
 const unavailable = (reason: Reason = "unavailable"): Receipt => ({ status: "unavailable", reason });
@@ -84,6 +93,62 @@ export function readProviderAnalysis(data: unknown, mode: ProviderMode, traceId:
   return { providers, verdict: anyScored ? { flagged: concerns.size > 0, severity, concernTypes: [...concerns] } : null };
 }
 
+export function readProviderModelSnapshot(data: unknown, receipt: ProviderReceipts["own"]): ProviderModelSnapshot | undefined {
+  if (receipt?.status !== "scored" || !record(data) || !record(data.outcomes) || !record(data.outcomes.own)) return undefined;
+  const raw = data.outcomes.own;
+  const top = Object.entries(receipt.categories).sort((a, b) => b[1] - a[1])[0];
+  return {
+    modelVersion: receipt.model,
+    lang: typeof raw.language === "string" && languages.has(raw.language) ? raw.language : null,
+    topCategory: top?.[0] ?? null,
+    topScore: top?.[1] ?? null,
+    cutoff: typeof raw.cutoff === "number" && Number.isFinite(raw.cutoff) ? raw.cutoff : null,
+    path: receipt.model === "v9+v9b" ? "hybrid_second_look" : "own",
+  };
+}
+
 export function flaggedProviders(receipts: ProviderReceipts): ProviderReceipts {
   return Object.fromEntries(Object.entries(receipts).filter(([, receipt]) => receipt.status === "scored" && receipt.flagged));
+}
+
+/** What the own model said about one scan, flagged or not, with no text (Ahmed's 26 Nov WhatsApp test). */
+export type OwnScanScoreReceipt = {
+  modelVersion: string | null;
+  lang: string | null;
+  topCategory: string | null;
+  topScore: number | null;
+};
+
+/**
+ * The flagged-only receipt keeps scores for flagged categories alone, so a scan that stayed quiet left no
+ * way to tell a cut-off miss from text that never reached the model. This reads the validated own receipt:
+ * the highest of the seven harm scores and the language. Never the text. The cut-off is not in the provider's
+ * response contract (ai-engine ScoredOutcome); it stays in the serving config and alarm-levels notes, and
+ * exposing it from the engine is after Saturday (Claude, #1227 7204404478).
+ */
+export function readOwnScanScoreReceipt(data: unknown, receipt: ProviderReceipts["own"]): OwnScanScoreReceipt | undefined {
+  // Codex (#1227): only a receipt the provider parser validated and scored (trace, mode, region, model and all
+  // seven scores in range) may be logged. The receipt keeps flagged scores only, so the quiet top score comes
+  // from the same raw outcome the parser just validated, plus its language.
+  if (receipt?.status !== "scored") return undefined;
+  if (!record(data) || !record(data.outcomes) || !record(data.outcomes.own)) return undefined;
+  const raw = data.outcomes.own;
+  let topCategory: string | null = null;
+  let topScore: number | null = null;
+  if (record(raw.categories)) {
+    for (const label of harmful) {
+      const score = raw.categories[label];
+      if (typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 1 &&
+          (topScore === null || score > topScore)) {
+        topCategory = label;
+        topScore = score;
+      }
+    }
+  }
+  return {
+    modelVersion: typeof receipt.model === "string" && ownModels.has(receipt.model) ? receipt.model : null,
+    lang: typeof raw.language === "string" && languages.has(raw.language) ? raw.language : null,
+    topCategory,
+    topScore: topScore === null ? null : Math.round(topScore * 10_000) / 10_000,
+  };
 }

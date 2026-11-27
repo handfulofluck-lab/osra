@@ -34,7 +34,7 @@ describe("alerts routes", () => {
     const res = await app.inject({ method: "GET", url: "/v1/alerts?page=1&limit=2", headers: authHeader(app) });
     expect(res.statusCode).toBe(200);
     expect(res.json().items[0].metadata.providerOutcomes).toEqual(providerOutcomes);
-    expect(prismaMock.alert.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { child: { familyId: "fam-1" } } }));
+    expect(prismaMock.alert.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { child: { familyId: "fam-1" }, heldDuringSetup: false } }));
     const body = res.json();
     expect(body.items).toHaveLength(2);
     expect(body.meta).toEqual({ total: 7, page: 1, limit: 2 });
@@ -61,7 +61,21 @@ describe("alerts routes", () => {
     prismaMock.child.findUnique.mockResolvedValue(CHILD);
     prismaMock.alert.create.mockResolvedValue({ id: "a-new", category: "grooming" });
 
-    const raw = JSON.stringify({ childId: CHILD.id, deviceId: "dev-1", severity: "critical", category: "grooming", title: "t", body: "b", metadata: { src: "ai" } });
+    const raw = JSON.stringify({
+      childId: CHILD.id,
+      deviceId: "dev-1",
+      severity: "critical",
+      category: "grooming",
+      title: "t",
+      body: "b",
+      metadata: {
+        src: "ai",
+        pushDeliveryId: "producer-fixture",
+        pushDeliverySeq: 1,
+        pushDeliveries: [],
+        summaryGroupedInto: "producer-fixture",
+      },
+    });
     const res = await app.inject({
       method: "POST",
       url: "/v1/alerts/internal",
@@ -74,7 +88,7 @@ describe("alerts routes", () => {
     expect(res.statusCode).toBe(201);
     expect(prismaMock.alert.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ childId: CHILD.id, category: "grooming" }),
+        data: expect.objectContaining({ childId: CHILD.id, category: "grooming", metadata: { src: "ai" } }),
       }),
     );
     // The alert must be published on the family's realtime channel.
@@ -553,7 +567,7 @@ describe("alerts routes", () => {
       headers: authHeader(app),
     });
     expect(res.statusCode).toBe(200);
-    const expectedWhere = { child: { familyId: "fam-1" }, childId: "child-1", severity: "critical", category: "sos" };
+    const expectedWhere = { child: { familyId: "fam-1" }, heldDuringSetup: false, childId: "child-1", severity: "critical", category: "sos" };
     expect(prismaMock.alert.count).toHaveBeenCalledWith({ where: expectedWhere });
     expect(prismaMock.alert.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expectedWhere }));
     await app.close();

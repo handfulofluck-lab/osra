@@ -530,6 +530,96 @@ abstract class AppLocalizations {
   /// **'Digest preferences'**
   String get digestPreferencesMenu;
 
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @settingsGroupLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Language and appearance'**
+  String get settingsGroupLanguage;
+
+  /// No description provided for @settingsGroupSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get settingsGroupSecurity;
+
+  /// No description provided for @settingsGroupAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get settingsGroupAccount;
+
+  /// No description provided for @settingsSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get settingsSignOut;
+
+  /// No description provided for @settingsSignOutAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices'**
+  String get settingsSignOutAll;
+
+  /// No description provided for @settingsValueOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get settingsValueOn;
+
+  /// No description provided for @settingsValueOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get settingsValueOff;
+
+  /// No description provided for @settingsSignOutAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of all devices?'**
+  String get settingsSignOutAllTitle;
+
+  /// No description provided for @settingsSignOutAllBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will have to sign in again on every device that uses your account, including this one.'**
+  String get settingsSignOutAllBody;
+
+  /// No description provided for @settingsSignOutAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get settingsSignOutAllConfirm;
+
+  /// No description provided for @settingsSecurityCardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish securing your account'**
+  String get settingsSecurityCardTitle;
+
+  /// No description provided for @settingsSecurityCardLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-step verification is off'**
+  String get settingsSecurityCardLine;
+
+  /// No description provided for @settingsSecurityCardButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get settingsSecurityCardButton;
+
+  /// No description provided for @settingsTimeZone.
+  ///
+  /// In en, this message translates to:
+  /// **'Time zone'**
+  String get settingsTimeZone;
+
   /// No description provided for @signOutTooltip.
   ///
   /// In en, this message translates to:
@@ -1033,6 +1123,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The phone hasn\'t picked this change up yet.'**
   String get rulesBehindHint;
+
+  /// No description provided for @rulesWaitingFirstApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the phone to apply rules.'**
+  String get rulesWaitingFirstApply;
 
   /// No description provided for @rulesLoadFailed.
   ///
@@ -2045,7 +2141,7 @@ abstract class AppLocalizations {
   /// No description provided for @youtubeRestrictedDesc.
   ///
   /// In en, this message translates to:
-  /// **'Filters out potentially mature content on YouTube across child devices.'**
+  /// **'Hides most mature videos. YouTube\'s own filter misses some, so to be sure, block YouTube or set a time limit in Apps.'**
   String get youtubeRestrictedDesc;
 
   /// No description provided for @strict.
@@ -2743,6 +2839,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Concerns'**
   String get concerns;
+
+  /// No description provided for @flagVoteQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Was OSRA right to flag this?'**
+  String get flagVoteQuestion;
+
+  /// No description provided for @flagVoteConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Concerning'**
+  String get flagVoteConcerning;
+
+  /// No description provided for @flagVoteNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Not concerning'**
+  String get flagVoteNotConcerning;
+
+  /// No description provided for @flagVoteHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Your answer helps OSRA check messages better.'**
+  String get flagVoteHelp;
+
+  /// No description provided for @flagVoteThanks.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks, noted'**
+  String get flagVoteThanks;
+
+  /// No description provided for @flagVoteBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: {vote}'**
+  String flagVoteBy(String name, String vote);
+
+  /// No description provided for @flagVoteA11yConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as concerning'**
+  String get flagVoteA11yConcerning;
+
+  /// No description provided for @flagVoteA11yNotConcerning.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as not concerning'**
+  String get flagVoteA11yNotConcerning;
+
+  /// No description provided for @flagVoteClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear vote'**
+  String get flagVoteClear;
+
+  /// No description provided for @flagVoteCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Vote cleared'**
+  String get flagVoteCleared;
+
+  /// No description provided for @flagVoteA11yClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear your vote on this message'**
+  String get flagVoteA11yClear;
 
   /// No description provided for @vaultTrustCopy.
   ///
@@ -4808,6 +4970,18 @@ abstract class AppLocalizations {
   /// **'Blocked site attempted'**
   String get alertTitleBlockedSite;
 
+  /// No description provided for @blockedSiteDomainLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Site: {domain}'**
+  String blockedSiteDomainLine(String domain);
+
+  /// No description provided for @blockedSiteNamesNotCollected.
+  ///
+  /// In en, this message translates to:
+  /// **'Site names aren\'t collected yet, so only the block is shown.'**
+  String get blockedSiteNamesNotCollected;
+
   /// No description provided for @alertTitleDailyLimit.
   ///
   /// In en, this message translates to:
@@ -5018,6 +5192,12 @@ abstract class AppLocalizations {
   /// **'Concerning content'**
   String get riskAiConcern;
 
+  /// #1138: timing tag on a Social concern card.
+  ///
+  /// In en, this message translates to:
+  /// **'Late at night'**
+  String get riskLateNight;
+
   /// Phone setup row (osra-security#6): the capability report's profiles.kinds holds clone. Arabic wording by Karim (2026-11-11).
   ///
   /// In en, this message translates to:
@@ -5189,7 +5369,7 @@ abstract class AppLocalizations {
   /// No description provided for @grantWebFilter.
   ///
   /// In en, this message translates to:
-  /// **'Web filter (VPN consent)'**
+  /// **'Web filter'**
   String get grantWebFilter;
 
   /// No description provided for @grantLocation.
@@ -5661,6 +5841,18 @@ abstract class AppLocalizations {
   /// **'No apps match'**
   String get appsNoMatch;
 
+  /// No description provided for @appsSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get appsSentToPhone;
+
+  /// P-12 (#1182 pair): browser coverage for an iPhone-only child.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get appsNotYetOnIphone;
+
   /// No description provided for @appAboutThisApp.
   ///
   /// In en, this message translates to:
@@ -5756,6 +5948,901 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} new'**
   String socialAlertNewSince(int count);
+
+  /// No description provided for @phoneSetupStepsLeftThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeftThisPhone(int count);
+
+  /// No description provided for @phoneSetupProtected.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is protected.'**
+  String get phoneSetupProtected;
+
+  /// No description provided for @phoneSetupStepsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up {childName}\'s phone: {count, plural, =1{1 step} other{{count} steps}} left'**
+  String phoneSetupStepsLeft(String childName, int count);
+
+  /// No description provided for @alertTitleSetupComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone is protected'**
+  String get alertTitleSetupComplete;
+
+  /// No description provided for @alertTitleSetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone setup needs attention'**
+  String get alertTitleSetupIncomplete;
+
+  /// No description provided for @alertBodySetupCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone is protected.'**
+  String alertBodySetupCompleted(String childName);
+
+  /// No description provided for @alertBodySetupIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.'**
+  String alertBodySetupIncomplete(String childName, int count, String steps);
+
+  /// No description provided for @alertBodySetupIncompleteGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s phone setup is still incomplete after 30 minutes.'**
+  String alertBodySetupIncompleteGeneric(String childName);
+
+  /// No description provided for @alertBodyDataCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA was reinstalled on {model}. Its protection was off until it was paired again.'**
+  String alertBodyDataCleared(String model);
+
+  /// No description provided for @accessRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asks to use {app}'**
+  String accessRequestTitle(String child, String app);
+
+  /// No description provided for @accessRequestBlockedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} was blocked on {child}\'s phone'**
+  String accessRequestBlockedTitle(String app, String child);
+
+  /// No description provided for @accessRequestBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} tapped \"Request access\" on the block screen.'**
+  String accessRequestBody(String child);
+
+  /// No description provided for @accessRequestBlockedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} tried to open it. Nothing for you to do.'**
+  String accessRequestBlockedBody(String child);
+
+  /// No description provided for @accessRequestAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get accessRequestAllow;
+
+  /// No description provided for @accessRequestAllowing.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowing…'**
+  String get accessRequestAllowing;
+
+  /// No description provided for @accessRequestKeepBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep blocked'**
+  String get accessRequestKeepBlocked;
+
+  /// No description provided for @accessRequestDisclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'{app} will be allowed from now on. Bedtime, school time and Pause still apply.'**
+  String accessRequestDisclosure(String app);
+
+  /// No description provided for @accessRequestAllowFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t allow {app}. Check your connection and try again.'**
+  String accessRequestAllowFailed(String app);
+
+  /// No description provided for @accessRequestReadOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {owner} can answer this request. Ask them to open OSRA.'**
+  String accessRequestReadOnly(String owner);
+
+  /// No description provided for @accessRequestAllowedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} allowed {app}{timeSuffix}'**
+  String accessRequestAllowedBy(String actor, String app, String timeSuffix);
+
+  /// No description provided for @accessRequestKeptBlockedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} kept {app} blocked{timeSuffix}'**
+  String accessRequestKeptBlockedBy(
+      String actor, String app, String timeSuffix);
+
+  /// No description provided for @accessRequestAllowedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You allowed {app}{timeSuffix}'**
+  String accessRequestAllowedByYou(String app, String timeSuffix);
+
+  /// No description provided for @accessRequestKeptBlockedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You kept {app} blocked{timeSuffix}'**
+  String accessRequestKeptBlockedByYou(String app, String timeSuffix);
+
+  /// No description provided for @accessRequestHandled.
+  ///
+  /// In en, this message translates to:
+  /// **'This request was handled'**
+  String get accessRequestHandled;
+
+  /// No description provided for @accessRequestAllowedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'You allowed {app}'**
+  String accessRequestAllowedSnack(String app);
+
+  /// No description provided for @accessRequestKeptBlockedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'You kept {app} blocked'**
+  String accessRequestKeptBlockedSnack(String app);
+
+  /// No description provided for @accessRequestAllowLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {app}'**
+  String accessRequestAllowLabel(String app);
+
+  /// No description provided for @accessRequestKeepBlockedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep {app} blocked'**
+  String accessRequestKeepBlockedLabel(String app);
+
+  /// No description provided for @alertsOffBannerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts are off. You won\'t hear about urgent messages.'**
+  String get alertsOffBannerBody;
+
+  /// No description provided for @alertsOffTurnOnAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on alerts'**
+  String get alertsOffTurnOnAction;
+
+  /// No description provided for @pairP05Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect {child}\'s phone'**
+  String pairP05Title(String child);
+
+  /// No description provided for @pairP05TitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect your child\'s phone'**
+  String get pairP05TitleGeneric;
+
+  /// No description provided for @pairP05Subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'On {child}\'s phone, install OSRA Kids, then scan this.'**
+  String pairP05Subtitle(String child);
+
+  /// No description provided for @pairP05SubtitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Install OSRA Kids on the child\'s phone, then scan this.'**
+  String get pairP05SubtitleGeneric;
+
+  /// No description provided for @pairP05OrTypeCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Or type this code'**
+  String get pairP05OrTypeCode;
+
+  /// No description provided for @pairP05ValidFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid for {time}'**
+  String pairP05ValidFor(String time);
+
+  /// No description provided for @pairP05CodeExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Code expired'**
+  String get pairP05CodeExpired;
+
+  /// No description provided for @pairP05NewCode.
+  ///
+  /// In en, this message translates to:
+  /// **'New code'**
+  String get pairP05NewCode;
+
+  /// No description provided for @pairP05WaitingFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for {child}\'s phone…'**
+  String pairP05WaitingFor(String child);
+
+  /// No description provided for @pairP05WaitingGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the child\'s phone…'**
+  String get pairP05WaitingGeneric;
+
+  /// No description provided for @pairP05ConfirmDeviceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm this device?'**
+  String get pairP05ConfirmDeviceTitle;
+
+  /// No description provided for @pairP05ConfirmDeviceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{model} wants to connect. Confirm to link it.'**
+  String pairP05ConfirmDeviceBody(String model);
+
+  /// No description provided for @pairP05ConfirmLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm and link'**
+  String get pairP05ConfirmLink;
+
+  /// No description provided for @pairP05Decline.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get pairP05Decline;
+
+  /// No description provided for @pairP05Connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone connected.'**
+  String get pairP05Connected;
+
+  /// No description provided for @pairP05SendInstallLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Send install link'**
+  String get pairP05SendInstallLink;
+
+  /// No description provided for @pairP05InstallLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Install link copied to share.'**
+  String get pairP05InstallLinkCopied;
+
+  /// No description provided for @pairP05SkipForNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip for now'**
+  String get pairP05SkipForNow;
+
+  /// No description provided for @timeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked for {minutes} more minutes today'**
+  String timeRequestTitle(String child, int minutes);
+
+  /// No description provided for @timeRequestGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'+{minutes} min'**
+  String timeRequestGrant(String minutes);
+
+  /// No description provided for @timeRequestDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get timeRequestDecline;
+
+  /// No description provided for @timeRequestGrantedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already gave {minutes} minutes today'**
+  String timeRequestGrantedBy(String actor, int minutes);
+
+  /// No description provided for @timeRequestGrantedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already gave {minutes} minutes today'**
+  String timeRequestGrantedByYou(int minutes);
+
+  /// No description provided for @timeRequestDeclinedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} already declined this request'**
+  String timeRequestDeclinedBy(String actor);
+
+  /// No description provided for @timeRequestDeclinedByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You already declined this request'**
+  String get timeRequestDeclinedByYou;
+
+  /// No description provided for @timeRequestDecidedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Decided {time}'**
+  String timeRequestDecidedAt(String time);
+
+  /// No description provided for @p15CanBeWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible concern — automatic checks can be wrong.'**
+  String get p15CanBeWrong;
+
+  /// No description provided for @p15PreviewLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the preview. Check your connection and try again.'**
+  String get p15PreviewLoadFailed;
+
+  /// No description provided for @p15ActionsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'What you can do'**
+  String get p15ActionsHeader;
+
+  /// No description provided for @p15TalkWithChild.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk with {child}'**
+  String p15TalkWithChild(String child);
+
+  /// No description provided for @p15HelpChildBlockContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Help {child} block {contact}'**
+  String p15HelpChildBlockContact(String child, String contact);
+
+  /// No description provided for @p15HelpBlockGuideBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Sit with {child} and open {app} together to block {contact} and mute their messages.'**
+  String p15HelpBlockGuideBody(String child, String app, String contact);
+
+  /// No description provided for @p15AdjustLimits.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust screen time & bedtime'**
+  String get p15AdjustLimits;
+
+  /// No description provided for @p15ReviewAppRules.
+  ///
+  /// In en, this message translates to:
+  /// **'Review app rules'**
+  String get p15ReviewAppRules;
+
+  /// No description provided for @p15IphoneNotYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get p15IphoneNotYet;
+
+  /// No description provided for @p14SegmentRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests'**
+  String get p14SegmentRequests;
+
+  /// No description provided for @p14LevelUrgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Urgent'**
+  String get p14LevelUrgent;
+
+  /// No description provided for @p14LevelCheckSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Check soon'**
+  String get p14LevelCheckSoon;
+
+  /// No description provided for @p14LevelInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Info'**
+  String get p14LevelInfo;
+
+  /// No description provided for @p14FilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get p14FilterAll;
+
+  /// No description provided for @p14NoRequestsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No requests yet'**
+  String get p14NoRequestsYet;
+
+  /// No description provided for @p14GroupedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 time · last {time}} other{{count} times · last {time}}}'**
+  String p14GroupedCount(int count, String time);
+
+  /// P-12: pill on the enforcement banner when the filter is not applied on a device (UI/UX Bureau 7204314039).
+  ///
+  /// In en, this message translates to:
+  /// **'Not blocking yet'**
+  String get p12NotBlockingYet;
+
+  /// P-12: button on one recently blocked site; opens the prefilled Allow a site dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow site'**
+  String get p12AllowSite;
+
+  /// P-12: card title over the recent blocks (hidden whole when the server withholds host names).
+  ///
+  /// In en, this message translates to:
+  /// **'Recently blocked'**
+  String get p12RecentlyBlocked;
+
+  /// P-12: dialog title when adding a site to always block.
+  ///
+  /// In en, this message translates to:
+  /// **'Block a site'**
+  String get p12BlockSiteTitle;
+
+  /// P-12: dialog title when adding a site to always allow, including from Allow site.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow a site'**
+  String get p12AllowSiteTitle;
+
+  /// No description provided for @privacyMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy and data'**
+  String get privacyMenu;
+
+  /// No description provided for @privacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy and data'**
+  String get privacyTitle;
+
+  /// No description provided for @privacyKeptHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept, then deleted automatically'**
+  String get privacyKeptHeader;
+
+  /// No description provided for @privacyFullDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Full details'**
+  String get privacyFullDetails;
+
+  /// No description provided for @privacyRowExcerpts.
+  ///
+  /// In en, this message translates to:
+  /// **'Flagged message parts'**
+  String get privacyRowExcerpts;
+
+  /// No description provided for @privacyRowAlerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts'**
+  String get privacyRowAlerts;
+
+  /// No description provided for @privacyRowLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location history'**
+  String get privacyRowLocation;
+
+  /// No description provided for @privacyRowStoredIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Stored in'**
+  String get privacyRowStoredIn;
+
+  /// No description provided for @privacyStorageFrankfurt.
+  ///
+  /// In en, this message translates to:
+  /// **'European Union (Frankfurt, Germany)'**
+  String get privacyStorageFrankfurt;
+
+  /// No description provided for @privacyStorageStockholm.
+  ///
+  /// In en, this message translates to:
+  /// **'European Union (Stockholm, Sweden)'**
+  String get privacyStorageStockholm;
+
+  /// No description provided for @privacyStorageIreland.
+  ///
+  /// In en, this message translates to:
+  /// **'European Union (Ireland)'**
+  String get privacyStorageIreland;
+
+  /// No description provided for @privacyDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}}'**
+  String privacyDays(int count);
+
+  /// No description provided for @privacyMonths.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 month} other{{count} months}}'**
+  String privacyMonths(int count);
+
+  /// No description provided for @privacyWhoCanSee.
+  ///
+  /// In en, this message translates to:
+  /// **'Who can see data'**
+  String get privacyWhoCanSee;
+
+  /// No description provided for @privacyWhoCanSeeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Adults in the family and what each can see'**
+  String get privacyWhoCanSeeDesc;
+
+  /// No description provided for @privacyManage.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage'**
+  String get privacyManage;
+
+  /// No description provided for @privacyCopyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Get a copy of your family data'**
+  String get privacyCopyTitle;
+
+  /// No description provided for @privacyCopyDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Email us from the address you sign in with. We answer within one month.'**
+  String get privacyCopyDesc;
+
+  /// No description provided for @privacyCopyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get privacyCopyAction;
+
+  /// No description provided for @privacyConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Consent for each child'**
+  String get privacyConsentTitle;
+
+  /// No description provided for @privacyConsentDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Review or withdraw, child by child'**
+  String get privacyConsentDesc;
+
+  /// No description provided for @privacyOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get privacyOpen;
+
+  /// No description provided for @privacyChooseChild.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a child'**
+  String get privacyChooseChild;
+
+  /// No description provided for @privacyNoChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'No children added yet.'**
+  String get privacyNoChildren;
+
+  /// No description provided for @privacyDeleteFamilyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete family account'**
+  String get privacyDeleteFamilyTitle;
+
+  /// No description provided for @privacyDeleteFamilyDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes the whole family, including the data of every child, at once. Asks for your password.'**
+  String get privacyDeleteFamilyDesc;
+
+  /// No description provided for @privacyDeleteSelfTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete my account'**
+  String get privacyDeleteSelfTitle;
+
+  /// No description provided for @privacyDeleteSelfDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes only your own account. The family carries on.'**
+  String get privacyDeleteSelfDesc;
+
+  /// No description provided for @privacyDeleteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete…'**
+  String get privacyDeleteAction;
+
+  /// No description provided for @privacyLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load what is kept. Check your connection and try again.'**
+  String get privacyLoadFailed;
+
+  /// P-23: the retention summary failed on the server side (not the parent's connection).
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this right now. Try again in a moment.'**
+  String get privacyLoadFailedServer;
+
+  /// No description provided for @privacyRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get privacyRetry;
+
+  /// No description provided for @homeTabHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get homeTabHome;
+
+  /// No description provided for @homeTabFamily.
+  ///
+  /// In en, this message translates to:
+  /// **'Family'**
+  String get homeTabFamily;
+
+  /// No description provided for @homeTabSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get homeTabSettings;
+
+  /// No description provided for @homeFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get homeFilterAll;
+
+  /// No description provided for @homeNeedsYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs you'**
+  String get homeNeedsYou;
+
+  /// No description provided for @homeSafetyAlertsToReview.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 safety alert to review} other{{count} safety alerts to review}}'**
+  String homeSafetyAlertsToReview(int count);
+
+  /// No description provided for @homeDurationHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} {minutes}'**
+  String homeDurationHoursMinutes(String hours, String minutes);
+
+  /// No description provided for @homeTimeLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{duration} left'**
+  String homeTimeLeft(String duration);
+
+  /// No description provided for @homeOfLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'of {limit}'**
+  String homeOfLimit(String limit);
+
+  /// No description provided for @homeSeenJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen just now'**
+  String get homeSeenJustNow;
+
+  /// No description provided for @homeSeenAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen {duration} ago'**
+  String homeSeenAgo(String duration);
+
+  /// No description provided for @homeOfflineFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline for {duration}'**
+  String homeOfflineFor(String duration);
+
+  /// No description provided for @homeStateAtSchool.
+  ///
+  /// In en, this message translates to:
+  /// **'At school'**
+  String get homeStateAtSchool;
+
+  /// No description provided for @homeStateBedtime.
+  ///
+  /// In en, this message translates to:
+  /// **'Bedtime'**
+  String get homeStateBedtime;
+
+  /// No description provided for @homeStateFreeTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Free time'**
+  String get homeStateFreeTime;
+
+  /// No description provided for @homeStateHomework.
+  ///
+  /// In en, this message translates to:
+  /// **'Homework'**
+  String get homeStateHomework;
+
+  /// No description provided for @homeStatePaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get homeStatePaused;
+
+  /// No description provided for @homeBatteryPct.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery {pct}'**
+  String homeBatteryPct(String pct);
+
+  /// No description provided for @homeBonusPlus15.
+  ///
+  /// In en, this message translates to:
+  /// **'+15 min'**
+  String get homeBonusPlus15;
+
+  /// No description provided for @homeBonusPlus30.
+  ///
+  /// In en, this message translates to:
+  /// **'+30 min'**
+  String get homeBonusPlus30;
+
+  /// No description provided for @homePauseInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause internet'**
+  String get homePauseInternet;
+
+  /// No description provided for @homeResumeInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume internet'**
+  String get homeResumeInternet;
+
+  /// No description provided for @homeLockAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock'**
+  String get homeLockAllDevices;
+
+  /// No description provided for @homeUnlockAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get homeUnlockAllDevices;
+
+  /// No description provided for @homeNotYetAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available'**
+  String get homeNotYetAvailable;
+
+  /// No description provided for @homeNotYetOnIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get homeNotYetOnIphone;
+
+  /// No description provided for @homeKeepBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep blocked'**
+  String get homeKeepBlocked;
+
+  /// No description provided for @homeNotToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Not today'**
+  String get homeNotToday;
+
+  /// No description provided for @homeTimeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes, plural, =1{{child} asked for 1 more minute of screen time} other{{child} asked for {minutes} more minutes of screen time}}'**
+  String homeTimeRequestTitle(String child, int minutes);
+
+  /// No description provided for @homeAccessRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{child} asked to open {app}'**
+  String homeAccessRequestTitle(String child, String app);
+
+  /// No description provided for @homeSentToPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to phone'**
+  String get homeSentToPhone;
+
+  /// No description provided for @homeSendingBonusSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Adding {duration} for today'**
+  String homeSendingBonusSnack(String duration);
+
+  /// No description provided for @homeExampleBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Example'**
+  String get homeExampleBadge;
+
+  /// No description provided for @p01WelcomeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A clearer view of your family\'s digital day.'**
+  String get p01WelcomeSubtitle;
+
+  /// No description provided for @p01ExampleBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Example'**
+  String get p01ExampleBadge;
+
+  /// No description provided for @p01NoAdsLine.
+  ///
+  /// In en, this message translates to:
+  /// **'No ads. Your family\'s data is never sold.'**
+  String get p01NoAdsLine;
+
+  /// No description provided for @p01PreviewScreenTimeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'1 h 20 min left'**
+  String get p01PreviewScreenTimeValue;
+
+  /// No description provided for @p01PreviewBedtimeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'21:30 → 07:00'**
+  String get p01PreviewBedtimeValue;
+
+  /// No description provided for @p01PreviewAppsValue.
+  ///
+  /// In en, this message translates to:
+  /// **'2 blocked'**
+  String get p01PreviewAppsValue;
+
+  /// No description provided for @p01PreviewLocationValue.
+  ///
+  /// In en, this message translates to:
+  /// **'At school'**
+  String get p01PreviewLocationValue;
 }
 
 class _AppLocalizationsDelegate

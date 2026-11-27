@@ -1,0 +1,2 @@
+### Windows agent — the three tamper alerts a parent reads are plain English (#754)
+- `tray_pipe_create_failed`, `tray_offline_fallback` and `restriction_store_write_failed` now say what happened and what OSRA did, with no internal words ("tray pipe", "verified tray", "restriction state"). They are the fallback used when the parent app cannot supply a localized body; the localized keys remain the #718 follow-up. UI/UX Bureau, 2026-11-19.
