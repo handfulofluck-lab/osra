@@ -13,12 +13,21 @@ these gates exist, see `docs/adr/0005-adversarial-acceptance-gate.md` and
 | Live end-to-end | `node scripts/e2e.mjs` | The intended user journey (pair → rules → alerts → commands → export) | Wiring breaks on a real stack |
 | Flutter | `cd apps/parent-app && flutter pub get && flutter analyze && flutter test` (needs `C:\KARIM\tools\flutter\bin` on `PATH` — §2) | Dashboard, rules editor, providers, light/dark design tokens and contrast, layout at 320×568, English/Arabic localization (ARB key parity + every translated screen in Arabic/RTL at 320×568) | UI/contract regressions, a missing Arabic string, an RTL overflow |
 | Android JVM | `cd apps/child-android && ./gradlew testPlayDebugUnitTest testFullDebugUnitTest` (ADR-0016: two flavors, both must stay green) | Rule engine, counters, monitored apps, HMAC signing logic, flavor manifest difference, **the merged manifest** of both flavours (ADR-0021) | Agent logic regressions, a Play build that gained the notification permission or any Play-forbidden permission **through a dependency's manifest** |
-| Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests` | Proxy/process/screen-time/tamper logic | Agent logic regressions |
+| Windows (xunit) | `cd apps/agent-desktop && dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo && dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo` | Configuration isolation, service/tray supervision, per-session pipe, proxy/process/screen-time/tamper logic, pairing and capabilities | Agent logic regressions |
 | AI engine | `cd services/ai-engine && pytest tests -q` | Classifier + API smoke (skips what is absent) | Classification/API regressions |
 | iOS + shared macOS core | `.github/workflows/ios-ci.yml` (macOS runner) | Native macOS SwiftPM build + test discovery + tests; iOS SwiftPM and simulator builds | Swift compile/behaviour regressions, or a portable test excluded from macOS |
 | **Hardware** (device) | section 5 | Crash-loop, FGS start, location upload, overlays | Anything the emulator cannot show |
 
 For the 12-app Social monitoring catalog (#1037), run `flutter test test/social_screen_test.dart test/setup_monitoring_test.dart`. The tests pin the shared Android package mapping, missing-key ON behavior, installed-first grouping, usable collapsed controls, onboarding preselection, Select all, and one-time banner persistence. To generate the UI/UX Bureau's 320 px / 200% EN and AR frames, set `OSRA_FRAME_DIR` to a scratch output directory and run the same command; `test/frame_capture.dart` writes `social-*.png` and `onboarding-*.png` only when that variable is set, so ordinary test runs have no filesystem side effects.
+
+For the P-20 daily-limit request, run `flutter test --dart-define=OSRA_UX_P20=true
+test/time_request_actions_test.dart test/time_request_frames_test.dart` from `apps/parent-app`.
+Run the same tests without the define to check the fallback. An opt-in `OSRA_FRAME_DIR`
+captures the card and detail at 390 px and 320 px with 200% text in English and Arabic.
+The fixture checks title wrapping, the Screen time label, both clock settings, localized
+clock direction, and 48 dp tap targets. For device evidence, send an Android daily-limit request
+in a paired test family, approve it once, and confirm the child receives the grant. A
+separate decline should close the request with no new bonus.
 
 Run the iOS launch classifier fixtures with
 `bash apps/child-ios/scripts/test-classify-launch-failure.sh`. A failure log that contains
@@ -33,6 +42,29 @@ variable at a dedicated `osra_test_*` database on loopback, with trust-only loca
 with passwords, runs the real migrations, seed and cleanup, and leaves an empty schema. Never point it
 at a shared, staging or production database.
 
+`test/social-feedback-db.test.ts` is a second, independently destructive integration suite for #1065. It
+requires the exact loopback database name `osra_feedback_1065`; CI creates that database in `api.yml` and
+sets `OSRA_FEEDBACK_DATABASE_URL`. For a local run, create that dedicated database once, then run:
+
+```bash
+createdb -h 127.0.0.1 -U postgres osra_feedback_1065   # once; skip when it already exists
+OSRA_FEEDBACK_DATABASE_URL=postgres://postgres@127.0.0.1:5432/osra_feedback_1065 \
+OSRA_REQUIRE_DATABASE_TESTS=1 \
+pnpm --filter @familyshield/api test -- test/social-feedback-db.test.ts
+```
+
+**Every run drops and recreates the `public` schema in `osra_feedback_1065`.** The suite installs migrations
+through 0042, inserts valid, consent-revoked and orphaned `SocialEvent` rows, and upgrades to 0043. It checks
+that only the already-orphaned row is deleted, no `SocialEventOrphan` table exists, and valid and
+consent-revoked events survive. The migration's NOTICE is count-only; Prisma's CLI suppresses PostgreSQL
+NOTICEs, so the suite verifies zero remaining orphans and also checks that deploy output has no ids or message
+text. The suite also races different first verdicts and verifies both event and child deletion cascade to
+votes, then removes its test rows. Never substitute another database name, a remote host, or a
+shared/staging/production URL. Without the variable the file skips locally; with
+`OSRA_REQUIRE_DATABASE_TESTS=1`, a missing variable is deliberately an error so CI cannot skip it.
+Production application of 0043 belongs only in the approved post-snapshot apply window, documented in the
+PR; this local procedure performs no AWS operation.
+
 A green unit suite is **not** evidence that an invariant holds — that is what the probe is for. A green
 probe is **not** evidence that a feature works on a phone — that is what hardware verification is for.
 
@@ -44,7 +76,7 @@ the gates on 2026-10-18), so a row below is the floor, not the gate:
 | API | `pnpm --filter @familyshield/api exec prisma generate` **before** `pnpm --filter @familyshield/api run build` and `run test` (`api.yml`) — CI's own step comment records that `pnpm install` did not create the client (`api.yml:68`), so the generate is a step, not an assumption. In a fresh worktree, generate first, every time — **and build the workspace packages first**: `pnpm --filter @familyshield/crypto --filter @familyshield/shared-types build` before the suite, or 18 of the 39 test files fail to *load* (`Cannot find package '@familyshield/crypto'`) and the run looks like a red tree with 235 of 510 tests collected. Measured on `main@78cca79` from a clean worktree on 2026-10-23: without the build, 18 files failed to load; with it, 510/510 |
 | Flutter | the row's three commands are `parent-app.yml:46-48`; CI then runs `flutter build appbundle --release` and greps the AAB manifest for `android.permission.INTERNET` (`:73-78`) |
 | Android JVM | the two test tasks plus `assemblePlayDebug assembleFullDebug assemblePlayRelease assembleFullRelease` in one invocation (`child-android.yml:65`), then **`node scripts/check-merged-manifest-gate.mjs`** (`:72` — fails the job if the merged-manifest gate skipped, failed or lost a named assertion), then `aapt2 dump badging` of **both** release APKs (`apk/<flavour>/release/app-<flavour>-release.apk`) for `targetSdkVersion:'35'` and both network-security configs (`:76-94`); each check fails the job, and so does an APK upload that finds no files (`:103`). Until #361 that step read `apk/release/app-release.apk`, which has not existed since the flavours landed, and its `grep -q … && echo` guards could not fail, so it passed while checking nothing. The gate reads `app/build/intermediates/merged_manifests/<flavor>Debug/**/AndroidManifest.xml` **and** `<flavor>Release/**/AndroidManifest.xml`; the test tasks depend on all four merges (`app/build.gradle.kts`). Since #170 the release half asserts that `android:testOnly` is absent |
-| Windows | `dotnet test tests/FamilyShield.Agent.Tests --nologo` (`agent-desktop.yml:37`) |
+| Windows | Tests in both Debug and Release, then publishes `src/OSRA.Service` and `src/OSRA` co-located as self-contained win-x64 hosts. `actions/upload-artifact@v4` uploads `OSRA.Windows-W1-unsigned` with `if-no-files-found: error`; a separate step requires `OSRA.Service.exe`, `OSRA.exe` and `OSRA.Agent.dll`. See §4's W1 build guide below |
 | AI engine | `pip install -r requirements-dev.txt` first (`ai-engine.yml:39`) |
 
 A change is not done on the strength of a locally green suite whose build step was never exercised: the
@@ -98,6 +130,21 @@ full for server validation. App and YouTube edits leave the rest of the ruleset 
 an empty school-day list stays empty on load. On staging, save and read back one app, web and
 YouTube edit on the signed parent app before marking the handset row passed.
 
+For Social sender and concern labels (#1135, #1138), run `flutter test
+test/social_alert_detail_test.dart test/social_screen_test.dart test/localization_test.dart` from
+`apps/parent-app`. Cover missing sender, saved name, profile name and a number-only label.
+Confirm the approved concern tags render as readable chips at 320 px and 200% in English
+and Arabic. On the signed parent app, open the alert and then the matching Social concern.
+The system notification remains generic.
+
+For the open Social list refresh (#1136), run `flutter test test/social_activity_refresh_test.dart
+test/social_screen_test.dart test/realtime_refresh_test.dart test/foreground_push_test.dart` from
+`apps/parent-app`. The tests verify foreground Apple notifications, app resume, a notification tap,
+per-child realtime alerts and pull-to-refresh on a short list. For the signed iPhone row, leave the
+Social tab open and send a synthetic message that adds a concern. Confirm the new card appears while
+the app is open, after a background/resume, and after opening a notification and returning to Social.
+Repeat with a pull gesture and record the Parent build and child build.
+
 For Arabic and Latin list separators, run `flutter test test/localized_list_test.dart` from
 `apps/parent-app` (#794). Its nine tests cover the shared splitter and real Arabic-locale widgets for
 allowed/blocked domains, routine blocked/allowed apps and digest recipients. Each field saves both
@@ -107,6 +154,24 @@ raw Latin `.split(',')` must turn its owning row red with `['a.com، b.com']` in
 Disabling direction-mark removal on blocked domains must turn its dedicated row red. The real API Zod
 validation row is in `services/api/test/reports.test.ts`: a digest recipient containing RLM gets 400 and
 no preferences write. These are network-free widget tests and an injected API test, not a phone run.
+
+For alert-to-concern navigation (#1140), run `flutter test test/social_alert_detail_test.dart
+test/social_screen_test.dart` from `apps/parent-app`. The regression gives the same app
+two flagged events, uses the older one as the alert's origin, and verifies that only
+its preview opens. Also verify that a missing exact preview never substitutes another
+event from the same app. On a signed parent build, confirm this flow in Social activity
+and verify that the system notification still shows the generic alert.
+
+For initial setup alert holding (#1127, ADR-0047), run `test/device-setup-policy.test.ts`,
+`test/device-setup-alerts.test.ts`, `test/device-setup-transitions.test.ts` and
+`test/device-setup-migration.test.ts` from `services/api`. They cover required versus recommended
+grants, exact hold/never-hold matrices, parent list/ack/export exclusion, authenticated completion,
+protected-alert rollback, poll/scheduler timeout dedupe and paired-device backfill. The live probe
+adds G30–G32: a grant-matched tamper is not parent-listed, SOS stays visible, and all-ready telemetry
+creates one protected alert with `setupCompletedAt`. From `apps/parent-app`, run
+`flutter test test/phone_setup_section_test.dart test/setup_alerts_test.dart`; they prove the server
+timestamp, incomplete/protected/repair states, EN/AR body keys, grant labels, ICU plurals, malformed
+params and generic lock-screen bodies. These are software gates, not a handset run.
 
 ## 2. Prerequisites (dev machine)
 
@@ -135,6 +200,22 @@ curl -s http://127.0.0.1:3000/health/deep   # {"ok":true,"version":"0.1.0","db":
 
 `127.0.0.1`, not `localhost`: on this host `localhost` resolves to `::1` first and a v4-only server then
 looks dead (§6, the spare-port trap). The same rule applies to `API_BASE` in §3.
+
+For #1144, run `test/staging-ai-social-route.test.ts`, `test/staging-ai-quota.test.ts`,
+`test/stagingQaModel.test.ts` and the AI engine tests. The staged rollout requires security approval.
+The existing private Stockholm analyzer endpoint, own-model flags and checkpoint and prompt pins
+must be present. Set `OSRA_DEPLOYMENT_SCOPE=staging`, `OSRA_STAGING_QA_ENGINE=own`,
+`OSRA_OWN_MODEL_REGION=eu-north-1` and `OSRA_STAGING_AI_ALL_CHILDREN=1` on both the API and
+analyzer task. The API also needs the existing analyzer enabled switch and private analyzer URL.
+The analyzer needs both the QA analyzer and own-model enabled switches. Keep the private ingress
+and current vault configuration. The optional API caps
+`OSRA_STAGING_AI_FAMILY_DAILY_CAP` and `OSRA_STAGING_AI_GLOBAL_DAILY_CAP` default to 250 per
+family local day and 2,000 per staging UTC day. Invalid cap configuration disables analyzer calls.
+
+During the approved staged window, exercise two opted-in test families and record the live
+Stockholm model receipt and Parent result with a harmless control. Confirm missing consent or a
+disabled app prevents scoring. Remove `OSRA_STAGING_AI_ALL_CHILDREN` from both tasks to disarm
+the broader mode. Mixed versions or mismatched settings use local rules.
 
 ## 3. Running the gates
 
@@ -439,7 +520,7 @@ off, the read route still answers but returns `counting: false` and `withinBudge
 | `api.yml` | `services/api/**`, `packages/**`, the root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json`, the two agent files `device-silence.test.ts` reads (`WorkScheduler.kt`, `LocationService.kt`), and `IdleCadence.kt`, which `poll-cadence.test.ts` reads (#353) | Builds the shared packages, generates Prisma, builds the API (the type-check) and runs its vitest suite |
 | `parent-app.yml` | `apps/parent-app/**` and `services/api/src/routes/alerts.ts` (the alert-category parity test reads it, #344) | On `ubuntu-latest`: `flutter analyze`, `flutter test`, release AAB build and its manifest check. On `macos-14`: `flutter build ios --release --no-codesign` and two assertions on the committed iOS tree (bundle id, `Info.plist` display name + locales), but on a PR or a push only when it changes `apps/parent-app/ios/**`, `pubspec.yaml`, `pubspec.lock` or this workflow; weekly and by hand always — see the iOS section below |
 | `child-android.yml` | `apps/child-android/**` and `scripts/check-merged-manifest-gate.mjs` | `testPlayDebugUnitTest` + `testFullDebugUnitTest`, `assemblePlayDebug` + `assembleFullDebug` + `assemblePlayRelease` + `assembleFullRelease`, the merged-manifest gate, and both release APKs' `targetSdk` and the cleartext configs, each failing the job (#361); the four APKs are kept 14 days |
-| `agent-desktop.yml` | `apps/agent-desktop/**` | `dotnet test` of the desktop agent, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
+| `agent-desktop.yml` | `apps/agent-desktop/**` | Debug and Release `dotnet test`, co-located self-contained win-x64 service/tray publishes and the unsigned `OSRA.Windows-W1-unsigned` artifact, on a Windows runner (billed above the Linux rate, about 1.67× at the 2026 rates) |
 | `ai-engine.yml` | `services/ai-engine/**` | `pytest`, then the evaluation banks, the generated-set check and the regex-scorer evaluation |
 | `ios-ci.yml` | six path patterns: `apps/child-ios/**`, `apps/parent-app/ios/**`, the workflow itself, and the three API contract files (`services/api/src/routes/devices.ts`, `services/api/src/routes/alerts.ts`, `services/api/src/lib/internalAuth.ts`); `push` runs on `main` only, plus weekly Monday 01:23 and `workflow_dispatch` | The **child** agent's iOS gate (SwiftPM build + `generic/platform=iOS Simulator`). Since 2026-10-24 it is no longer the only iOS gate: the parent app's Flutter iOS build is the `parent-app-ios` job in `parent-app.yml` |
 | `api-image.yml` | PRs touching what the image is built from: `services/api/**`, `packages/**`, the root package files, `.dockerignore` | Builds `services/api/Dockerfile` from the repo root (`docker/build-push-action`, `push: false`, `linux/arm64` on GitHub's arm64 runner) and runs `services/api/scripts/verify-image.sh` inside the result, then migrates, seeds twice and boots the image against Postgres and Redis. `verify-image.sh` also checks that the single `eu-central-1` RDS root CA is at `/app/certs/rds-eu-central-1-rsa2048-g1.pem` (exactly one certificate, readable and not writable by the API's user, #919), that with `DATABASE_TLS_VERIFY=required` the image refuses to boot on an unverified database URL or on a multi-certificate `sslcert` bundle (`/app/certs/rds-global-bundle.pem`) without printing the URL (#766 item 3, #919), and runs `scripts/check-db-tls.mjs` inside the `linux/arm64` image against a local TLS PostgreSQL wire server to prove right-first 2-cert bundles connect while wrong-first 2-cert bundles are refused on OpenSSL (#924 review). The Dockerfile has no `|| true`, so a failed install or build fails the PR, and a build that cannot migrate or seed fails it too. ECR stores images rather than building them; publishing needs an OIDC role scoped to the one repository (#258) |
@@ -453,6 +534,12 @@ The verified-gate policy self-test checks Neon’s `neon/` author prefix and `�
 It covers both directions of the cross-family restriction with Antigravity and Hydrogen, preserves their
 existing cross-family pairing, and checks that Neon cannot supply an R3 security key. The signer-fixture
 check accepts Neon’s signature from the shared agent account and rejects it from other accounts.
+
+The verified-gate policy self-test also checks Kimi-Mac’s `kimimac/` (and `kimi-mac/`) author prefixes and
+`— Kimi-Mac` ordinary signature. It verifies the same-family restriction with K31/K31-Mac (DeepSeek;
+Kimi-Mac moved to DeepSeek 4.1 Flash, maintainer 2026-11-27 12:42 UAE) and the cross-family pairing with
+Kimi Code (Moonshot), and confirms Kimi-Mac cannot supply an R3 security key. The signer-fixture check
+accepts Kimi-Mac’s signature from the shared agent account and rejects it from other accounts.
 
 The Mac phase1 tooling has a fake-only suite beside the org-audit tests:
 `python3 -B -m unittest discover -s infra/terraform/org-audit/tests -p 'test_agent*.py'`.
@@ -601,6 +688,78 @@ node scripts/check-ci-cost-guardrails.mjs --selftest
 node scripts/check-ci-cost-guardrails.mjs   # the #613 cheaper-CI structural contracts
 ```
 
+### Windows W1 service and tray (#623)
+
+Run from `apps/agent-desktop` with the .NET 8 SDK installed:
+
+```bash
+dotnet test tests/FamilyShield.Agent.Tests -c Debug --nologo
+dotnet test tests/FamilyShield.Agent.Tests -c Release --nologo
+dotnet publish src/OSRA.Service -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+dotnet publish src/OSRA -c Release -r win-x64 --self-contained true -o artifacts/windows-w1
+```
+
+Both hosts must publish into the **same** directory. `OSRA.Service.exe`, `OSRA.exe` and the shared
+`OSRA.Agent.dll` must be co-located: the service supervises only the tray beside its own executable.
+The `agent-desktop.yml` workflow performs the same two test configurations and publishes, checks those
+three files and uploads `OSRA.Windows-W1-unsigned` with `if-no-files-found: error`. `artifacts/` is
+build output; do not commit it.
+
+The tests substitute operating-system boundaries. Publishing is not installation: do not start the real
+service or tray on a development PC, pair a real family, lock a session, sound an alert or register a
+hotkey as part of this build gate. The unsigned artifact has **not yet been installed or verified on a
+clean Windows machine**. Claude owns the isolated Windows Server 2025 Standard/admin and cross-session
+pipe rows; acceptance still requires the roadmap's clean Windows 11 run.
+
+The W1 suite is **371 tests in each configuration**. It pins the launched PID and co-located image,
+session-0 server verification without a SYSTEM process/token handle, NETWORK denial and token-derived
+session SIDs. A valid first frame other than `hello` is rejected and its connection closes directly rather
+than relying on an outer timeout. A non-SYSTEM server is refused before `hello` with a direct five-second
+assertion, not a 90-second outer hang. Real `AcceptAsync` rows reject an impostor and then accept the genuine
+client, inspect the ACL on the pipe actually created, and drive the real server/client workers through a
+post-`hello` lock, 20 quiet seconds and a post-connect ring. `TrayPipeClient.ConnectAsync` owns exactly one
+`hello`; the worker does not duplicate it. Ordinary post-connect messages must arrive, and an SOS
+written before EOF but not acknowledged must be sent again on the next connection. Both real-session pipe tests share the cross-process
+`Global\OSRA-TraySessionPipeTests` semaphore so concurrent lanes cannot own the same genuine pipe name.
+
+The suite also merges device restrictions over stale session records, starts a fresh disconnected grace
+period after restore, adopts a live co-located tray instead of duplicating it, and keeps pending commands and
+other sessions alive through create/token failures. It proves one coordinator/worker instance per host,
+idempotent coordinator disposal, first-instance pipe ownership and retry delays. SOS returns a strict
+`sos_result`; only a successful POST starts the 60-second window, a failure is retried without being dropped
+behind ordinary traffic, and the tray shows success only after an accepted result. Save failures are high,
+or critical when unreadable state survived restart. Desktop-only provenance/administrator fields are refused
+for phone reports; the safe Standard account is not a missing permission, and a configured tray waiting for
+`hello` reports interactive features as `degraded`, not `unavailable`. The process-protection row retains its
+separate cross-process gate for disposable children. Foreground usage remains self-reported by the tray until
+W2; the tests do not prove publisher signing or eliminate same-user code injection into a user-mode tray.
+
+The recovery cases pin protected directory and temporary-file ACL descriptors, rejection of an untrusted
+owner or explicit other writer, missing/corrupt state, immediate fail-closed fallback, one log/tamper alert
+per continuous save-failure episode, and global unlock for disconnected sessions. A standard-user test
+process cannot create or read files after the real SYSTEM/admin-only directory ACL is applied, so local
+tests do not claim to prove protected file creation. The two `UntrustedDirectory…` rows need an elevated
+runner to isolate the other-writer mutant: a standard-user owner can mask it. CI is the gate, and the real
+SYSTEM probe covers the individual trust branches.
+
+`tests/run-windows-service-pipe.ps1` is a separate CI-only boundary row. It hosts the production pipe in a
+CI-created SYSTEM service, verifies the native client and typed lock, then requires real store writes and a
+reload, trusted directory ownership and protected ACLs, protected temporary-file creation, stale-temporary
+replacement, post-cleanup collision refusal, corrupt-state recovery and persisted global unlock. Separate
+fault fixtures cover an untrusted owner, a reparse point, another writer and an inherited ACL that must be
+rewritten. The service removes its protected fixtures before writing a result file only after all checks
+pass; the PowerShell harness requires that marker and cannot pass merely because the client connected. It
+also requires `OSRA_SERVICE_CLEANUP_PASS` after confirming the service and probe directory are gone. The
+helper is never run on the development PC and is excluded from the uploaded artifact. Device restrictions
+re-arm every 20-second grace period while no verified tray is connected, including a session that had no
+slot. Loading corrupt state leaves its bytes untouched until explicit fallback recovery writes known-good
+locked state; no separate audit quarantine is claimed. A green local suite alone does not prove the real
+Windows boundary.
+
+W1b's salted PIN hashing and W3's installed-directory ACLs, MSI/service recovery and signing are required
+before a build reaches outsiders. W2 DNS/firewall/browser-policy replacement and W4's signed updater are
+separate. This artifact has no MSI or ARM64 build, signing, AWS, store or production action.
+
 ### The shared Swift package on macOS (roadmap 5.9 step i, #653)
 
 The `macos-core` job in `ios-ci.yml` builds and tests `apps/child-ios` natively on `macos-26`, using the
@@ -613,7 +772,7 @@ swift test list
 swift test
 ```
 
-The discovery step requires 225 macOS tests and names one case each from pairing, HMAC signing, rule
+The discovery step requires 228 macOS tests and names one case each from pairing, HMAC signing, rule
 interpretation and both localisation string suites. Five iOS-only authorization tests remain behind
 `#if os(iOS)` because `CLAuthorizationStatus.authorizedWhenInUse` is unavailable on macOS; the other location
 and client tests still run. Wrapping any additional portable source file in `#if os(iOS)` removes its tests and
@@ -995,7 +1154,8 @@ adb shell ping -c1 www.google.com      # → a real address: SafeSearch is a CNA
 adb shell nslookup www.youtube.com     # (if present) → CNAME restrict.youtube.com
 adb shell am start -a android.intent.action.VIEW -d https://www.example.com   # Chrome: "can't be reached"
 adb shell am start -a android.intent.action.VIEW -d https://www.wikipedia.org  # loads normally
-# pause-internet: POST /v1/devices/:id/command {"command":"pause_internet"} → the overlay appears AND
+# pause-internet (#1183/#1240): POST /v1/devices/:id/command {"command":"pause_internet"} → network-only
+#   (non-blocking notification, no full-screen overlay; offline apps stay open) AND
 adb shell ping -c1 8.8.8.8             # → 100% packet loss (default route into the sinkhole)
 adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause mode)
 # resume_internet → both work again; logcat shows "FilterVpn: tunnel up, mode=dns"
@@ -1006,6 +1166,12 @@ adb shell ping -c1 www.wikipedia.org   # → "unknown host" (NXDOMAIN in pause m
 `ping` through the shell uses the system resolver and so goes through the tunnel like any app; it is
 the quickest proof. What a DNS sinkhole cannot do (Private DNS set to a host, an in-app DoH resolver,
 IP literals) is listed in ADR-0015 and must not be reported as a bug.
+
+For the SafeSearch row (#1226), use the approved paired test family and keep the supported
+browser open while the parent changes SafeSearch. Use a neutral query and check that the browser's
+SafeSearch settings report the requested state. With SafeSearch on, the `FilterVpn` diagnostic
+should record the search host and the `REWRITE` decision. Check that the diagnostic omits the
+query text and full URL. Record the exact Child build and restore the test family's prior setting.
 
 For the child-wide Pause and Resume controls, read `GET /v1/controls/children/:id/status` after
 each request. The existing `paused` field reports the requested setting. Its optional
@@ -1161,6 +1327,16 @@ camera-ready state and the denial fallback, and the typed path was paired end-to
 API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
 the open 3.2 hardware row.
 
+## CI staging Parent APK (synthetic CI proof, private real build)
+
+`scripts/build-parent-staging-apk.sh` is the single command for both proofs of the staging Parent APK. It requires `API_BASE=https://api.staging.osratech.com` and a positive `BUILD_NUMBER`, then checks the Firebase release task, package/versionCode, `INTERNET`, `POST_NOTIFICATIONS`, and the APK signature. `scripts/check-parent-staging-build.mjs --selftest` proves the contract checker itself; the normal invocation fails if the workflow stops being synthetic-only, gains a public APK artifact, or loses one of those assertions.
+
+- **Public CI proof:** `.github/workflows/parent-app.yml` writes a synthetic, non-secret Firebase config and runs the helper with `CI_SYNTHETIC=1`. No APK is uploaded as an Actions artifact. The existing AAB artifact is unchanged. Synthetic values must not look like credentials: gitleaks scans the entire PR history, so an API-key-shaped fixture cannot be removed by a later commit alone.
+- **Local synthetic proof:** prepare the same synthetic config shown in that workflow step, then run `CI_SYNTHETIC=1 API_BASE=https://api.staging.osratech.com BUILD_NUMBER=99 bash scripts/build-parent-staging-apk.sh`. This is a build fixture, not a release.
+- **Private real build:** place the real gitignored Firebase config and lab signing inputs on the approved private builder, set `OSRA_EXPECTED_SIGNER_SHA256` to the Lab Parent certificate digest, and run the same helper without `CI_SYNTHETIC`. The helper refuses any other signer. Publish only through the approved private release channel and compare the old/new certificate digests before installation. No real APK or real Firebase config belongs in the public workflow or repository.
+
+The Firebase JSON, keystore and passwords remain gitignored. Flutter's console can hide the underlying `:app:processReleaseGoogleServices` task name, so the helper proves the plugin ran by requiring `google_app_id` and `project_id` in the generated release `values.xml`; a package that compiles without those resources has no working push registration. Required inputs are validated before building, and the cleanup trap preserves the original non-zero status on older Bash instead of allowing a false success.
+
 ## 5j. Push wake on hardware (roadmap 1.5)
 
 Prerequisite: a build that carries `google-services.json`. Without it the gms plugin is skipped,
@@ -1183,6 +1359,23 @@ mis-measure.
 5. Read the API log to tell the failure modes apart: `[push] device wake failed` is a provider problem, a
    device with a null token is the agent never publishing, and a wake that arrives whose command never runs
    is the agent's own fetch being blocked. They do not share a fix.
+
+### Parent grouped notifications (#1139)
+
+Run `flutter test test/push_delivery_grouping_test.dart test/background_push_test.dart test/foreground_push_test.dart`
+from `apps/parent-app`. The grouping fixture sends the authenticated alert snapshots through the
+same planner and notification plugin used by a Parent wake. Check that SDK notification IDs
+differ for the first three deliveries and the summary. Each local tap payload should still be
+the original alert ID. The fixture also covers a critical fourth delivery, a coalesced wake,
+a silent update on an existing card, and a new card with no issued delivery.
+
+On a dedicated staging family, use the signed Parent cut paired with the matching server cut and
+agree on the synthetic input and timing in the test record. Send five flagged events from one
+app to one child within two minutes. Count three immediate Parent notifications and one summary
+after the configured window. Repeat with a critical fourth event and record its immediate
+notification. Check an existing contact and a separate contact so their cards and the shared
+per-app budget are both covered. Record visible notifications and tap destinations for each
+Parent platform. Keep the raw notification content and device identifiers off the shared record.
 
 ## 5k. The iOS child agent on an iPhone (roadmap 5.5)
 
@@ -1706,3 +1899,16 @@ that the old matcher missed (#310).
 ### Staging analyzer task size (#962)
 
 For an approved staging OSRA-model window, set `staging_qa_analyzer.own_model_task_size` to true in the private window configuration. Review the Terraform plan for 2048 CPU units and 8192 MiB on the analyzer task. The sizing flag only takes effect while the analyzer is armed. On rollback, check the replacement task uses 512 CPU units and 1024 MiB. The flag controls capacity only. Check checkpoint delivery and live scoring separately.
+
+### Parent Home P-07 + P-07-RTL (#1179)
+
+Run from `apps/parent-app`:
+
+```bash
+flutter test --dart-define=OSRA_UX_P07=true test/p07_home_screen_test.dart
+flutter test test/p07_home_screen_test.dart
+```
+
+- **Shared G4 / P-20 time-request actions:** Home `Needs you` renders `TimeRequestActions` on Android daily-limit requests (`POST /v1/alerts/:id/time-decision`, including `409` winning caregiver receipts), while child-card quick `+15 min` / `+30 min` buttons keep the 5-second local Undo hold over `POST /v1/controls/children/:id/bonus`.
+- **G5 daily time-left window:** `deviceCommandHistoryProvider` reads `limit=100` (matching the server `listDeviceCommands` cap). If more than 100 commands are sent to one device in a single day so an earlier same-day `acked` grant ages out of that slice, `computeHomeTimeSummary` conservatively drops the aged-out grant and clamps `remainingMinutes` at `0` rather than reading stale `ruleSet.bonusMinutesToday`.
+- **A10 live-arrival pairing claims:** while Home watches an unexpired pairing code in `status: waiting`, `activePairingClaimProvider` re-polls every 2 seconds until a claim arrives, `404` is returned, the code expires, or Home unmounts.

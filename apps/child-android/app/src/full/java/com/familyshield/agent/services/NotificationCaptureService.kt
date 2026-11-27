@@ -10,6 +10,7 @@ import android.service.notification.NotificationListenerService.RankingMap
 import android.service.notification.StatusBarNotification
 import com.familyshield.agent.comms.CommsLogger
 import com.familyshield.agent.data.ConsentState
+import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.social.MonitoredApps
 import com.familyshield.agent.social.NotificationCapturePolicy
 import com.familyshield.agent.social.ScanQueuePolicy
@@ -48,6 +49,9 @@ class NotificationCaptureService : NotificationListenerService() {
     @Inject lateinit var consentState: ConsentState
     @Inject lateinit var comms: CommsLogger
 
+    /** Issue #1035: the parent's per-app monitoring switch, read at capture time like the Accessibility path. */
+    @Inject lateinit var rules: RuleRepository
+
     private val tracker = WhatsAppCallTracker()
 
     /**
@@ -85,7 +89,11 @@ class NotificationCaptureService : NotificationListenerService() {
         // Security review (osra-security#73): the gate runs inside capturesFor, *before* the tracker is given
         // anything — an ineligible chat must not leave its text in this service's memory. A removal releases
         // the key rather than being filtered before it can do that.
-        val captures = NotificationCapturePolicy.capturesFor(snapshotOf(sbn, removed), burst) { appKey, contact ->
+        val captures = NotificationCapturePolicy.capturesFor(
+            snapshotOf(sbn, removed),
+            burst,
+            monitoringEnabled = { appKey -> rules.socialMonitoringEnabled(appKey) },
+        ) { appKey, contact ->
             TestChatCaptureGate.allows(this, appKey, contact)
         }
         captures.forEach { capture ->
@@ -95,6 +103,7 @@ class NotificationCaptureService : NotificationListenerService() {
                 text = capture.text,
                 nowMs = if (capture.postedAtMs > 0L) capture.postedAtMs else System.currentTimeMillis(),
                 source = ScanQueuePolicy.SOURCE_NOTIFICATION,
+                occurrenceId = "${capture.key}:${capture.postedAtMs}",
             )
         }
     }

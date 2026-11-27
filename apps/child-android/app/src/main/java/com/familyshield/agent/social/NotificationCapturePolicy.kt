@@ -114,6 +114,7 @@ object NotificationCapturePolicy {
     fun capturesFor(
         snapshot: Snapshot,
         tracker: BurstTracker,
+        monitoringEnabled: (appKey: String) -> Boolean = { true },
         eligible: (appKey: String, contact: String?) -> Boolean,
     ): List<Capture> {
         val appKey = MonitoredApps.appKeyFor(snapshot.packageId) ?: return emptyList()
@@ -122,6 +123,12 @@ object NotificationCapturePolicy {
             return emptyList()
         }
         if (snapshot.isGroupSummary) return emptyList()
+        // Issue #1035: a parent's per-app OFF stops the scan *and* releases what this notification left behind,
+        // so turning an app off cannot leave its text in memory until the tracker's lifetime runs out.
+        if (!monitoringEnabled(appKey)) {
+            tracker.forget(snapshot.key)
+            return emptyList()
+        }
         if (!eligible(appKey, ScanQueuePolicy.contactOf(snapshot.title))) return emptyList()
         return tracker.newCaptures(snapshot)
     }

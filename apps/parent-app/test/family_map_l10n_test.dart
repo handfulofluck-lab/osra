@@ -121,7 +121,7 @@ void main() {
   test('commandRefusalText explains a pause that never started', () {
     expect(
       commandRefusalText(ar, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),
-      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق OSRA هناك وحاول مجددًا.',
+      'تعذّر بدء إيقاف الإنترنت على هاتف طفلك. افتح تطبيق أسرة للأطفال على ذلك الهاتف وحاول مجددًا.',
     );
     expect(
       commandRefusalText(en, 'pause_internet', 'Pixel 7', 'web_filter_start_failed'),

@@ -27,6 +27,10 @@ class AnalyzeResponse(BaseModel):
     severity: Literal["info", "warning", "critical"]
     flagged: bool
     explanation: str
+    model_version: str | None
+    language: str
+    cutoff: float
+    path: Literal["own", "hybrid_second_look", "rules"]
 
 @app.get("/health")
 def health():

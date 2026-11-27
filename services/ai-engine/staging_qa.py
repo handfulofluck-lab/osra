@@ -1,4 +1,4 @@
-"""Private, time-limited Bedrock inference for staging QA."""
+"""Private staging QA collector for the approved model providers."""
 
 import asyncio
 import hashlib
@@ -26,7 +26,13 @@ from pydantic import BaseModel, ConfigDict, Field, UUID4, ValidationError
 
 from eval.prompt import parse_categories
 from model import _severity
-from staging_own_model import score_cpu, score_own
+from staging_own_model import (
+    APPROVED_PROMPT_SHA256,
+    STOCKHOLM_REGION,
+    consented_staging_scoring,
+    score_cpu,
+    score_own,
+)
 from staging_provider_results import collect_provider_results
 
 MODEL_ID = "openai.gpt-oss-20b-1:0"
@@ -35,7 +41,6 @@ PRIVATE_ENDPOINT_URL = re.compile(
     r"https://vpce-[a-f0-9]+(?:-[a-z0-9]+)?\.bedrock-runtime\."
     rf"{REGION}\.vpce\.amazonaws\.com"
 )
-APPROVED_PROMPT_SHA256 = "813e670c456b1e1dd9863be0ca186b82f18bfea8049f231c9731d2ab132578a8"
 MAX_REQUEST_BYTES = 8192
 MAX_APPROVAL_WINDOW = timedelta(hours=1)
 MAX_INFERENCE_SECONDS = 2
@@ -59,6 +64,7 @@ class StagingQaRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1024)
     trace_id: UUID4
     include_provider_outcomes: bool = Field(default=False, strict=True)
+    consented_staging: bool = Field(default=False, strict=True)
 
 
 class StagingQaResponse(BaseModel):
@@ -96,16 +102,19 @@ class ProviderResponse(BaseModel):
     outcomes: dict[Literal["bedrock", "own"], ScoredOutcome | UnavailableOutcome]
 
 
-def _test_approval() -> tuple[datetime, set[str] | None, str]:
+def _test_approval() -> tuple[datetime | None, set[str] | None, str]:
     if (
         os.environ.get("OSRA_DEPLOYMENT_SCOPE") != "staging"
         or os.environ.get("OSRA_STAGING_QA_ANALYZER_ENABLED") != "1"
     ):
         raise HTTPException(status_code=404, detail="not_found")
+    # Deployment injects the exact approved bytes from the private task configuration.
+    system_prompt = os.environ.get("OSRA_STAGING_QA_SYSTEM_PROMPT", "")
+    if consented_staging_scoring(APPROVED_PROMPT_SHA256):
+        # Consent, opt-in and quota checks belong to the staging API, the private service's only caller.
+        return None, None, system_prompt
     try:
         expires_at = datetime.fromisoformat(os.environ.get("OSRA_STAGING_QA_EXPIRES_AT", ""))
-        # Deployment injects the exact approved bytes from the private task configuration.
-        system_prompt = os.environ.get("OSRA_STAGING_QA_SYSTEM_PROMPT", "")
         prompt_digest = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
     except ValueError:
         raise HTTPException(status_code=404, detail="not_found") from None
@@ -200,16 +209,19 @@ def _failure_kind(error: Exception) -> str:
 
 async def _provider_receipts(data, mode, expires_at, system_prompt, started):
     trace = str(data.trace_id)
-    # The staging approval also bounds the selected provider budget.
-    remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
     budget = STAGING_OWN_INFERENCE_SECONDS if mode == "own" else MAX_INFERENCE_SECONDS
+    # A fixture approval limits its provider budget. Consented CPU mode has a per-call bound.
+    consented = expires_at is None
+    now = datetime.now(timezone.utc)
+    if consented:
+        expires_at = now + timedelta(seconds=budget)
+    remaining = (expires_at - now).total_seconds()
     deadline = min(started + budget, monotonic() + remaining)
 
-    cpu = os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0")
-    # This path is reached only after _test_approval validates the armed staging window.
+    cpu = "1" if consented else os.environ.get("OSRA_STAGING_QA_OWN_MODEL_ENABLED", "0")
     region = REGION
-    if mode == "own" and cpu == "1" and os.environ.get("OSRA_OWN_MODEL_REGION") == "eu-north-1":
-        region = "eu-north-1"
+    if consented or (mode == "own" and cpu == "1" and os.environ.get("OSRA_OWN_MODEL_REGION") == STOCKHOLM_REGION):
+        region = STOCKHOLM_REGION
 
     async def bedrock():
         try:
@@ -256,6 +268,7 @@ async def _provider_receipts(data, mode, expires_at, system_prompt, started):
              response_model_exclude_none=True, include_in_schema=False)
 async def analyze_staging_qa(request: Request) -> StagingQaResponse | ProviderResponse:
     expires_at, digests, system_prompt = _test_approval()
+    consented = expires_at is None
     # FastAPI's default validation error can echo an invalid request field. Validate privately.
     body = bytearray()
     async for chunk in request.stream():
@@ -267,14 +280,15 @@ async def analyze_staging_qa(request: Request) -> StagingQaResponse | ProviderRe
         text_bytes = data.text.encode("utf-8")
     except (ValidationError, UnicodeEncodeError):
         raise HTTPException(status_code=422, detail="invalid_request") from None
-    if len(text_bytes) > 1024:
+    # A caller and collector on different rollout modes must never exchange model results.
+    if len(text_bytes) > 1024 or data.consented_staging != consented:
         raise HTTPException(status_code=422, detail="invalid_request")
     if digests is not None and hashlib.sha256(text_bytes).hexdigest() not in digests:
         raise HTTPException(status_code=403, detail="fixture_not_approved")
 
     trace_id = str(data.trace_id)
     started = monotonic()
-    mode = os.environ.get("OSRA_STAGING_QA_ENGINE", "bedrock")
+    mode = "own" if consented else os.environ.get("OSRA_STAGING_QA_ENGINE", "bedrock")
     if mode not in ("bedrock", "own", "both"):
         raise HTTPException(status_code=404, detail="not_found")
     if data.include_provider_outcomes:

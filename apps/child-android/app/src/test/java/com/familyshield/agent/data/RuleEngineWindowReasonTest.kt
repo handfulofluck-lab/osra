@@ -171,12 +171,12 @@ class RuleEngineWindowReasonTest {
     }
 
     @Test
-    fun `a pause blocks with no reason, even at bedtime (#496 review)`() {
-        // The pause is step 1; the window is step 5. Naming Bedtime here would be a window the decision
-        // never reached — the first version's bug.
+    fun `network-only pause does not preempt bedtime window (#1183)`() {
+        // Issue #1183: pause-the-internet is enforced at the VPN sinkhole only, so at bedtime
+        // RuleEngine still reaches step 5 and reports the Bedtime window.
         val verdict = engine.evaluateWithReason(rules(), meet, monday(22), pausedInternet = true)
         assertEquals(RuleRepository.Decision.BLOCK, verdict.decision)
-        assertNull(verdict.reason)
+        assertEquals(WindowKind.BEDTIME, verdict.reason?.kind)
     }
 
     @Test
