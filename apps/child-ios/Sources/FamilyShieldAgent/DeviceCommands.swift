@@ -16,6 +16,9 @@ public enum CommandAction: Equatable {
     case syncRules
     /// A fresh point for the parent's map, uploaded before the ack (5.5 PR E).
     case locateNow
+    /// #1089: shield (or clear) a Screen Time store — a device lock, or the apps-and-websites pause.
+    case shield(ShieldSet)
+    case unshield(ShieldSet)
     /// Not something this agent can do; acked `failed` with the reason.
     case unsupported
 
@@ -23,6 +26,12 @@ public enum CommandAction: Equatable {
         switch type {
         case "rules_updated", "consent_revoked", "consent_granted": return .syncRules
         case "locate_now": return .locateNow
+        // #1089: `pause` is the device pause and shares the lock store, so one Unlock clears either. The
+        // internet pair has its own store; resuming the internet never lifts a lock.
+        case "lock", "pause": return .shield(.lock)
+        case "unlock", "resume": return .unshield(.lock)
+        case "pause_internet": return .shield(.internet)
+        case "resume_internet": return .unshield(.internet)
         default: return .unsupported
         }
     }
@@ -124,6 +133,7 @@ public enum CommandDrainer {
     public static func drainNow(client: CommandClient = CommandClient(),
                                 tokenSession: URLSession = .shared,
                                 locator: LocateNowHandling = LiveLocateNow(),
+                                shield: DeviceShielding = LiveDeviceShield(),
                                 sync: () async -> RuleSyncer.Outcome = { await RuleSyncer.syncNow() }) async -> Result {
         var result = Result()
         guard let identity = AgentIdentityStore.load() else { return result }
@@ -186,6 +196,16 @@ public enum CommandDrainer {
                     break // the point was not stored: no ack, so the server offers the command again in 120 s
                 }
                 result.handled.append(command.type)
+            case .shield(let set):
+                let outcome = await shield.shield(set)
+                try? await client.ack(identity, commandId: command.id,
+                                      ok: outcome == .applied, detail: Self.shieldDetail(outcome))
+                result.handled.append(command.type)
+            case .unshield(let set):
+                let outcome = await shield.unshield(set)
+                try? await client.ack(identity, commandId: command.id,
+                                      ok: outcome == .cleared, detail: Self.shieldDetail(outcome))
+                result.handled.append(command.type)
             case .unsupported:
                 try? await client.ack(identity, commandId: command.id, ok: false,
                                       detail: ["reason": "not_supported", "type": command.type])
@@ -193,6 +213,14 @@ public enum CommandDrainer {
             }
         }
         return result
+    }
+}
+
+extension CommandDrainer {
+    /// The ack's `detail` for a shield write: empty on success, the store's own reason when it did not take.
+    static func shieldDetail(_ outcome: ShieldOutcome) -> [String: String] {
+        if case .failed(let reason) = outcome { return ["reason": reason] }
+        return [:]
     }
 }
 
