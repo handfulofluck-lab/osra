@@ -118,15 +118,16 @@ describe("staging model request budget", () => {
 });
 
 describe("socialMonitoring missing-key contract (#1024)", () => {
-  it("keeps DEFAULT_RULESET and defaultRuleSetRow empty while staging cross-app mode requires explicit true", () => {
-    expect(DEFAULT_RULESET.socialMonitoring).toEqual({});
+  it("fails closed on missing keys ({}) while server-default (#1142) and explicit true enable staging cross-app mode", () => {
+    expect(DEFAULT_RULESET.socialMonitoring.whatsapp).toBe(true);
     const row = defaultRuleSetRow(paired.childId);
-    expect(row.socialMonitoring).toEqual({});
+    expect(row.socialMonitoring.whatsapp).toBe(true);
 
     const crossAppEnv = { ...env, OSRA_STAGING_QA_ANDROID_SOURCES: "1", OSRA_STAGING_QA_ALLOW_SYNTHETIC_PAIR_TEXT: "1" };
-    // Missing key (empty default map) fails closed on the staging private-analyzer gate.
-    expect(stagingQaModel({ ...capture, socialMonitoring: row.socialMonitoring }, crossAppEnv, now)).toBeNull();
-    // Explicit true enables the staging gate for that app.
+    // Missing key (empty map) still fails closed on the staging private-analyzer gate.
+    expect(stagingQaModel({ ...capture, socialMonitoring: {} }, crossAppEnv, now)).toBeNull();
+    // Server-default map (#1142) and explicit true both enable the staging gate for that app.
+    expect(stagingQaModel({ ...capture, socialMonitoring: row.socialMonitoring }, crossAppEnv, now)).not.toBeNull();
     expect(stagingQaModel({ ...capture, socialMonitoring: { whatsapp: true } }, crossAppEnv, now)).not.toBeNull();
   });
 });

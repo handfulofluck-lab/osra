@@ -514,16 +514,17 @@ void main() {
       });
     }
 
-    testWidgets('empty socialMonitoring map ({}) parses empty in RuleSet and renders all switches ON (#1024)', (tester) async {
+    testWidgets('empty socialMonitoring map ({}) parses empty in RuleSet and renders all apps ON (#1024)', (tester) async {
       expect(RuleSet.fromJson(const {'socialMonitoring': {}}).socialMonitoring, isEmpty);
       expect(RuleSet.fromJson(const {}).socialMonitoring, isEmpty);
 
       final api = FakeApiClient(socialRoutes(socialMonitoring: const {}));
-      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api);
+      await pumpScreen(tester, const SocialScreen(childId: 'child-1'), api, tall: true);
       await flushFakeHttp(tester);
 
       for (final a in kSocialApps) {
-        expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, a.label)).value, isTrue, reason: '${a.label} should render ON for {}');
+        await reveal(tester, socialAppRow(a.key));
+        expect(socialAppOn(tester, a.key), isTrue, reason: '${a.label} should render ON for {}');
       }
     });
 
