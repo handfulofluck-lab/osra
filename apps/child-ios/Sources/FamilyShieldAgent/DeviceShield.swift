@@ -83,12 +83,15 @@ public struct LiveDeviceShield: DeviceShielding {
     }
 
     public func unshield(_ set: ShieldSet) async -> ShieldOutcome {
-        DeviceActivityCenter().stopMonitoring([DeviceActivityName(set.rawValue)])
         let store = set.store
         store.clearAllSettings()
         // Clears every field of this store only; the child's own rules and the other store are untouched.
         let cleared = store.shield.applicationCategories == nil && store.shield.webDomainCategories == nil
-        return cleared ? .cleared : .failed("shield_still_applied")
+        // The safety interval stops only once the readback proves the store is clear (Codex, #1275): a failed
+        // clear keeps the automatic lift as the way out.
+        guard cleared else { return .failed("shield_still_applied") }
+        DeviceActivityCenter().stopMonitoring([DeviceActivityName(set.rawValue)])
+        return .cleared
     }
 
     /// Starts (or restarts) the one-off interval whose end lifts this store's shield. False when iOS refuses
