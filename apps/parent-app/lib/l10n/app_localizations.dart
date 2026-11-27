@@ -6169,7 +6169,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeBatteryPct.
   ///
   /// In en, this message translates to:
-  /// **'Battery {pct}%'**
+  /// **'Battery {pct}'**
   String homeBatteryPct(String pct);
 
   /// No description provided for @homeBonusPlus15.

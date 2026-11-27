@@ -4097,7 +4097,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String homeBatteryPct(String pct) {
-    return 'البطارية $pct%';
+    return 'البطارية $pct';
   }
 
   @override
@@ -4150,7 +4150,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get homeSentToPhone => 'أُرسلت إلى الهاتف';
+  String get homeSentToPhone => 'تم الإرسال إلى الهاتف';
 
   @override
   String homeSendingBonusSnack(String duration) {
