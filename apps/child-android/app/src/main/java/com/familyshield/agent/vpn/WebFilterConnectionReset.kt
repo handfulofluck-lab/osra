@@ -733,8 +733,10 @@ object WebFilterConnectionReset {
         return (normalizedCategories(after) - normalizedCategories(before)).isNotEmpty()
     }
 
+    /** Reset for a new web block or a change to an already applied SafeSearch setting. */
     fun shouldResetConnections(before: WebFilterRuleDto?, after: WebFilterRuleDto?): Boolean =
-        hasNewWebBlock(before, after)
+        hasNewWebBlock(before, after) ||
+            (before != null && after != null && before.safeSearchEnforced != after.safeSearchEnforced)
 
     suspend fun resetIfNeeded(
         context: Context,

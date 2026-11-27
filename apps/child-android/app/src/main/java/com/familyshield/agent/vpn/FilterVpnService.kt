@@ -372,6 +372,10 @@ class FilterVpnService : VpnService() {
                     }
                 }
                 DnsFilterPolicy.Action.REWRITE -> {
+                    if (d.reason == "safesearch") {
+                        val host = DnsFilterPolicy.normalize(q.name)
+                        Log.i(TAG, "rewrite host=$host decision=REWRITE")
+                    }
                     // #830 row 5: SafeSearch and YouTube Restricted Mode are enabled by default for every child,
                     // so Google, Bing, DuckDuckGo and YouTube lookups take REWRITE rather than FORWARD. Record the
                     // queried host (gated by SiteVisitGate); the CNAME target stays excluded by SiteVisitGate.
