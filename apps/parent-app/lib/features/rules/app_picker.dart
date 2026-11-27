@@ -373,6 +373,9 @@ class AppIconBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.primaryContainer,
         borderRadius: BorderRadius.circular(AppRadius.sm),
+        // U106 (UI/UX Bureau, 27 Nov): on the #898 page surface the light tint tile nearly vanished on
+        // the access-request and P20 headers, so the letter tile carries a 1 px outline.
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Text(
         letter,
