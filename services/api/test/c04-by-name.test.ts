@@ -185,6 +185,8 @@ describe("C-04 byName: the server stamps the acting adult on child-visible comma
     expect(prismaMock.deviceCommand.create).not.toHaveBeenCalled();
 
     prismaMock.deviceCommand.updateMany.mockClear();
+    // The stored row now carries the newer adult (the mock does not apply writes by itself).
+    prismaMock.deviceCommand.findFirst.mockResolvedValue({ ...existing, payload: { reason: "rules_changed", byName: "Mama Sara" } });
     await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "rules_changed", byName: "Mama Sara" });
     expect(prismaMock.deviceCommand.updateMany).not.toHaveBeenCalled();
   });
@@ -200,7 +202,8 @@ describe("C-04 byName: the server stamps the acting adult on child-visible comma
     prismaMock.deviceCommand.updateMany.mockResolvedValue({ count: 1 });
     const msg = await enqueueDeviceCommand("dev-1", "rules_updated", { reason: "rules_changed", rulesVersion: 6, byName: "Mama Sara" });
     expect(prismaMock.deviceCommand.updateMany).toHaveBeenCalledWith({
-      where: { id: "c-old", status: "pending" },
+      // Compare-and-set in the UPDATE itself: still pending AND still the revision that was read.
+      where: { id: "c-old", status: "pending", payload: { path: ["rulesVersion"], equals: 5 } },
       data: { payload: { reason: "rules_changed", rulesVersion: 6, byName: "Mama Sara" } },
     });
     expect(msg).toMatchObject({ id: "c-old", payload: { rulesVersion: 6, byName: "Mama Sara" } });
@@ -241,5 +244,126 @@ describe("C-04 byName: the server stamps the acting adult on child-visible comma
       payload: { reason: "rules_changed", rulesVersion: 7, byName: "Mama Sara" },
     }));
     await app.close();
+  });
+});
+
+/**
+ * Codex (#1237 [Sat] 1, round 2, comment 7205649981): overlapping saves must not compare against the same earlier
+ * read, and the newest revision wins even when its command already drained. An in-memory queue whose every call
+ * yields, so saves interleave; the transaction mock holds a FIFO lock from `pg_advisory_xact_lock` to commit, as
+ * Postgres does. Real-Postgres coverage of the same timings: device-commands-coalesce-db.test.ts.
+ */
+describe("#1237 overlapping rules saves are decided under one lock per device", () => {
+  type Cmd = {
+    id: string; deviceId: string; type: string; payload: Record<string, unknown>; status: string;
+    createdAt: Date; expiresAt: Date; attempts: number; requestedBy?: string;
+  };
+  let store: Cmd[] = [];
+  let seq = 0;
+  let tail: Promise<void> = Promise.resolve();
+  let lockKeys: string[] = [];
+  let onCommit: Array<() => void> = [];
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  const base = Date.now();
+
+  type Where = Record<string, unknown> & {
+    status?: string; expiresAt?: { gt: Date }; createdAt?: { gt: Date }; payload?: { path: string[]; equals: unknown };
+  };
+  const matches = (r: Cmd, w: Where) =>
+    (w.id === undefined || r.id === w.id) && (w.deviceId === undefined || r.deviceId === w.deviceId) &&
+    (w.type === undefined || r.type === w.type) && (w.status === undefined || r.status === w.status) &&
+    (!w.expiresAt || r.expiresAt > w.expiresAt.gt) && (!w.createdAt || r.createdAt > w.createdAt.gt) &&
+    (!w.payload || r.payload[w.payload.path[0]] === w.payload.equals);
+
+  const queue = {
+    findFirst: vi.fn(async ({ where }: { where: Where }) => {
+      await tick();
+      const rows = store.filter((r) => matches(r, where)).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return rows[0] ? { ...rows[0] } : null;
+    }),
+    updateMany: vi.fn(async ({ where, data }: { where: Where; data: { payload: Record<string, unknown> } }) => {
+      await tick();
+      const rows = store.filter((r) => matches(r, where));
+      for (const r of rows) r.payload = data.payload;
+      return { count: rows.length };
+    }),
+    create: vi.fn(async ({ data }: { data: Omit<Cmd, "id" | "status" | "createdAt" | "attempts"> }) => {
+      await tick();
+      seq += 1;
+      const row: Cmd = { ...data, id: `q${seq}`, status: "pending", attempts: 0, createdAt: new Date(base + seq * 1000) };
+      store.push(row);
+      return { ...row };
+    }),
+  };
+
+  beforeEach(() => {
+    resetPrismaMock();
+    store = [];
+    seq = 0;
+    tail = Promise.resolve();
+    lockKeys = [];
+    onCommit = [];
+    for (const fn of Object.values(queue)) fn.mockClear();
+    prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      let release = () => {};
+      const tx = {
+        deviceCommand: queue,
+        $executeRaw: vi.fn(async (_sql: TemplateStringsArray, key: string) => {
+          lockKeys.push(key);
+          const prev = tail;
+          tail = new Promise<void>((resolve) => { release = resolve; });
+          await prev;
+          return 1;
+        }),
+      };
+      try {
+        const out = await fn(tx);
+        onCommit.shift()?.();
+        return out;
+      } finally {
+        release();
+      }
+    });
+  });
+
+  const seed = (byName: string, rulesVersion: number) => {
+    seq += 1;
+    store.push({
+      id: `q${seq}`, deviceId: "dev-1", type: "rules_updated", payload: { reason: "rules_changed", rulesVersion, byName },
+      status: "pending", createdAt: new Date(base + seq * 1000), expiresAt: new Date(base + 86_400_000), attempts: 0,
+    });
+  };
+  const save = (byName: string, rulesVersion: number) =>
+    enqueueDeviceCommand("dev-1", "rules_updated", { reason: "rules_changed", rulesVersion, byName });
+  const drain = () => { for (const r of store) if (r.status === "pending") r.status = "delivered"; };
+  const lastWord = () => [...store].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0].payload;
+
+  it.each([
+    ["newer save starts first", [["Mama Sara", 5], ["Baba", 4]]],
+    ["older save starts first", [["Baba", 4], ["Mama Sara", 5]]],
+  ] as const)("both saves overlap on the same pending row (%s): the newest adult stays, one row", async (_label, order) => {
+    seed("Dad", 3);
+    await Promise.all(order.map(([name, v]) => save(name, v)));
+    expect(store).toHaveLength(1);
+    expect(store[0]).toMatchObject({ status: "pending", payload: { rulesVersion: 5, byName: "Mama Sara" } });
+    expect(lockKeys).toEqual(["device-command:dev-1:rules_updated", "device-command:dev-1:rules_updated"]);
+  });
+
+  it("the newest save's command already drained: the older save that lands after it adds nothing", async () => {
+    seed("Dad", 3);
+    onCommit.push(drain); // the phone drains right after the newer save commits, before the older one runs
+    await Promise.all([save("Mama Sara", 5), save("Baba", 4)]);
+    expect(store).toHaveLength(1);
+    expect(store[0]).toMatchObject({ status: "delivered", payload: { rulesVersion: 5, byName: "Mama Sara" } });
+    expect(lastWord()).toMatchObject({ byName: "Mama Sara" });
+    expect(queue.create).not.toHaveBeenCalled();
+  });
+
+  it("the phone drains between the older and the newer save: the newer one is queued as its own row and is last", async () => {
+    seed("Dad", 3);
+    onCommit.push(drain); // drain after the first commit (the older save), then the newer save runs
+    await Promise.all([save("Baba", 4), save("Mama Sara", 5)]);
+    expect(store.map((r) => [r.status, r.payload.rulesVersion])).toEqual([["delivered", 4], ["pending", 5]]);
+    expect(lastWord()).toMatchObject({ rulesVersion: 5, byName: "Mama Sara" });
   });
 });
