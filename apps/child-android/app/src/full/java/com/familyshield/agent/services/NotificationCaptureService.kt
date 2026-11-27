@@ -10,6 +10,7 @@ import android.service.notification.NotificationListenerService.RankingMap
 import android.service.notification.StatusBarNotification
 import com.familyshield.agent.comms.CommsLogger
 import com.familyshield.agent.data.ConsentState
+import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.social.MonitoredApps
 import com.familyshield.agent.social.NotificationCapturePolicy
 import com.familyshield.agent.social.ScanQueuePolicy
@@ -48,7 +49,17 @@ class NotificationCaptureService : NotificationListenerService() {
     @Inject lateinit var consentState: ConsentState
     @Inject lateinit var comms: CommsLogger
 
+    /** Issue #1035: the parent's per-app monitoring switch, read at capture time like the Accessibility path. */
+    @Inject lateinit var rules: RuleRepository
+
     private val tracker = WhatsAppCallTracker()
+
+    /**
+     * Issue #1027: which lines of each notification have already been scanned. A WhatsApp burst updates one
+     * notification and re-delivers it per message, so the capture path asks this what is new instead of
+     * scanning the newest line only — 20 messages used to reach the server as 4 scans.
+     */
+    private val burst = NotificationCapturePolicy.BurstTracker()
     private val handler = Handler(Looper.getMainLooper())
 
     /** Emits the held rows whose missed-notice window has run out, then re-arms for whatever is left. */
@@ -74,15 +85,27 @@ class NotificationCaptureService : NotificationListenerService() {
 
     private fun capture(sbn: StatusBarNotification, removed: Boolean) {
         if (consentState.isPaused()) return
-        val capture = NotificationCapturePolicy.decide(snapshotOf(sbn, removed)) ?: return
-        if (!TestChatCaptureGate.allows(this, capture.appKey, capture.contact)) return
-        queue.enqueue(
-            app = capture.appKey,
-            contact = capture.contact,
-            text = capture.text,
-            nowMs = if (capture.postedAtMs > 0L) capture.postedAtMs else System.currentTimeMillis(),
-            source = ScanQueuePolicy.SOURCE_NOTIFICATION,
-        )
+        // Issue #1027: one notification can carry a whole burst; enqueue every line it has not produced yet.
+        // Security review (osra-security#73): the gate runs inside capturesFor, *before* the tracker is given
+        // anything — an ineligible chat must not leave its text in this service's memory. A removal releases
+        // the key rather than being filtered before it can do that.
+        val captures = NotificationCapturePolicy.capturesFor(
+            snapshotOf(sbn, removed),
+            burst,
+            monitoringEnabled = { appKey -> rules.socialMonitoringEnabled(appKey) },
+        ) { appKey, contact ->
+            TestChatCaptureGate.allows(this, appKey, contact)
+        }
+        captures.forEach { capture ->
+            queue.enqueue(
+                app = capture.appKey,
+                contact = capture.contact,
+                text = capture.text,
+                nowMs = if (capture.postedAtMs > 0L) capture.postedAtMs else System.currentTimeMillis(),
+                source = ScanQueuePolicy.SOURCE_NOTIFICATION,
+                occurrenceId = "${capture.key}:${capture.postedAtMs}",
+            )
+        }
     }
 
     /**
@@ -125,6 +148,8 @@ class NotificationCaptureService : NotificationListenerService() {
             val n: Notification? = sbn.notification
             val extras: Bundle? = n?.extras
             val isSummary = n != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+            // Issue #1027: the burst decodes once, here, so the lines and their times cannot drift apart.
+            val entries = NotificationCapturePolicy.entriesOf(extras?.get(Notification.EXTRA_MESSAGES))
             return NotificationCapturePolicy.Snapshot(
                 packageId = sbn.packageName.orEmpty(),
                 key = sbn.key.orEmpty(),
@@ -133,7 +158,8 @@ class NotificationCaptureService : NotificationListenerService() {
                 title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
                 text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
                 bigText = extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
-                messages = messageLines(extras),
+                messages = entries.map { it.text?.toString() },
+                messageTimesMs = entries.map { it.atMs },
                 isRemoved = removed,
                 postedAtMs = sbn.postTime,
             )
@@ -176,22 +202,5 @@ class NotificationCaptureService : NotificationListenerService() {
          */
         private fun userOf(key: String?): Int = key?.substringBefore('|')?.toIntOrNull() ?: 0
 
-        /**
-         * `EXTRA_MESSAGES` is a list of `Notification.MessagingStyle.Message` on modern APIs and a list
-         * of `CharSequence` on older ones; both are handled because One UI and older sender apps still
-         * produce the latter.
-         */
-        @Suppress("DEPRECATION")
-        private fun messageLines(extras: Bundle?): List<String?> {
-            val raw = extras?.get(Notification.EXTRA_MESSAGES) ?: return emptyList()
-            if (raw !is List<*>) return emptyList()
-            return raw.mapNotNull { item ->
-                when (item) {
-                    is Notification.MessagingStyle.Message -> item.text?.toString()
-                    is CharSequence -> item.toString()
-                    else -> null
-                }
-            }
-        }
     }
 }

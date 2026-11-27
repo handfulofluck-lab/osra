@@ -19,6 +19,8 @@ import org.junit.Test
  *   `update recovery refuses to resurrect an explicitly revoked filter` fails (and only that row).
  * - Mutant 4: remove `FilterVpnService.start` from `PackageReplacedReceiver.kt` ->
  *   `PackageReplacedReceiver clears stale state, reschedules work, and restarts web filter after genuine self-replace` fails.
+ * - Mutant 5: omit the `shouldAutoReconnectOnStatusOpen` guard from the `c01ChildHomeEnabled` branch in
+ *   `PairingActivity.showStatus` -> `PairingActivity C-01 Child Home path also auto-reconnects via FilterRecoveryPolicy when tunnel is down` fails.
  */
 class FilterRecoveryPolicyTest {
 
@@ -152,6 +154,17 @@ class FilterRecoveryPolicyTest {
         val row = act.substringAfter("private fun addWebFilterRow(").substringBefore("private fun showStatus(")
         assertTrue("uses FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen", row.contains("FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen"))
         assertTrue("guards against reconnect loop", row.contains("vpnAutoReconnectAttempted"))
+    }
+
+    @Test
+    fun `PairingActivity C-01 Child Home path also auto-reconnects via FilterRecoveryPolicy when tunnel is down`() {
+        val act = sourceFile("app/src/main/java/com/familyshield/agent/setup/PairingActivity.kt")
+        val c01Branch = act
+            .substringAfter("if (!forceLegacy && com.familyshield.agent.ui.theme.ChildUxFlags.c01ChildHomeEnabled)")
+            .substringBefore("val initialCopy = buildChildHomeCopy()")
+        assertTrue("C-01 branch consults FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen", c01Branch.contains("FilterRecoveryPolicy.shouldAutoReconnectOnStatusOpen"))
+        assertTrue("C-01 branch guards against reconnect loop", c01Branch.contains("vpnAutoReconnectAttempted"))
+        assertTrue("C-01 branch starts FilterVpnService", c01Branch.contains("FilterVpnService.start("))
     }
 
     private fun sourceFile(relative: String): String {

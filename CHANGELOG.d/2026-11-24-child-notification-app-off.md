@@ -1,0 +1,1 @@
+- #1035 stops the Full build's notification capture, and releases what it had kept, when a parent turns an app off in social monitoring. A missing flag still means on, matching the Accessibility path.

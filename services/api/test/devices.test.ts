@@ -666,12 +666,13 @@ describe("device enrollment & management", () => {
     expect(accepted.statusCode).toBe(202);
     // The route also stamps lastSeen/status on every telemetry, so assert on the field, not the call.
     expect(
-      prismaMock.device.update.mock.calls.some(
+      prismaMock.device.updateMany.mock.calls.some(
         ([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 5,
       ),
     ).toBe(true);
 
     prismaMock.device.update.mockClear();
+    prismaMock.device.updateMany.mockClear();
     const future = await app.inject({
       method: "POST",
       url: "/v1/devices/dev-1/telemetry",
@@ -679,11 +680,11 @@ describe("device enrollment & management", () => {
       payload: { appliedRulesVersion: 99 },
     });
     expect(future.statusCode).toBe(202);
-    expect(
-      prismaMock.device.update.mock.calls.some(
-        ([args]: [{ data?: Record<string, unknown> }]) => "appliedRulesVersion" in (args.data ?? {}),
-      ),
-    ).toBe(false);
+    for (const writer of [prismaMock.device.update, prismaMock.device.updateMany]) {
+      expect(
+        writer.mock.calls.some(([args]: [{ data?: Record<string, unknown> }]) => "appliedRulesVersion" in (args.data ?? {})),
+      ).toBe(false);
+    }
     await app.close();
   });
 
@@ -1194,8 +1195,33 @@ describe("#305 review: the witness code is a device credential, not a parent one
 describe("applied rules version push (#865)", () => {
   const redis = () => getRedis() as unknown as import("./helpers.js").MockRedis;
 
+  // The device row's stored version. The mock applies the route's own `where` clause, so these tests prove
+  // the guard the route sends, not a guard the mock assumes.
+  let stored: number | null = null;
+  // Codex review: the mock interprets only `null` and a strict `lt`, so any other operator (`lte`, `gt`, a
+  // missing null branch) fails here instead of slipping through as "no match".
+  type Guard = { appliedRulesVersion: null | { lt: number } };
+  const guardAllows = (where: { OR?: Guard[] }, current: number | null) => {
+    const conditions = where.OR ?? [];
+    expect(conditions).toHaveLength(2);
+    expect(conditions).toContainEqual({ appliedRulesVersion: null });
+    return conditions.some((c) => {
+      if (c.appliedRulesVersion === null) return current === null;
+      expect(Object.keys(c.appliedRulesVersion)).toEqual(["lt"]);
+      return current !== null && current < c.appliedRulesVersion.lt;
+    });
+  };
+
   beforeEach(() => {
     resetPrismaMock();
+    stored = null;
+    prismaMock.device.updateMany.mockImplementation(
+      async ({ where, data }: { where: { OR?: Guard[] }; data: { appliedRulesVersion: number } }) => {
+        if (!guardAllows(where, stored)) return { count: 0 };
+        stored = data.appliedRulesVersion;
+        return { count: 1 };
+      },
+    );
   });
 
   const report = (app: Awaited<ReturnType<typeof buildApp>>, appliedRulesVersion: number) =>
@@ -1249,12 +1275,48 @@ describe("applied rules version push (#865)", () => {
     await app.close();
   });
 
+  /**
+   * Codex #1002 review (23 Nov): the phone reports its applied version at once and again on the periodic
+   * upload, so a delayed upload can land after a newer one. With version 4 issued, a fresh 4 then a late 3
+   * both answer 202 (the phone is not at fault), the row keeps 4, and the parent is told once.
+   */
+  it("a delayed report of an older version does not move the device back to pending", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 4 });
+    prismaMock.device.findMany.mockImplementation(async () => [{ appliedRulesVersion: stored }]);
+    redis().publish.mockClear();
+
+    expect((await report(app, 4)).statusCode).toBe(202);
+    expect((await report(app, 3)).statusCode).toBe(202);
+    // The mutant: an unguarded write (the code before this fix) stores 3 here and the banner reads pending.
+    expect(stored).toBe(4);
+    const frames = redis().publish.mock.calls.filter(([, message]) => String(message).includes('"rules_applied"'));
+    expect(frames).toHaveLength(1);
+    expect(JSON.parse(frames[0][1] as string).payload.appliedRulesVersion).toBe(4);
+    await app.close();
+  });
+
+  it("a new pairing's first report is always taken", async () => {
+    const app = await buildApp(deviceRoutes, "/v1/devices");
+    prismaMock.device.findUnique.mockResolvedValue(DEVICE);
+    prismaMock.device.update.mockResolvedValue(DEVICE);
+    prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 7 });
+    prismaMock.device.findMany.mockImplementation(async () => [{ appliedRulesVersion: stored }]);
+    // A re-paired phone is a new device row: nothing stored yet, so even a low first version is accepted.
+    expect((await report(app, 2)).statusCode).toBe(202);
+    expect(stored).toBe(2);
+    await app.close();
+  });
+
   it("publishes again when the version moves up and the family is caught up", async () => {
     const app = await buildApp(deviceRoutes, "/v1/devices");
     prismaMock.ruleSet.findUnique.mockResolvedValue({ rulesVersion: 5 });
     prismaMock.device.findMany.mockResolvedValue([{ appliedRulesVersion: 5 }]);
     prismaMock.device.update.mockResolvedValue(DEVICE);
     prismaMock.device.findUnique.mockResolvedValue({ ...DEVICE, appliedRulesVersion: 4 });
+    stored = 4;
     redis().publish.mockClear();
 
     expect((await report(app, 5)).statusCode).toBe(202);
@@ -1313,11 +1375,12 @@ describe("applied rules version push (#865)", () => {
     expect(plain.statusCode).toBe(202);
     expect(redis().publish).not.toHaveBeenCalledWith("family:fam-1:events", expect.stringContaining('"rules_applied"'));
     // A future version is not stored either — the #475 rule the push must not weaken.
-    expect(
-      prismaMock.device.update.mock.calls.some(
-        ([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 99,
-      ),
-    ).toBe(false);
+    for (const writer of [prismaMock.device.update, prismaMock.device.updateMany]) {
+      expect(
+        writer.mock.calls.some(([args]: [{ data?: Record<string, unknown> }]) => args.data?.appliedRulesVersion === 99),
+      ).toBe(false);
+    }
+    expect(stored).toBeNull();
     await app.close();
   });
 

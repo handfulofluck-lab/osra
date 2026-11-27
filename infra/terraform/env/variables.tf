@@ -417,9 +417,17 @@ variable "staging_qa_analyzer" {
     pairing_secret_arn        = string
     armed                     = optional(bool, false)
     allow_synthetic_pair_text = optional(bool, false)
+    allow_android_sources     = optional(bool, false)
+    own_model_task_size       = optional(bool, false)
+    engine                    = optional(string, "bedrock")
   })
   default  = null
   nullable = true
+
+  validation {
+    condition     = var.staging_qa_analyzer == null ? true : contains(["bedrock", "own", "both"], var.staging_qa_analyzer.engine)
+    error_message = "staging_qa_analyzer.engine must be bedrock, own or both."
+  }
 
   validation {
     condition = var.staging_qa_analyzer == null ? true : (
