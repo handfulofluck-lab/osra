@@ -167,7 +167,10 @@ String formatDurationMmSs(int seconds) {
 /// `--dart-define=OSRA_UX_P17=true`, or override [p17SocialEnabledProvider] in tests. When it is false the
 /// section keeps the per-app switches it shipped with, which is the fallback the Bureau's build condition asks
 /// for: a screen can be turned off on the morning of a test without a revert.
-const bool kEnableUxP17Social = bool.fromEnvironment('OSRA_UX_P17', defaultValue: false);
+const bool kEnableUxP17Social = bool.fromEnvironment(
+  'OSRA_UX_P17',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 
 final p17SocialEnabledProvider = Provider<bool>((ref) => kEnableUxP17Social);
 
