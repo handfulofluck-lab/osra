@@ -427,10 +427,14 @@ class FilterVpnService : VpnService() {
                         severity = "info",
                         category = "web_threat",
                         title = "Blocked site opened",
-                        body = "Your child tried to open a blocked site.",
-                        // Claude's ruling on #841 finding 5: with the flag off the attempt is still
-                        // reported, but the parent gets a count with no host — no domain, a coarse reason
-                        // (never the blocked word itself) and one row per day.
+                        body = if (siteNames) {
+                            "Your child tried to open a blocked site."
+                        } else {
+                            com.familyshield.agent.enforcement.AlertKeys.redactedBlockedSiteBody(attempts)
+                        },
+                        // Claude's ruling on #841 finding 5 + #1128 item 3: with the flag off the attempt
+                        // carries no host (only coarse reason + running count), bucketed per 10-minute UTC
+                        // window so later blocked sites that day still notify the parent.
                         metadata = if (siteNames) {
                             mapOf("domain" to name, "reason" to reason)
                         } else {
@@ -439,7 +443,7 @@ class FilterVpnService : VpnService() {
                         dedupeKey = if (siteNames) {
                             com.familyshield.agent.enforcement.AlertKeys.blockedSite(name, day)
                         } else {
-                            "web:$day"
+                            com.familyshield.agent.enforcement.AlertKeys.redactedBlockedSite(now)
                         },
                         attemptCount = attempts,
                     ),

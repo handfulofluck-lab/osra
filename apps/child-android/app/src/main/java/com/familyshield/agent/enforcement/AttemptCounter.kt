@@ -17,6 +17,32 @@ object AlertKeys {
     /** The `web_threat` dedupe key: one row per host per UTC day (#830). */
     fun blockedSite(host: String, day: String): String = "domain:$host:$day"
 
+    /** #1128 item 3: 10-minute quiet window for hostless blocked-site alerts when `siteNames` is off. */
+    const val REDACTED_SITE_WINDOW_MS: Long = 10 * 60 * 1000L
+
+    /**
+     * #1128 item 3: hostless dedupe key per 10-minute UTC window (`web:YYYY-MM-DDTHH:M0`).
+     * Keeps repeats inside one quiet window grouped while allowing a new attempt in a later
+     * 10-minute window to raise a fresh alert and notify the parent, with zero host data.
+     */
+    fun redactedBlockedSite(nowMs: Long, windowMs: Long = REDACTED_SITE_WINDOW_MS): String {
+        val bucketMs = Math.floorDiv(nowMs, windowMs) * windowMs
+        val utc = java.time.Instant.ofEpochMilli(bucketMs).atOffset(java.time.ZoneOffset.UTC)
+        return String.format(
+            java.util.Locale.US,
+            "web:%04d-%02d-%02dT%02d:%02d",
+            utc.year,
+            utc.monthValue,
+            utc.dayOfMonth,
+            utc.hour,
+            utc.minute,
+        )
+    }
+
+    /** #1128 item 3: hostless body carrying the running daily count on later blocked-site windows. */
+    fun redactedBlockedSiteBody(attempts: Int): String =
+        if (attempts > 1) "$attempts blocked sites today." else "Your child tried to open a blocked site."
+
     /** #830: true when a site alert may be posted again — the first time, or after the quiet window. */
     fun siteAlertDue(lastPostMs: Long?, nowMs: Long, quietMs: Long): Boolean =
         lastPostMs == null || nowMs - lastPostMs >= quietMs
