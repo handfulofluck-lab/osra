@@ -298,6 +298,19 @@ class LocationService : Service() {
             api.postLocationPings(LocationPingBatchDto(all))
             dropBuffered(mem)
             db.pendingPingDao().clear()
+            val nowMs = System.currentTimeMillis()
+            val latestPingMs = all.maxOfOrNull {
+                runCatching { Instant.parse(it.timestamp).toEpochMilli() }.getOrDefault(0L)
+            }?.takeIf { it > 0L } ?: nowMs
+            runCatching {
+                settings.saveLastLocationUploadedAtMs(
+                    LocationRefreshPolicy.mergedLastUploadedAtMs(
+                        previousMs = settings.lastLocationUploadedAtMs(),
+                        uploadedPingTimeMs = latestPingMs,
+                        nowMs = nowMs,
+                    ),
+                )
+            }
             true
         } catch (e: CancellationException) {
             throw e // NOTE: never swallow coroutine cancellation

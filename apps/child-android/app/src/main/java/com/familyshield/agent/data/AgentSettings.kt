@@ -279,6 +279,9 @@ class AgentSettings @Inject constructor(
             // Issue #319: the enrolment is new, so the token has to be published to it again. The token
             // itself is kept — an FCM registration token belongs to the install, not to the pairing.
             it.remove(KEY_PUSH_TOKEN_UPLOADED)
+            // Issue #1053: a re-paired device belongs to a new enrolment, so the previous child's
+            // location upload timestamp must not cause the periodic worker to skip the first refresh.
+            it.remove(KEY_LAST_LOCATION_UPLOADED_AT_MS)
         }
         // Issue #227: a re-pair is a new device enrolment; its first guard attempt opens a new window.
         TamperState.clearGuardAttemptWindow(context)
@@ -543,6 +546,20 @@ class AgentSettings @Inject constructor(
         store.edit { it[KEY_PUSH_TOKEN_UPLOADED] = token }
     }
 
+    /**
+     * Issue #1053: epoch-ms of the latest location point confirmed uploaded to the backend (2xx),
+     * or null before any ping has been uploaded for this pairing. Read by
+     * [com.familyshield.agent.services.LocationRefreshWorker] so active phones skip redundant
+     * periodic wakes and stale cached fixes already uploaded are never re-sent.
+     */
+    suspend fun lastLocationUploadedAtMs(): Long? =
+        read(KEY_LAST_LOCATION_UPLOADED_AT_MS)?.toLongOrNull()
+
+    /** Records the epoch-ms of the latest location point accepted by `POST /v1/location/ping`. */
+    suspend fun saveLastLocationUploadedAtMs(epochMs: Long) {
+        store.edit { it[KEY_LAST_LOCATION_UPLOADED_AT_MS] = epochMs.toString() }
+    }
+
     /** Synchronous cold-start read of the consent-pause flag (once per process). */
     fun consentPausedSync(): Boolean = runBlocking { read(KEY_CONSENT_PAUSED) } == "1"
 
@@ -596,5 +613,7 @@ class AgentSettings @Inject constructor(
         // Issue #319: the FCM registration token this install received, and the one the server last took.
         private val KEY_PUSH_TOKEN = stringPreferencesKey("push_token")
         private val KEY_PUSH_TOKEN_UPLOADED = stringPreferencesKey("push_token_uploaded")
+        // Issue #1053: epoch-ms of the latest location fix confirmed uploaded (2xx) for this pairing.
+        private val KEY_LAST_LOCATION_UPLOADED_AT_MS = stringPreferencesKey("last_location_uploaded_at_ms")
     }
 }

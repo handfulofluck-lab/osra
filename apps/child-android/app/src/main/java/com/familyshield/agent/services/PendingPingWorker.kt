@@ -49,6 +49,18 @@ class PendingPingWorker(
                     ),
                 )
                 dao.clear()
+                val nowMs = System.currentTimeMillis()
+                val latestPingMs = pending.maxOfOrNull { it.timestamp }?.takeIf { it > 0L } ?: nowMs
+                val settings = deps.agentSettings()
+                runCatching {
+                    settings.saveLastLocationUploadedAtMs(
+                        LocationRefreshPolicy.mergedLastUploadedAtMs(
+                            previousMs = settings.lastLocationUploadedAtMs(),
+                            uploadedPingTimeMs = latestPingMs,
+                            nowMs = nowMs,
+                        ),
+                    )
+                }
                 Result.success()
             } catch (e: Exception) {
                 if (runAttemptCount < 3) Result.retry() else Result.failure()

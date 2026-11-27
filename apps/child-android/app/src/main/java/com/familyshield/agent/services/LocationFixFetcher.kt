@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.familyshield.agent.commands.LocateFix
 import com.familyshield.agent.commands.LocatePolicy
+import com.familyshield.agent.data.AgentSettings
 import com.familyshield.agent.data.ConsentState
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.LocationPingBatchDto
@@ -111,6 +112,7 @@ object LocationFixFetcher {
         context: Context,
         api: ApiService,
         consentState: ConsentState,
+        settings: AgentSettings? = null,
         onComplete: (LocateFix?, Boolean) -> Unit,
     ) {
         if (consentState.isPaused()) {
@@ -134,7 +136,7 @@ object LocationFixFetcher {
             onComplete(null, false)
             return
         }
-        val uploaded = uploadSingleLocation(location, api, consentState)
+        val uploaded = uploadSingleLocation(location, api, consentState, settings)
         if (!uploaded) {
             Log.w(TAG, "locate_now (direct fallback): fix obtained but not uploaded; no ack, the command is re-offered at 120 s")
         }
@@ -145,6 +147,7 @@ object LocationFixFetcher {
         location: Location,
         api: ApiService,
         consentState: ConsentState,
+        settings: AgentSettings?,
     ): Boolean = LocationService.FLUSH_MUTEX.withLock {
         if (consentState.isPaused()) return@withLock false
         val ping = LocationPingDto(
@@ -155,6 +158,19 @@ object LocationFixFetcher {
         )
         try {
             api.postLocationPings(LocationPingBatchDto(listOf(ping)))
+            if (settings != null) {
+                val nowMs = System.currentTimeMillis()
+                val uploadedMs = location.time.takeIf { it > 0L } ?: nowMs
+                runCatching {
+                    settings.saveLastLocationUploadedAtMs(
+                        LocationRefreshPolicy.mergedLastUploadedAtMs(
+                            previousMs = settings.lastLocationUploadedAtMs(),
+                            uploadedPingTimeMs = uploadedMs,
+                            nowMs = nowMs,
+                        ),
+                    )
+                }
+            }
             true
         } catch (e: CancellationException) {
             throw e
@@ -164,7 +180,7 @@ object LocationFixFetcher {
         }
     }
 
-    private suspend fun requestCurrentLocation(
+    internal suspend fun requestCurrentLocation(
         fused: FusedLocationProviderClient,
         priority: Int,
     ): Location? = suspendCancellableCoroutine { cont ->
@@ -180,7 +196,7 @@ object LocationFixFetcher {
         }
     }
 
-    private suspend fun requestLastLocation(fused: FusedLocationProviderClient): Location? =
+    internal suspend fun requestLastLocation(fused: FusedLocationProviderClient): Location? =
         suspendCancellableCoroutine { cont ->
             try {
                 fused.lastLocation

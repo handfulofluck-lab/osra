@@ -669,6 +669,7 @@ class CommandDispatcher @Inject constructor(
                             context = context,
                             api = api,
                             consentState = consent,
+                            settings = settings,
                             onComplete = { fix, uploaded -> ackLocateNow(commandId, fix, uploaded) },
                         )
                     } finally {
