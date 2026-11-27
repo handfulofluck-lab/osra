@@ -287,6 +287,7 @@ class AgentSettings @Inject constructor(
         // next blocked app reports their count — across enrolments, possibly across families.
         com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
         com.familyshield.agent.enforcement.AttemptCounter.clear(context)
+        com.familyshield.agent.setup.MiuiBackgroundPopupPolicy.clearParentConfirmation(context)
         // osra-security#24 / #792 (Antigravity B2): and a new enrolment inherits no wrong-PIN debt. Left
         // behind, eight tries from the previous PIN would refuse the new one during the old window and lock
         // for an hour on the first typo afterwards.

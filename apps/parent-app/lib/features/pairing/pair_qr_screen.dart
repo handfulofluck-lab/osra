@@ -13,6 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/pairing_session_provider.dart';
 import '../../theme/app_tokens.dart';
+import 'pair_p05_screen.dart';
 import 'pair_qr_payload.dart';
 
 /// Full-screen first-run pairing view: the six-digit code as a scannable QR,
@@ -53,6 +54,9 @@ class PairingQrScreen extends ConsumerStatefulWidget {
 }
 
 class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
+  int _generation = 0;
+  int _claimReadSeq = 0;
+  int _latestAppliedClaimReadSeq = 0;
   String? _code;
   String? _payload;
   DateTime? _expiresAt;
@@ -81,24 +85,43 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   @override
   void initState() {
     super.initState();
-    _generate();
+    if (!ref.read(p05PairEnabledProvider)) {
+      _generate();
+    }
   }
 
   @override
   void dispose() {
+    _generation += 1;
     _timer?.cancel();
     _claimTimer?.cancel();
     super.dispose();
   }
 
+  static int _claimStatusRank(Object? status) => switch (status) {
+        'paired' || 'denied' => 3,
+        'approved' => 2,
+        'pending' => 1,
+        _ => 0,
+      };
+
   Future<void> _generate() async {
+    final generation = ++_generation;
+    _claimReadSeq = 0;
+    _latestAppliedClaimReadSeq = 0;
+    _timer?.cancel();
     _claimTimer?.cancel();
     setState(() {
       _loading = true;
+      _code = null;
+      _payload = null;
+      _expiresAt = null;
       _errorKind = null;
+      _checking = false;
       _notPairedYet = false;
       _checkFailed = false;
       _claim = null;
+      _deciding = false;
       _decisionFailed = false;
     });
     try {
@@ -106,6 +129,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         '/v1/devices/pair',
         data: {'childId': widget.childId},
       );
+      if (!mounted || generation != _generation) return;
       final data = Map<String, dynamic>.from(res.data as Map);
       final rawCode = data['code'];
       final code = rawCode is String ? normalizeDigits(rawCode) : null;
@@ -120,30 +144,33 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         code: code,
         apiBaseUrl: ref.read(apiClientProvider).raw.options.baseUrl,
       ).encode();
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _code = code;
         _payload = payload;
         _expiresAt = expiresAt;
+        _claim = null;
+        _deciding = false;
+        _decisionFailed = false;
         _loading = false;
       });
       ref.read(activePairingSessionProvider.notifier).state = ActivePairingSession(code: code, childId: widget.childId, expiresAt: expiresAt);
-      _startCountdown();
-      _startClaimWatch();
+      _startCountdown(generation);
+      _startClaimWatch(generation);
     } on DioException catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _errorKind = e.response?.statusCode == 428 ? 'consent' : 'network';
       });
     } on FormatException {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _errorKind = 'format';
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _errorKind = 'network';
@@ -151,24 +178,28 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     }
   }
 
-  void _startCountdown() {
+  void _startCountdown(int generation) {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       if (_remaining == Duration.zero) _timer?.cancel();
       setState(() {});
     });
   }
 
-  void _startClaimWatch() {
+  void _startClaimWatch(int generation) {
     _claimTimer?.cancel();
-    _claimTimer =
-        Timer.periodic(const Duration(seconds: 2), (_) => _readClaim());
+    _claimTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _readClaim(expectedGeneration: generation),
+    );
   }
 
   /// One read of the claim on the shown code. A failed read (including the 404 of an expired or used
   /// code) is a missed tick, not an answer; the next tick tries again.
-  Future<void> _readClaim() async {
+  Future<void> _readClaim({int? expectedGeneration}) async {
+    final generation = expectedGeneration ?? _generation;
+    if (generation != _generation) return;
     final code = _code;
     final status = _claim?['status'];
     if (code == null || _expired || _deciding) return;
@@ -176,20 +207,39 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       _claimTimer?.cancel();
       return;
     }
+    final readSeq = ++_claimReadSeq;
     try {
       final res = await ref
           .read(apiClientProvider)
           .raw
           .get('/v1/devices/pair/$code/claim');
-      if (!mounted || code != _code || _deciding) return;
-      final data = Map<String, dynamic>.from(res.data as Map);
-      setState(() => _claim = data);
-      if (data['status'] == 'paired') {
+      if (!mounted ||
+          generation != _generation ||
+          code != _code ||
+          _deciding ||
+          readSeq < _latestAppliedClaimReadSeq) {
+        return;
+      }
+      final currentStatus = _claim?['status'];
+      if (currentStatus == 'paired' || currentStatus == 'denied') {
         _claimTimer?.cancel();
-        if (ref.read(activePairingSessionProvider)?.code == code) {
-          ref.read(activePairingSessionProvider.notifier).state = null;
+        return;
+      }
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final incomingStatus = data['status'];
+      if (_claimStatusRank(incomingStatus) < _claimStatusRank(currentStatus)) {
+        return;
+      }
+      _latestAppliedClaimReadSeq = readSeq;
+      setState(() => _claim = data);
+      if (incomingStatus == 'paired') {
+        _claimTimer?.cancel();
+        if (mounted && generation == _generation) {
+          if (ref.read(activePairingSessionProvider)?.code == code) {
+            ref.read(activePairingSessionProvider.notifier).state = null;
+          }
+          ref.invalidate(familyProvider);
         }
-        ref.invalidate(familyProvider);
       }
     } catch (_) {
       // Missed tick.
@@ -198,8 +248,10 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
 
   /// Allow or Deny the pending claim. Only after Allow does the phone get its device token.
   Future<void> _decide({required bool allow}) async {
+    final generation = _generation;
+    final code = _code;
     final claimId = _claim?['claimId'] as String?;
-    if (claimId == null) return;
+    if (code == null || claimId == null || _expired) return;
     setState(() {
       _deciding = true;
       _decisionFailed = false;
@@ -209,7 +261,12 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
           .read(apiClientProvider)
           .raw
           .post('/v1/devices/pair/claims/$claimId/${allow ? 'approve' : 'deny'}');
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _generation ||
+          code != _code ||
+          _claim?['claimId'] != claimId) {
+        return;
+      }
       setState(() {
         _deciding = false;
         _claim = {...?_claim, 'status': allow ? 'approved' : 'denied'};
@@ -221,7 +278,12 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         }
       }
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _generation ||
+          code != _code ||
+          _claim?['claimId'] != claimId) {
+        return;
+      }
       setState(() {
         _deciding = false;
         _decisionFailed = true;
@@ -253,6 +315,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   /// Wizard-only: ask the server whether a device exists for [childId] now.
   /// Advancing only on a confirmed device is what keeps the Done step honest.
   Future<void> _checkPairing() async {
+    final generation = _generation;
     setState(() {
       _checking = true;
       _notPairedYet = false;
@@ -261,7 +324,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     try {
       ref.invalidate(familyProvider);
       final overview = await ref.read(familyProvider.future);
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() => _checking = false);
       if (overview.devicesFor(widget.childId).isNotEmpty) {
         widget.onContinue?.call();
@@ -269,7 +332,7 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
         setState(() => _notPairedYet = true);
       }
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _checking = false;
         _checkFailed = true;
@@ -282,6 +345,17 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // #1179 P-05 Pair behind switch (legacy PairingQrScreen stays as fallback).
+    if (ref.watch(p05PairEnabledProvider)) {
+      return PairP05Screen(
+        childId: widget.childId,
+        clock: widget.clock,
+        childName: widget.childName,
+        onBack: widget.onBack,
+        onContinue: widget.onContinue,
+        onSkip: widget.onSkip,
+      );
+    }
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
     final paired = widget.onboarding && _paired(overview);
