@@ -134,8 +134,8 @@ open class FamilyShieldShieldActionDelegate: ShieldActionDelegate {
            ShieldTapPolicy.shouldSendRequest(target: target, defaults: UserDefaults(suiteName: AgentIdentityStore.suiteName)) {
             // U105: when the daily limit is what holds the shield, the tap asks for time the way Android does, so
             // the parent's time-request card renders it rather than a generic access alert.
-            if Self.dailyLimitResetsAt() != nil {
-                reporter.reportTimeRequest(minutes: Self.dailyLimitRequestMinutes,
+            if FamilyShieldConfigurationDataSource.dailyLimitResetsAt() != nil {
+                reporter.reportTimeRequest(minutes: FamilyShieldConfigurationDataSource.dailyLimitRequestMinutes,
                                            childId: AlertReporter.pairedChildId())
             } else {
                 reporter.report(
