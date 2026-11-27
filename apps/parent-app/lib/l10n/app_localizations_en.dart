@@ -3726,6 +3726,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get alertsOffBannerBody =>
+      'Alerts are off. You won\'t hear about urgent messages.';
+
+  @override
+  String get alertsOffTurnOnAction => 'Turn on alerts';
+
+  @override
   String timeRequestTitle(String child, int minutes) {
     return '$child asked for $minutes more minutes today';
   }

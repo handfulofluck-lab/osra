@@ -1992,6 +1992,8 @@
   "@accessRequestAllowLabel": { "placeholders": { "app": { "type": "String" } } },
   "accessRequestKeepBlockedLabel": "Keep {app} blocked",
   "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } },
+  "alertsOffBannerBody": "Alerts are off. You won't hear about urgent messages.",
+  "alertsOffTurnOnAction": "Turn on alerts",
   "timeRequestTitle": "{child} asked for {minutes} more minutes today",
   "@timeRequestTitle": { "placeholders": { "child": { "type": "String" }, "minutes": { "type": "int" } } },
   "timeRequestGrant": "+{minutes} min",
