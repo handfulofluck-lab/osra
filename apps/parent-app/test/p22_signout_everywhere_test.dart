@@ -12,15 +12,15 @@ import 'test_app.dart';
 
 /// A push source with a token already minted, so a re-registration is a plain POST instead of an OS prompt.
 class _GrantedPushSource implements PushTokenSource {
-  const _GrantedPushSource(this.token);
+  const _GrantedPushSource(this._value);
 
-  final String token;
+  final String _value;
 
   @override
   Future<PushPermission> requestPermission() async => PushPermission.granted;
 
   @override
-  Future<String?> token() async => token;
+  Future<String?> token() async => _value;
 }
 
 /// P-22 / osra-security#92 (Claude, 11:36 UAE; Codex 7211995144): **Sign out of all devices** revokes every
