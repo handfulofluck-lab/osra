@@ -406,6 +406,39 @@ void main() {
     expect(find.byKey(const ValueKey('p08TimeLeftCard')), findsNothing);
   });
 
+  testWidgets('#1186 Bureau fix: Arabic last-seen status line uses Latin digits with firstStrongIsolate and never stays untouched', (tester) async {
+    // Mutant: removing normalizeDigits(...) or firstStrongIsolate(...) from formatLastSeen()
+    // emits Arabic-Indic digits ([\u0660-\u0669]) or drops the FSI/PDI isolate wrapper, failing this test.
+    final api = buildApi(deviceCount: 1);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          p08ChildOverviewEnabledProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          locale: const Locale('ar'),
+          theme: AppTheme.light,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ChildDetailScreen(childId: 'child-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final statusTexts = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((t) => t.data ?? '')
+        .where((s) => s.contains('آخر ظهور'))
+        .toList();
+    expect(statusTexts, isNotEmpty);
+    for (final line in statusTexts) {
+      expect(RegExp(r'[\u0660-\u0669]').hasMatch(line), isFalse, reason: 'Found Arabic-Indic digits in "$line"');
+      expect(line.contains('\u2068') && line.contains('\u2069'), isTrue, reason: 'Expected firstStrongIsolate in "$line"');
+    }
+  });
+
   for (final cfg in [
     (locale: const Locale('en'), dark: false, size: const Size(390, 844), scale: 1.0),
     (locale: const Locale('ar'), dark: false, size: const Size(390, 844), scale: 1.0),

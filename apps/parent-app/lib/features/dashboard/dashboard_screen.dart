@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/digits.dart';
+import '../../core/ltr_isolate.dart';
 import '../../api/permission_errors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -778,4 +779,8 @@ class _AddChildDialogState extends ConsumerState<AddChildDialog> {
 /// Formats a device last-seen timestamp for display in the app locale.
 String formatLastSeen(BuildContext context, DateTime? lastSeen) => lastSeen == null
     ? context.l10n.never
-    : DateFormat.yMMMd(context.localeName).add_Hm().format(lastSeen.toLocal());
+    : firstStrongIsolate(
+        normalizeDigits(
+          DateFormat.yMMMd(context.localeName).add_Hm().format(lastSeen.toLocal()),
+        ),
+      );
