@@ -31,7 +31,7 @@ resource "aws_ecs_task_definition" "api" {
     cpu_architecture        = "ARM64"
   }
 
-  container_definitions = jsonencode([
+  container_definitions = jsonencode(concat([
     {
       name      = "api"
       image     = var.api_image
@@ -47,7 +47,8 @@ resource "aws_ecs_task_definition" "api" {
         [
           { name = "NODE_ENV", value = "production" },
           { name = "PORT", value = "3000" },
-          { name = "LOG_LEVEL", value = "info" },
+          # A load test at thousands of requests a second would cost more in log ingestion than in servers.
+          { name = "LOG_LEVEL", value = var.loadtest_mode ? "warn" : "info" },
           # The ALB is one proxy hop: the API takes the client address from the X-Forwarded-For entry the ALB
           # appends, so every rate limit keys on the client, not on the balancer. A hop count, never `true`
           # (that trusts the entry the caller writes). A CDN in front of the ALB would make this 2.
@@ -85,6 +86,7 @@ resource "aws_ecs_task_definition" "api" {
         # APNs (#695). Always the production APNs endpoint: TestFlight and store builds carry
         # aps-environment=production, and a sandbox token sent there fails with BadDeviceToken. Key and team
         # ids are not secrets but stay out of the repo; they come from tfvars.
+        local.loadtest_env,
         var.apns_enabled ? [
           { name = "APNS_KEY_ID", value = var.apns_key_id },
           { name = "APNS_TEAM_ID", value = var.apns_team_id },
@@ -140,7 +142,7 @@ resource "aws_ecs_task_definition" "api" {
 
       stopTimeout = 30
     }
-  ])
+  ], local.loadtest_sidecars))
 
   tags = {
     Name = "${local.name_prefix}-api"

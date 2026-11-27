@@ -1,0 +1,36 @@
+# Load-test env (loadtest/README.md). Copy to env/loadtest.tfvars (gitignored). Sizes follow production.tfvars.example
+# so the result says something about production; step up only when a tier fails, and write down each step.
+project     = "osra"
+environment = "loadtest"
+region      = "eu-north-1"
+
+base_state_key = "loadtest/base/terraform.tfstate"
+
+# The same image sha as the build being measured; it may live in staging's repository (same account, and the
+# execution role's managed policy can pull it), so nothing is copied.
+api_image = "<account-id>.dkr.ecr.eu-north-1.amazonaws.com/osra-staging/api:<git-sha>"
+
+loadtest_mode = true
+
+# API: production's task size; scale range wide enough to find the knee.
+api_cpu       = 1024
+api_memory    = 2048
+api_min_count = 2
+api_max_count = 12
+
+# Database and cache: production's classes first (db.t4g.small Multi-AZ, 2-node Valkey with TLS).
+db_instance_class        = "db.t4g.small"
+db_multi_az              = true
+db_allocated_storage     = 50
+redis_node_type          = "cache.t4g.micro"
+redis_num_nodes          = 2
+redis_failover           = true
+redis_transit_encryption = true
+
+# Who may reach the ALB besides the generators' NAT (loadtest.tf adds that one): the operator's own address,
+# for a health check by hand. One /32; never 0.0.0.0/0 (no certificate, so it would be cleartext to everyone).
+allowed_cidrs = ["<operator-address>/32"]
+
+push_enabled  = false # no sends to fake FCM/APNs tokens; phones then poll every 60 s, the harder case
+apns_enabled  = false
+email_provider = ""

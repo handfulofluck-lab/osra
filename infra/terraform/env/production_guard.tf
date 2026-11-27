@@ -11,6 +11,10 @@ resource "terraform_data" "production_guard" {
       error_message = "production: db_multi_az must be true."
     }
     precondition {
+      condition     = !var.loadtest_mode
+      error_message = "production: loadtest_mode must be false (it raises the rate limit and stubs the AI engine)."
+    }
+    precondition {
       condition     = var.db_backup_retention_days >= 7
       error_message = "production: db_backup_retention_days must be 7 or more."
     }

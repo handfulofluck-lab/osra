@@ -1,0 +1,24 @@
+# Load-test base (loadtest/README.md). Copy to base/loadtest.tfvars (gitignored). Staging account, eu-north-1.
+#
+# Its OWN base, never staging's: env/secrets.tf writes the per-session DATABASE_URL into base's secret, so an env
+# built on staging's base would point live staging at the test database.
+project     = "osra"
+environment = "loadtest"
+region      = "eu-north-1"
+
+# Empty on purpose: no GitHub OIDC provider or publish role (staging's account-wide ones stay untouched), no
+# Bedrock role, no certificate (the ALB runs on port 80 and admits only the generators' NAT address).
+github_repo               = ""
+github_owner_id           = ""
+github_repo_id            = ""
+domain_name               = ""
+hosted_zone_name          = ""
+certificate_arn           = ""
+bedrock_eval_role_enabled = false
+
+log_retention_days = 1
+
+# Karim's cap for the Sunday run (27 Nov 2026 card): US$50. AWS Budgets alerts at 80% and 100%.
+budget_limit_usd      = 50
+alarm_email           = "<alerts-address>"
+alarm_email_secondary = "<second-alerts-address>"

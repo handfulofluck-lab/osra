@@ -61,7 +61,29 @@ export function trustProxyFromEnv(value: string | undefined = process.env.TRUST_
   return Number(raw);
 }
 
+/**
+ * The global bucket's `max`, which only a load-test stack may raise (load-test plan, 27 Nov 2026).
+ *
+ * A load test sends thousands of simulated phones from a handful of generator addresses, so the per-address
+ * bucket would turn the test into a measurement of the limiter. `RATE_LIMIT_GLOBAL_MAX` is honoured only when
+ * `OSRA_DEPLOYMENT_SCOPE=loadtest`, which only the load-test Terraform sets (its production guard refuses
+ * `loadtest_mode`). Anywhere else the value is ignored with a warning, so a stray variable on staging or
+ * production cannot open the limit. The auth and pairing buckets are never changed.
+ */
+export function globalRateLimitMax(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.RATE_LIMIT_GLOBAL_MAX?.trim();
+  if (!raw) return GLOBAL_RATE_LIMIT.max;
+  if (env.OSRA_DEPLOYMENT_SCOPE !== "loadtest") {
+    console.warn("[rate-limit] RATE_LIMIT_GLOBAL_MAX ignored: only a load-test stack (OSRA_DEPLOYMENT_SCOPE=loadtest) may raise it");
+    return GLOBAL_RATE_LIMIT.max;
+  }
+  if (!/^\d+$/.test(raw) || Number(raw) < GLOBAL_RATE_LIMIT.max) {
+    throw new Error(`RATE_LIMIT_GLOBAL_MAX must be a whole number of at least ${GLOBAL_RATE_LIMIT.max}, got "${raw}"`);
+  }
+  return Number(raw);
+}
+
 /** Register the limiter with its counters in Redis; the routes add their own buckets via `config`. */
-export async function registerRateLimits(app: FastifyInstance, redis: Redis): Promise<void> {
-  await app.register(rateLimit, { ...GLOBAL_RATE_LIMIT, redis, nameSpace: RATE_LIMIT_KEY_PREFIX });
+export async function registerRateLimits(app: FastifyInstance, redis: Redis, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  await app.register(rateLimit, { ...GLOBAL_RATE_LIMIT, max: globalRateLimitMax(env), redis, nameSpace: RATE_LIMIT_KEY_PREFIX });
 }

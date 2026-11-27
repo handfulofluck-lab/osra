@@ -1660,3 +1660,96 @@ run "environment_must_be_staging_or_production" {
 
   expect_failures = [var.environment]
 }
+
+# --- Load-test stack (loadtest/README.md, plan of 27 Nov 2026) ---------------------------------------------------
+
+run "loadtest_mode_is_off_by_default" {
+  command = apply
+
+  variables {
+    api_image = "example/api:test"
+  }
+
+  assert {
+    condition = alltrue([
+      length(jsondecode(aws_ecs_task_definition.api.container_definitions)) == 1,
+      !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "OSRA_DEPLOYMENT_SCOPE"),
+      !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "RATE_LIMIT_GLOBAL_MAX"),
+      !contains([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.name], "AI_ENGINE_URL"),
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "LOG_LEVEL"]) == "info",
+      length(aws_ecs_task_definition.loadtest_k6) == 0,
+      length(aws_security_group.loadtest_k6) == 0,
+      length(aws_vpc_security_group_ingress_rule.alb_from_loadtest_nat) == 0,
+    ])
+    error_message = "staging and production get no load-test setting, sidecar, generator or ALB rule"
+  }
+}
+
+run "loadtest_mode_wires_the_stub_the_limit_and_the_generators" {
+  command = apply
+
+  variables {
+    environment   = "loadtest"
+    api_image     = "example/api:test"
+    loadtest_mode = true
+    allowed_cidrs = ["203.0.113.7/32"]
+  }
+
+  assert {
+    condition = alltrue([
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "OSRA_DEPLOYMENT_SCOPE"]) == "loadtest",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "RATE_LIMIT_GLOBAL_MAX"]) == "1000000",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "AI_ENGINE_URL"]) == "http://localhost:8000",
+      one([for x in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : x.value if x.name == "LOG_LEVEL"]) == "warn",
+      jsondecode(aws_ecs_task_definition.api.container_definitions)[1].name == "ai-stub",
+      !jsondecode(aws_ecs_task_definition.api.container_definitions)[1].essential,
+      length(aws_ecs_task_definition.loadtest_k6) == 1,
+      one([for x in jsondecode(aws_ecs_task_definition.loadtest_k6[0].container_definitions)[0].secrets : x.valueFrom if x.name == "JWT_SECRET"]) == "arn:aws:secretsmanager:eu-central-1:000000000000:secret:jwt",
+      length(aws_vpc_security_group_ingress_rule.alb_from_loadtest_nat) == 1,
+      aws_ecs_task_definition.api.family == "osra-loadtest-api",
+    ])
+    error_message = "loadtest_mode sets the scope, the raised limit, the stub sidecar, warn logging, the k6 task and the NAT-only ALB rule"
+  }
+}
+
+run "production_refuses_loadtest_mode" {
+  command = plan
+
+  variables {
+    environment              = "production"
+    region                   = "eu-central-1"
+    api_image                = "example/api:test"
+    api_cpu                  = 1024
+    api_memory               = 2048
+    api_min_count            = 2
+    api_max_count            = 6
+    nat_gateway_count        = 2
+    db_instance_class        = "db.t4g.small"
+    db_multi_az              = true
+    db_allocated_storage     = 50
+    db_max_allocated_storage = 200
+    db_backup_retention_days = 14
+    db_deletion_protection   = true
+    db_skip_final_snapshot   = false
+    db_performance_insights  = true
+    redis_num_nodes          = 2
+    redis_failover           = true
+    redis_transit_encryption = true
+    alb_deletion_protection  = true
+    waf_enabled              = true
+    alarms_enabled           = true
+    alarm_email              = "alerts@example.test"
+    alarm_email_secondary    = "oncall@example.test"
+    secrets_out_of_band      = true
+    audit_logs_enabled       = true
+    db_customer_kms_key      = true
+    backup_copy_account_id   = "111111111111"
+    backup_copy_vault_arn    = "arn:aws:backup:eu-west-1:111111111111:backup-vault:osra-production-copy"
+    cors_origin              = "https://app.example.test"
+    allowed_account_ids      = ["000000000000"]
+    assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
+    loadtest_mode            = true
+  }
+
+  expect_failures = [terraform_data.production_guard]
+}
