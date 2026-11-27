@@ -648,11 +648,11 @@ void main() {
       expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget);
     });
 
-    // P-22 (`#1179`): the P-07 home replaces the dashboard, so the dashboard's Settings menu entry does not
-    // exist here. With both switches on, the tab must offer the grouped Settings screen, or P-22 is a screen
-    // nothing routes to. Mutant: drop the `p22` branch in `_HomeSettingsTab` and the four old rows come back
-    // while no row reaches `/settings`; both assertions fail.
-    testWidgets('with P-22 on too, the settings tab offers one Settings row', (tester) async {
+    // U103 (#650, UI/UX 7219547601): with P-22 on, the P-07 Settings tab renders P-22's grouped list
+    // directly instead of a "Settings -> Settings" hop, while keeping Privacy and data and Sign out reachable.
+    // Mutant: reverting `_HomeSettingsTab` to the single `homeSettingsP22` row or omitting
+    // `includePrivacyRow: true` fails `settingsList` / `homeSettingsP22` / `homeSettingsPrivacy` assertions.
+    testWidgets('U103: with P-22 on, the settings tab renders P-22 grouped list inline with Privacy and Sign out', (tester) async {
       final api = FakeApiClient({
         ...p07Routes(),
         'GET /v1/family/invites': (_) => {'items': <dynamic>[]},
@@ -664,12 +664,39 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('p07Tab-settings')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('homeSettingsP22')), findsOneWidget);
+      expect(find.byKey(const ValueKey('homeSettingsP22')), findsNothing,
+          reason: 'no Settings -> Settings extra tap');
+      expect(find.byKey(const ValueKey('homeSettingsP22Body')), findsOneWidget);
+      expect(find.byKey(const ValueKey('settingsList')), findsOneWidget);
+      expect(find.byKey(const ValueKey('settingsRow-language')), findsOneWidget);
+      expect(find.byKey(const ValueKey('settingsRow-appearance')), findsOneWidget);
+      expect(find.byKey(const ValueKey('settingsRow-twoStep')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsAppearance')), findsNothing);
-      expect(find.byKey(const ValueKey('homeSettingsSignOut')), findsOneWidget,
-          reason: 'signing out is not a Settings row and stays');
+
+      final settingsScrollable = find.descendant(
+        of: find.byKey(const ValueKey('settingsList')),
+        matching: find.byType(Scrollable),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('settingsRow-signOut')),
+        120,
+        scrollable: settingsScrollable,
+      );
+      expect(find.byKey(const ValueKey('settingsRow-signOut')), findsOneWidget,
+          reason: 'Sign out remains reachable in Account group');
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('homeSettingsPrivacy')),
+        120,
+        scrollable: settingsScrollable,
+      );
       expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget,
-          reason: 'Privacy and data has no P-22 row, so it survives the swap');
+          reason: 'Privacy and data survives inline P-22 embedding');
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('settingsRow-deleteAccount')),
+        120,
+        scrollable: settingsScrollable,
+      );
+      expect(find.byKey(const ValueKey('settingsRow-deleteAccount')), findsOneWidget);
     });
   });
 

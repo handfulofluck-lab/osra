@@ -1,0 +1,1 @@
+- **Parent app (P-07 Settings tab + P-22, U103):** Extracted `SettingsP22Body` from `SettingsScreen` and rendered P-22's grouped Settings list directly inside P-07's Settings tab when `p22SettingsEnabledProvider` is on (removing the `Settings -> Settings` extra tap), keeping `Privacy and data` (`homeSettingsPrivacy`) and `Sign out` reachable with zero new strings.

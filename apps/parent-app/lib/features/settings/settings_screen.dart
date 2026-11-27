@@ -30,17 +30,44 @@ final p22SettingsEnabledProvider = Provider<bool>((ref) => kEnableUxP22Settings)
 /// Every label here is either an approved key that already existed (`languageLabel`, `appearanceTitle`,
 /// `mfaSettingsTitle`, `mfaRecoveryCodesTitle`, `deleteAccountTitle`) or one of the six the Arabic Language
 /// Bureau signed for this screen at 20:11 UAE.
-class SettingsScreen extends ConsumerStatefulWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(context.l10n.settingsTitle)),
+      body: const SafeArea(child: SettingsP22Body()),
+    );
+  }
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+/// P-22 grouped Settings list body, shared by [SettingsScreen] (`/settings`) and
+/// the P-07 Home Settings tab (U103) so switching to Settings never requires a
+/// second "Settings → Settings" tap.
+class SettingsP22Body extends ConsumerStatefulWidget {
+  final VoidCallback? onSignOut;
+  final bool includePrivacyRow;
+
+  const SettingsP22Body({
+    super.key,
+    this.onSignOut,
+    this.includePrivacyRow = false,
+  });
+
+  @override
+  ConsumerState<SettingsP22Body> createState() => _SettingsP22BodyState();
+}
+
+class _SettingsP22BodyState extends ConsumerState<SettingsP22Body> {
   bool _signingOutAll = false;
 
   Future<void> _signOut() async {
+    final override = widget.onSignOut;
+    if (override != null) {
+      override();
+      return;
+    }
     await ref.read(authProvider.notifier).logout();
   }
 
@@ -216,83 +243,85 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           );
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.settingsTitle)),
-      body: SafeArea(
-        child: ListView(
-          key: const ValueKey('settingsList'),
-          padding: const EdgeInsets.only(bottom: AppSpace.xl),
-          children: [
-            if (securityCard != null) securityCard,
-            group(l10n.settingsGroupLanguage, [
-              row(
-                key: const ValueKey('settingsRow-language'),
-                label: l10n.languageLabel,
-                icon: Icons.translate,
-                value: _languageValue(l10n, ref.watch(localeProvider)),
-                onTap: () => context.push('/settings/appearance'),
-              ),
-              row(
-                key: const ValueKey('settingsRow-appearance'),
-                label: l10n.appearanceTitle,
-                icon: Icons.palette_outlined,
-                value: _themeValue(l10n, ref.watch(themeModeProvider)),
-                onTap: () => context.push('/settings/appearance'),
-              ),
-              readOnlyRow(
-                key: const ValueKey('settingsRow-timeZone'),
-                label: l10n.settingsTimeZone,
-                icon: Icons.public,
-                value: _utcOffsetLabel(l10n),
-              ),
-            ]),
-            group(l10n.settingsGroupSecurity, [
-              row(
-                key: const ValueKey('settingsRow-twoStep'),
-                label: l10n.mfaSettingsTitle,
-                value: twoStepOn ? l10n.settingsValueOn : l10n.settingsValueOff,
-                icon: Icons.verified_user_outlined,
-                onTap: () => context.push('/settings/mfa'),
-              ),
-              if (twoStepOn)
-                row(
-                  key: const ValueKey('settingsRow-recoveryCodes'),
-                  label: l10n.mfaRecoveryCodesTitle,
-                  icon: Icons.key_outlined,
-                  onTap: () => context.push('/settings/mfa'),
-                ),
-            ]),
-            group(l10n.settingsGroupAccount, [
-              row(
-                key: const ValueKey('settingsRow-signOut'),
-                label: l10n.settingsSignOut,
-                icon: Icons.logout,
-                onTap: _signOut,
-              ),
-              row(
-                key: const ValueKey('settingsRow-signOutAll'),
-                label: l10n.settingsSignOutAll,
-                icon: Icons.devices_other,
-                onTap: _signingOutAll ? null : _signOutEverywhere,
-              ),
-              row(
-                key: const ValueKey('settingsRow-digest'),
-                label: l10n.digestPrefsTitle,
-                icon: Icons.mail_outline,
-                onTap: () => context.push('/settings/digests'),
-              ),
-              // Delete account is last in Account and in the error colour (A21 rule).
-              row(
-                key: const ValueKey('settingsRow-deleteAccount'),
-                label: l10n.deleteAccountTitle,
-                icon: Icons.delete_outline,
-                danger: true,
-                onTap: () => context.push('/settings/delete-account'),
-              ),
-            ]),
-          ],
-        ),
-      ),
+    return ListView(
+      key: const ValueKey('settingsList'),
+      padding: const EdgeInsets.only(bottom: AppSpace.xl),
+      children: [
+        if (securityCard != null) securityCard,
+        group(l10n.settingsGroupLanguage, [
+          row(
+            key: const ValueKey('settingsRow-language'),
+            label: l10n.languageLabel,
+            icon: Icons.translate,
+            value: _languageValue(l10n, ref.watch(localeProvider)),
+            onTap: () => context.push('/settings/appearance'),
+          ),
+          row(
+            key: const ValueKey('settingsRow-appearance'),
+            label: l10n.appearanceTitle,
+            icon: Icons.palette_outlined,
+            value: _themeValue(l10n, ref.watch(themeModeProvider)),
+            onTap: () => context.push('/settings/appearance'),
+          ),
+          readOnlyRow(
+            key: const ValueKey('settingsRow-timeZone'),
+            label: l10n.settingsTimeZone,
+            icon: Icons.public,
+            value: _utcOffsetLabel(l10n),
+          ),
+        ]),
+        group(l10n.settingsGroupSecurity, [
+          row(
+            key: const ValueKey('settingsRow-twoStep'),
+            label: l10n.mfaSettingsTitle,
+            value: twoStepOn ? l10n.settingsValueOn : l10n.settingsValueOff,
+            icon: Icons.verified_user_outlined,
+            onTap: () => context.push('/settings/mfa'),
+          ),
+          if (twoStepOn)
+            row(
+              key: const ValueKey('settingsRow-recoveryCodes'),
+              label: l10n.mfaRecoveryCodesTitle,
+              icon: Icons.key_outlined,
+              onTap: () => context.push('/settings/mfa'),
+            ),
+        ]),
+        group(l10n.settingsGroupAccount, [
+          row(
+            key: const ValueKey('settingsRow-signOut'),
+            label: l10n.settingsSignOut,
+            icon: Icons.logout,
+            onTap: _signOut,
+          ),
+          row(
+            key: const ValueKey('settingsRow-signOutAll'),
+            label: l10n.settingsSignOutAll,
+            icon: Icons.devices_other,
+            onTap: _signingOutAll ? null : _signOutEverywhere,
+          ),
+          row(
+            key: const ValueKey('settingsRow-digest'),
+            label: l10n.digestPrefsTitle,
+            icon: Icons.mail_outline,
+            onTap: () => context.push('/settings/digests'),
+          ),
+          if (widget.includePrivacyRow)
+            row(
+              key: const ValueKey('homeSettingsPrivacy'),
+              label: l10n.privacyMenu,
+              icon: Icons.privacy_tip_outlined,
+              onTap: () => context.push('/settings/privacy'),
+            ),
+          // Delete account is last in Account and in the error colour (A21 rule).
+          row(
+            key: const ValueKey('settingsRow-deleteAccount'),
+            label: l10n.deleteAccountTitle,
+            icon: Icons.delete_outline,
+            danger: true,
+            onTap: () => context.push('/settings/delete-account'),
+          ),
+        ]),
+      ],
     );
   }
 }
