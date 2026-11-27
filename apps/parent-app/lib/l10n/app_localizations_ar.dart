@@ -4066,6 +4066,38 @@ class AppLocalizationsAr extends AppLocalizations {
   String get p15IphoneNotYet => 'غير متاح بعد على آيفون';
 
   @override
+  String get p14SegmentRequests => 'الطلبات';
+
+  @override
+  String get p14LevelUrgent => 'عاجل';
+
+  @override
+  String get p14LevelCheckSoon => 'للمراجعة قريبًا';
+
+  @override
+  String get p14LevelInfo => 'للعلم';
+
+  @override
+  String get p14FilterAll => 'الكل';
+
+  @override
+  String get p14NoRequestsYet => 'لا توجد طلبات بعد';
+
+  @override
+  String p14GroupedCount(int count, String time) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مرة · آخرها $time',
+      many: '$count مرة · آخرها $time',
+      few: '$count مرات · آخرها $time',
+      two: 'مرتان · آخرها $time',
+      one: 'مرة واحدة · آخرها $time',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get p12NotBlockingYet => 'لم يبدأ الحظر بعد';
 
   @override

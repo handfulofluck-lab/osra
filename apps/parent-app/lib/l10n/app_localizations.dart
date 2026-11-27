@@ -6136,6 +6136,48 @@ abstract class AppLocalizations {
   /// **'Not yet available on iPhone'**
   String get p15IphoneNotYet;
 
+  /// No description provided for @p14SegmentRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests'**
+  String get p14SegmentRequests;
+
+  /// No description provided for @p14LevelUrgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Urgent'**
+  String get p14LevelUrgent;
+
+  /// No description provided for @p14LevelCheckSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Check soon'**
+  String get p14LevelCheckSoon;
+
+  /// No description provided for @p14LevelInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Info'**
+  String get p14LevelInfo;
+
+  /// No description provided for @p14FilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get p14FilterAll;
+
+  /// No description provided for @p14NoRequestsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No requests yet'**
+  String get p14NoRequestsYet;
+
+  /// No description provided for @p14GroupedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 time · last {time}} other{{count} times · last {time}}}'**
+  String p14GroupedCount(int count, String time);
+
   /// P-12: pill on the enforcement banner when the filter is not applied on a device (UI/UX Bureau 7204314039).
   ///
   /// In en, this message translates to:

@@ -8,7 +8,7 @@ import 'features/children/command_history_screen.dart';
 import 'features/children/consent_screen.dart';
 import 'api/models.dart';
 import 'features/alerts/alert_detail_screen.dart';
-import 'features/alerts/alerts_screen.dart';
+import 'features/alerts/alerts_p14_screen.dart';
 import 'features/auth/mfa_reset_approval_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
@@ -64,7 +64,12 @@ final List<RouteBase> appRoutes = [
     routes: [
       GoRoute(
         path: 'alerts',
-        builder: (_, __) => const AlertsScreen(),
+        builder: (_, s) => AlertsRouteEntry(
+          initialChildId: s.uri.queryParameters['childId'],
+          initialSegment: s.uri.queryParameters['segment'] == 'requests'
+              ? P14Segment.requests
+              : P14Segment.alerts,
+        ),
         routes: [
           GoRoute(
             path: ':id',
