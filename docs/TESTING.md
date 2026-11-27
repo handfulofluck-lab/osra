@@ -234,6 +234,16 @@ node scripts/e2e.mjs        # 71 passed / 0 failed at 2026-10-21 — the count g
 node scripts/qa-probe.mjs   # 151 passed / 0 failed / 0 targets at 2026-10-21 — any failure exits 1
 ```
 
+The [daily-limit request decision](adr/0049-time-request-resolution.md) route has focused API
+coverage in `test/timeRequests.test.ts`. Run it with `pnpm --filter @familyshield/api test
+test/timeRequests.test.ts` from the repository root. It checks duplicate submissions, competing
+caregivers, rollback if acknowledgement fails, decline, unsupported duration, consent and ordinary
+acknowledgement. For a PostgreSQL check, apply the migrations to a fresh disposable database and
+decide the same synthetic request concurrently from two allowed caregiver sessions. Expect one
+success, one conflict with that success's receipt, one bonus increment and one queued command per
+paired device. A device run is separate and must confirm that an approved grant takes effect on the
+child device.
+
 `O14`–`O23` are the ADR-0031 MFA-reset group (ten checks, plus a `setup:` check that builds the family
 they need; the dated counts above are the last measured run, not a prediction): `O14`
 `/mfa/reset/request` refuses a wrong password and an unknown
