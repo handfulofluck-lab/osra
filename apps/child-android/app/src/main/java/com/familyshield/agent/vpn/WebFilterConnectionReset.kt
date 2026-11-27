@@ -53,7 +53,7 @@ object WebFilterConnectionReset {
         private val activeModeOnServiceThread: () -> String?,
         private val openModeOnServiceThread: (String, PolicySnapshot) -> Boolean,
         private val closeTunnelOnServiceThread: () -> Unit,
-        private val onTerminalTunnelLossOnServiceThread: (Long, Long) -> Unit = { _, _ -> },
+        private val onTerminalTunnelLossOnServiceThread: (Long, Long, TransitionOutcome) -> Unit = { _, _, _ -> },
         private val isInternetPausedOnServiceThread: () -> Boolean,
         private val isConsentPausedOnServiceThread: () -> Boolean,
         private val isLockActiveOnServiceThread: () -> Boolean,
@@ -66,10 +66,46 @@ object WebFilterConnectionReset {
         private var authorizedMode: String = FilterVpnService.MODE_DNS
         private var stopping: Boolean = false
         private var tunnelEpoch: Long = 0L
-        private var transientTunnelEpoch: Long? = null
+        @Volatile private var transientTunnelEpoch: Long? = null
         private var lastAppliedBypassApps: List<String> = emptyList()
         private val consentCleanedEpochs = HashSet<Long>()
         @Volatile private var currentDelaySignal: CompletableDeferred<Unit>? = null
+
+        private class ResetOwnership {
+            @Volatile var epoch: Long? = null
+            @Volatile var signal: CompletableDeferred<Unit>? = null
+            @Volatile var phaseIsFailedEntry: Boolean = true
+        }
+
+        internal fun activeTransientEpochOnServiceThread(): Long? = transientTunnelEpoch
+
+        internal fun activeDelaySignalOnServiceThread(): CompletableDeferred<Unit>? = currentDelaySignal
+
+        internal fun installTransientOwnershipForTestOnServiceThread(
+            epoch: Long,
+            signal: CompletableDeferred<Unit>,
+        ) {
+            tunnelEpoch = maxOf(tunnelEpoch, epoch)
+            transientTunnelEpoch = epoch
+            currentDelaySignal = signal
+        }
+
+        internal fun releaseOwnedResetMarkersOnServiceThread(
+            ownedEpoch: Long?,
+            ownedSignal: CompletableDeferred<Unit>?,
+        ): Boolean {
+            if (ownedSignal != null) {
+                ownedSignal.complete(Unit)
+                if (currentDelaySignal === ownedSignal) {
+                    currentDelaySignal = null
+                }
+            }
+            if (ownedEpoch != null && transientTunnelEpoch == ownedEpoch) {
+                transientTunnelEpoch = null
+                return true
+            }
+            return false
+        }
 
         private suspend fun <T> runOnService(block: () -> T): T {
             var out: Any? = null
@@ -199,6 +235,124 @@ object WebFilterConnectionReset {
             requestInstanceId: Long,
             allowFollowUp: Boolean,
         ): TransitionOutcome {
+            val ownership = ResetOwnership()
+            return try {
+                executeResetAttemptLocked(
+                    requestInstanceId = requestInstanceId,
+                    allowFollowUp = allowFollowUp,
+                    ownership = ownership,
+                )
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                withContext(NonCancellable) {
+                    val ownedEpoch = ownership.epoch
+                    val ownedSignal = ownership.signal
+                    if (ownedEpoch != null || ownedSignal != null) {
+                        runCatching {
+                            runOnService {
+                                if (ownedEpoch != null) consentCleanedEpochs.remove(ownedEpoch)
+                                if (releaseOwnedResetMarkersOnServiceThread(ownedEpoch, ownedSignal)) {
+                                    runCatching { closeTunnelOnServiceThread() }
+                                }
+                            }
+                        }.onFailure {
+                            releaseOwnedResetMarkersOnServiceThread(ownedEpoch, ownedSignal)
+                        }
+                    }
+                }
+                throw c
+            } catch (e: Exception) {
+                handleExceptionalResetTermination(
+                    requestInstanceId = requestInstanceId,
+                    ownership = ownership,
+                )
+            }
+        }
+
+        private suspend fun handleExceptionalResetTermination(
+            requestInstanceId: Long,
+            ownership: ResetOwnership,
+        ): TransitionOutcome = withContext(NonCancellable) {
+            val ownedSignal = ownership.signal
+            if (ownedSignal != null) {
+                ownedSignal.complete(Unit)
+                if (currentDelaySignal === ownedSignal) {
+                    currentDelaySignal = null
+                }
+            }
+            val fallbackOutcome = if (ownership.phaseIsFailedEntry) {
+                TransitionOutcome.FAILED_ENTRY_CLOSED
+            } else {
+                TransitionOutcome.RESTORE_FAILED_CLOSED
+            }
+            runCatching {
+                runOnService {
+                    val ownedEpoch = ownership.epoch
+                    val wasConsentCleaned = ownedEpoch != null && consentCleanedEpochs.remove(ownedEpoch)
+                    if (ownedSignal != null && currentDelaySignal === ownedSignal) {
+                        currentDelaySignal = null
+                    }
+                    if (stopping) {
+                        if (releaseOwnedResetMarkersOnServiceThread(ownedEpoch, ownedSignal)) {
+                            runCatching { closeTunnelOnServiceThread() }
+                        }
+                        return@runOnService TransitionOutcome.STOPPED
+                    }
+                    val liveMatches = runCatching {
+                        requestInstanceId > 0L && requestInstanceId == serviceInstanceId()
+                    }.getOrDefault(false)
+                    if (!liveMatches) {
+                        releaseOwnedResetMarkersOnServiceThread(ownedEpoch, ownedSignal)
+                        return@runOnService TransitionOutcome.EXPIRED_INSTANCE
+                    }
+                    if (ownedEpoch == null) {
+                        return@runOnService TransitionOutcome.SKIPPED
+                    }
+                    val releasedOwnTransient = releaseOwnedResetMarkersOnServiceThread(ownedEpoch, ownedSignal)
+                    if (releasedOwnTransient) {
+                        runCatching { closeTunnelOnServiceThread() }
+                        val currentActive = runCatching { activeModeOnServiceThread() }.getOrNull()
+                        if (currentActive == null) {
+                            runCatching {
+                                onTerminalTunnelLossOnServiceThread(requestInstanceId, tunnelEpoch, fallbackOutcome)
+                            }
+                        }
+                        return@runOnService fallbackOutcome
+                    }
+                    val internetPausedNow = runCatching { isInternetPausedOnServiceThread() }.getOrDefault(false)
+                    val consentPausedNow = runCatching { isConsentPausedOnServiceThread() }.getOrDefault(false)
+                    val target = if (internetPausedNow || authorizedMode == FilterVpnService.MODE_SINKHOLE_ALL) {
+                        FilterVpnService.MODE_SINKHOLE_ALL
+                    } else {
+                        FilterVpnService.MODE_DNS
+                    }
+                    val currentActive = runCatching { activeModeOnServiceThread() }.getOrNull()
+                    if (currentActive == target && transientTunnelEpoch == null) {
+                        runCatching { applyPolicyOnServiceThread(readCommittedPolicyOnServiceThread()) }
+                        return@runOnService when {
+                            target == FilterVpnService.MODE_SINKHOLE_ALL -> TransitionOutcome.SUPERSEDED_BY_PAUSE
+                            ownership.phaseIsFailedEntry -> TransitionOutcome.FAILED_ENTRY_RECOVERED
+                            consentPausedNow || wasConsentCleaned -> TransitionOutcome.CLEANED_UP_ON_CONSENT_CHANGE
+                            else -> TransitionOutcome.COMPLETED
+                        }
+                    }
+                    if (currentActive == null && transientTunnelEpoch == null) {
+                        runCatching {
+                            onTerminalTunnelLossOnServiceThread(requestInstanceId, tunnelEpoch, fallbackOutcome)
+                        }
+                    }
+                    fallbackOutcome
+                }
+            }.getOrElse {
+                releaseOwnedResetMarkersOnServiceThread(ownership.epoch, ownedSignal)
+                fallbackOutcome
+            }
+        }
+
+        private suspend fun executeResetAttemptLocked(
+            requestInstanceId: Long,
+            allowFollowUp: Boolean,
+            ownership: ResetOwnership,
+        ): TransitionOutcome {
             runCatching { prepareCommittedPolicy() }
             val entry = runOnService {
                 if (requestInstanceId <= 0L || requestInstanceId != serviceInstanceId()) {
@@ -217,13 +371,17 @@ object WebFilterConnectionReset {
                 applyPolicyOnServiceThread(prePolicy)
                 val hopEpoch = ++tunnelEpoch
                 transientTunnelEpoch = hopEpoch
+                ownership.epoch = hopEpoch
+                ownership.phaseIsFailedEntry = true
                 val ok = runCatching {
                     openModeOnServiceThread(FilterVpnService.MODE_SINKHOLE_ALL, prePolicy)
                 }.getOrDefault(false) && activeModeOnServiceThread() == FilterVpnService.MODE_SINKHOLE_ALL
                 if (!ok) return@runOnService EntryDecision.FailedEntry(hopEpoch)
+                ownership.phaseIsFailedEntry = false
                 lastAppliedBypassApps = prePolicy.alwaysAllowedApps
                 val sig = CompletableDeferred<Unit>()
                 currentDelaySignal = sig
+                ownership.signal = sig
                 if (stopping ||
                     isConsentPausedOnServiceThread() ||
                     isInternetPausedOnServiceThread() ||
@@ -242,21 +400,27 @@ object WebFilterConnectionReset {
                 }
                 is EntryDecision.Entered -> {
                     var resolved: Pair<TransitionOutcome, PolicySnapshot?>? = null
+                    var restoreAttempted = false
                     try {
                         awaitWindowOrInterrupt(entry.signal, pauseMs)
+                        restoreAttempted = true
                         resolved = withContext(NonCancellable) {
                             restoreAfterWindow(requestInstanceId = requestInstanceId, hopEpoch = entry.hopEpoch)
                         }
+                        runOnService { consentCleanedEpochs.remove(entry.hopEpoch) }
                     } finally {
-                        currentDelaySignal = null
-                        if (resolved == null) {
+                        entry.signal.complete(Unit)
+                        if (currentDelaySignal === entry.signal) {
+                            currentDelaySignal = null
+                        }
+                        if (!restoreAttempted) {
                             resolved = withContext(NonCancellable) {
                                 restoreAfterWindow(requestInstanceId = requestInstanceId, hopEpoch = entry.hopEpoch)
                             }
+                            runOnService { consentCleanedEpochs.remove(entry.hopEpoch) }
                         }
-                        runOnService { consentCleanedEpochs.remove(entry.hopEpoch) }
                     }
-                    val (outcome, restoredPolicy) = resolved
+                    val (outcome, restoredPolicy) = requireNotNull(resolved)
                     if (outcome == TransitionOutcome.COMPLETED) {
                         runCatching { prepareCommittedPolicy() }
                         val postCheck = runOnService {
@@ -272,6 +436,8 @@ object WebFilterConnectionReset {
                             ) {
                                 val reopenEpoch = ++tunnelEpoch
                                 transientTunnelEpoch = reopenEpoch
+                                ownership.epoch = reopenEpoch
+                                ownership.phaseIsFailedEntry = false
                                 val reopened = runCatching { openModeOnServiceThread(target, finalPolicy) }.getOrDefault(false) &&
                                     activeModeOnServiceThread() == target
                                 if (reopened) {
@@ -416,7 +582,13 @@ object WebFilterConnectionReset {
                     transientTunnelEpoch = null
                 }
                 if (activeModeOnServiceThread() == null) {
-                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, tunnelEpoch) }
+                    runCatching {
+                        onTerminalTunnelLossOnServiceThread(
+                            requestInstanceId,
+                            tunnelEpoch,
+                            TransitionOutcome.FAILED_ENTRY_CLOSED,
+                        )
+                    }
                 }
                 TransitionOutcome.FAILED_ENTRY_CLOSED
             }
@@ -508,7 +680,13 @@ object WebFilterConnectionReset {
                     transientTunnelEpoch = null
                 }
                 if (activeModeOnServiceThread() == null) {
-                    runCatching { onTerminalTunnelLossOnServiceThread(requestInstanceId, tunnelEpoch) }
+                    runCatching {
+                        onTerminalTunnelLossOnServiceThread(
+                            requestInstanceId,
+                            tunnelEpoch,
+                            TransitionOutcome.RESTORE_FAILED_CLOSED,
+                        )
+                    }
                 }
                 TransitionOutcome.RESTORE_FAILED_CLOSED to null
             }

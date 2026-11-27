@@ -30,6 +30,8 @@ class WebFilterConnectionResetTest {
         var committedPolicy: WebFilterConnectionReset.PolicySnapshot = WebFilterConnectionReset.PolicySnapshot(),
         val onEstablish: (SyntheticServiceHarness, String, Int, WebFilterConnectionReset.PolicySnapshot) -> Boolean = { _, _, _, _ -> true },
         val onPreparePolicy: suspend SyntheticServiceHarness.(Int) -> Unit = {},
+        val onReadPolicy: SyntheticServiceHarness.() -> WebFilterConnectionReset.PolicySnapshot = { this.committedPolicy },
+        val onApplyPolicy: SyntheticServiceHarness.(WebFilterConnectionReset.PolicySnapshot) -> Unit = {},
         val onWait: suspend SyntheticServiceHarness.(Long) -> Unit = { ms -> nowMs += ms },
     ) {
         var nowMs: Long = 0L
@@ -40,6 +42,7 @@ class WebFilterConnectionResetTest {
         var hadEstablishedTunnel: Boolean = activeMode != null
         var recordedLossEpoch: Long? = null
         var lossAlertsEnqueued: Int = 0
+        val terminalLossOutcomes = mutableListOf<WebFilterConnectionReset.TransitionOutcome>()
         val scheduledAuthoritativeRestarts = mutableListOf<Pair<Long, String>>()
         val pendingRestartTasks = ArrayDeque<Pair<Long, Long>>()
         var prepareCalls: Int = 0
@@ -82,10 +85,11 @@ class WebFilterConnectionResetTest {
                 },
                 readCommittedPolicyOnServiceThread = {
                     assertTrue("policy read must run on service thread", currentThreadOnService)
-                    committedPolicy
+                    onReadPolicy()
                 },
                 applyPolicyOnServiceThread = { snap ->
                     assertTrue("policy apply must run on service thread", currentThreadOnService)
+                    onApplyPolicy(snap)
                     appliedDnsConfig = snap.dnsConfig
                 },
                 activeModeOnServiceThread = {
@@ -115,14 +119,17 @@ class WebFilterConnectionResetTest {
                     activeMode = null
                     log += "close@${nowMs}"
                 },
-                onTerminalTunnelLossOnServiceThread = { expectedInstanceId, authorityEpoch ->
+                onTerminalTunnelLossOnServiceThread = { expectedInstanceId, authorityEpoch, terminalOutcome ->
                     assertTrue("terminal loss handler must run on service thread", currentThreadOnService)
                     if (!controllerStopping &&
+                        (terminalOutcome == WebFilterConnectionReset.TransitionOutcome.FAILED_ENTRY_CLOSED ||
+                            terminalOutcome == WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED) &&
                         expectedInstanceId > 0L &&
                         expectedInstanceId == instanceId &&
                         effectiveLiveInstanceId() == instanceId &&
                         activeMode == null
                     ) {
+                        terminalLossOutcomes += terminalOutcome
                         val wasEstablished = hadEstablishedTunnel
                         hadEstablishedTunnel = false
                         if (FilterLossPolicy.shouldRecord(
@@ -790,6 +797,145 @@ class WebFilterConnectionResetTest {
             replacedRestartHarness.executeNextScheduledRestart(),
         )
         assertNull(replacedRestartHarness.activeMode)
+    }
+
+    @Test
+    fun `exceptional terminal path releases only failing reset ownership, preserves newer authority, and passes typed outcome`() = runBlocking {
+        // Mutant A: fail to release transientTunnelEpoch / currentDelaySignal when an injected restore dependency throws ->
+        // activeTransientEpochOnServiceThread() stays non-null and executeNextScheduledRestart() returns false, leaving VPN down.
+        // Mutant B: clear transientTunnelEpoch / currentDelaySignal unconditionally without matching ownedEpoch / ownedSignal or
+        // overwrite tunnelEpoch -> clobbers a newer owner's marker/signal or reverts newer pause_internet authority.
+        // Mutant C: hardcode RESTORE_FAILED_CLOSED instead of passing/returning the current typed terminal outcome ->
+        // FAILED_ENTRY_CLOSED or SUPERSEDED_BY_PAUSE is misreported to the service.
+
+        // 1. Failing restore dependency (and hold interruption) releases this reset's marker & signal, closes transient
+        //    sinkhole, passes RESTORE_FAILED_CLOSED, and allows the scheduled recovery restart to succeed.
+        var throwOnApply = false
+        var throwOnHold = true
+        var observedDuringHoldEpoch: Long? = null
+        var observedDuringHoldSignal: CompletableDeferred<Unit>? = null
+        val restoreExceptionHarness = SyntheticServiceHarness(
+            onApplyPolicy = {
+                if (throwOnApply) throw IllegalStateException("injected applyPolicy failure")
+            },
+            onWait = { ms ->
+                nowMs += ms
+                if (ms == 1_000L && throwOnHold) {
+                    observedDuringHoldEpoch = controller.activeTransientEpochOnServiceThread()
+                    observedDuringHoldSignal = controller.activeDelaySignalOnServiceThread()
+                    throwOnApply = true
+                    throw IllegalStateException("injected hold failure")
+                }
+            },
+        )
+        val outRestoreEx = restoreExceptionHarness.controller.executeReset()
+        assertEquals(1L, observedDuringHoldEpoch)
+        assertTrue(observedDuringHoldSignal != null && observedDuringHoldSignal!!.isCompleted)
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, outRestoreEx)
+        assertFalse(outRestoreEx.acknowledged)
+        assertNull("failing reset must release its transient epoch marker", restoreExceptionHarness.controller.activeTransientEpochOnServiceThread())
+        assertNull("failing reset must release its delay signal", restoreExceptionHarness.controller.activeDelaySignalOnServiceThread())
+        assertNull("transient sinkhole must be closed on exceptional restore failure", restoreExceptionHarness.activeMode)
+        assertEquals(
+            listOf(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED),
+            restoreExceptionHarness.terminalLossOutcomes,
+        )
+        assertTrue(restoreExceptionHarness.isFilterLost)
+        assertEquals(1, restoreExceptionHarness.lossAlertsEnqueued)
+
+        throwOnApply = false
+        throwOnHold = false
+        assertTrue(
+            "scheduled recovery restart must succeed once failing reset released ownership",
+            restoreExceptionHarness.executeNextScheduledRestart(),
+        )
+        assertEquals(FilterVpnService.MODE_DNS, restoreExceptionHarness.activeMode)
+        assertFalse(restoreExceptionHarness.isFilterLost)
+
+        // 2. Failing failed-entry recovery passes and returns FAILED_ENTRY_CLOSED (not hardcoded RESTORE_FAILED_CLOSED).
+        var failSinkholeEntry = true
+        var throwOnEntryRecoveryRead = false
+        val entryExceptionHarness = SyntheticServiceHarness(
+            onEstablish = { _, wanted, _, _ ->
+                if (wanted == FilterVpnService.MODE_SINKHOLE_ALL && failSinkholeEntry) {
+                    throwOnEntryRecoveryRead = true
+                    false
+                } else {
+                    true
+                }
+            },
+            onReadPolicy = {
+                if (throwOnEntryRecoveryRead) throw IllegalStateException("injected readPolicy failure on entry recovery")
+                committedPolicy
+            },
+        )
+        val outEntryEx = entryExceptionHarness.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.FAILED_ENTRY_CLOSED, outEntryEx)
+        assertEquals(
+            listOf(WebFilterConnectionReset.TransitionOutcome.FAILED_ENTRY_CLOSED),
+            entryExceptionHarness.terminalLossOutcomes,
+        )
+        assertNull(entryExceptionHarness.controller.activeTransientEpochOnServiceThread())
+        throwOnEntryRecoveryRead = false
+        failSinkholeEntry = false
+        assertTrue(entryExceptionHarness.executeNextScheduledRestart())
+        assertEquals(FilterVpnService.MODE_DNS, entryExceptionHarness.activeMode)
+
+        // 3. Newer authority preservation: if pause_internet took ownership before restore throws, newer authority epoch
+        //    and active MODE_SINKHOLE_ALL tunnel are preserved (or recovered as MODE_SINKHOLE_ALL if establish failed).
+        var throwAfterPause = false
+        val newerActiveAuthority = SyntheticServiceHarness(
+            onReadPolicy = {
+                if (throwAfterPause) throw IllegalStateException("injected readPolicy failure after newer pause")
+                committedPolicy
+            },
+            onWait = { ms ->
+                nowMs += ms
+                if (ms == 1_000L) {
+                    assertTrue(serviceAuthoritativeStart(FilterVpnService.MODE_SINKHOLE_ALL, pausedFlag = true))
+                    throwAfterPause = true
+                }
+            },
+        )
+        val outSuperseded = newerActiveAuthority.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.SUPERSEDED_BY_PAUSE, outSuperseded)
+        assertEquals(2L, newerActiveAuthority.controller.currentAuthorityEpochOnServiceThread())
+        assertEquals(FilterVpnService.MODE_SINKHOLE_ALL, newerActiveAuthority.activeMode)
+        assertTrue(newerActiveAuthority.terminalLossOutcomes.isEmpty())
+        assertFalse(newerActiveAuthority.isFilterLost)
+
+        // 4. Ownership-only release: if a newer owner's transient marker and delay signal are installed when the
+        //    failing reset's exceptional cleanup executes, ONLY the failing reset's signal is completed and the newer
+        //    owner's marker (epoch 99L) and signal remain untouched.
+        var injectNewerTransientOwner = false
+        val newerOwnerSignal = CompletableDeferred<Unit>()
+        var failingResetSignal: CompletableDeferred<Unit>? = null
+        lateinit var ownershipIsolationHarness: SyntheticServiceHarness
+        ownershipIsolationHarness = SyntheticServiceHarness(
+            onReadPolicy = {
+                if (injectNewerTransientOwner) {
+                    controller.installTransientOwnershipForTestOnServiceThread(epoch = 99L, signal = newerOwnerSignal)
+                    throw IllegalStateException("injected failure after newer owner installed")
+                }
+                committedPolicy
+            },
+            onWait = { ms ->
+                nowMs += ms
+                if (ms == 1_000L) {
+                    failingResetSignal = controller.activeDelaySignalOnServiceThread()
+                    injectNewerTransientOwner = true
+                }
+            },
+        )
+        val outIsolated = ownershipIsolationHarness.controller.executeReset()
+        assertEquals(WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED, outIsolated)
+        assertTrue("failing reset's own signal must be completed", failingResetSignal != null && failingResetSignal!!.isCompleted)
+        assertFalse("newer owner's signal must NOT be completed by failing reset", newerOwnerSignal.isCompleted)
+        assertEquals("newer owner's signal must remain active", newerOwnerSignal, ownershipIsolationHarness.controller.activeDelaySignalOnServiceThread())
+        assertEquals("newer owner's transient epoch must remain intact", 99L, ownershipIsolationHarness.controller.activeTransientEpochOnServiceThread())
+        assertEquals("newer authority epoch must be preserved", 99L, ownershipIsolationHarness.controller.currentAuthorityEpochOnServiceThread())
+        assertEquals("newer owner's active tunnel must not be closed by failing reset", FilterVpnService.MODE_SINKHOLE_ALL, ownershipIsolationHarness.activeMode)
+        assertTrue("no terminal loss while newer transient owner holds tunnel", ownershipIsolationHarness.terminalLossOutcomes.isEmpty())
     }
 
     private fun stripComments(src: String): String =

@@ -119,8 +119,8 @@ class FilterVpnService : VpnService() {
         activeModeOnServiceThread = { tunnelMode },
         openModeOnServiceThread = { wanted, snapshot -> openTunnelForMode(wanted, snapshot) },
         closeTunnelOnServiceThread = { stopTunnel() },
-        onTerminalTunnelLossOnServiceThread = { expectedInstance, authorityEpoch ->
-            handleTerminalResetLossOnMain(expectedInstance, authorityEpoch)
+        onTerminalTunnelLossOnServiceThread = { expectedInstance, authorityEpoch, terminalOutcome ->
+            handleTerminalResetLossOnMain(expectedInstance, authorityEpoch, terminalOutcome)
         },
         isInternetPausedOnServiceThread = { rules.isInternetPaused() },
         isConsentPausedOnServiceThread = { consent.isPaused() },
@@ -163,17 +163,7 @@ class FilterVpnService : VpnService() {
                     return START_STICKY
                 }
                 scope.launch {
-                    val outcome = try {
-                        transientResetController.executeReset(requestInstanceId = targetInstance)
-                    } catch (e: Exception) {
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
-                            handleTerminalResetLossOnMain(
-                                expectedInstanceId = targetInstance,
-                                authorityEpoch = transientResetController.currentAuthorityEpochOnServiceThread(),
-                            )
-                        }
-                        WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED
-                    }
+                    val outcome = transientResetController.executeReset(requestInstanceId = targetInstance)
                     if (reqId != null) {
                         pendingResetRequests.remove(reqId)?.complete(outcome)
                     }
@@ -598,8 +588,14 @@ class FilterVpnService : VpnService() {
         }
     }
 
-    private fun handleTerminalResetLossOnMain(expectedInstanceId: Long, authorityEpoch: Long) {
+    private fun handleTerminalResetLossOnMain(
+        expectedInstanceId: Long,
+        authorityEpoch: Long,
+        terminalOutcome: WebFilterConnectionReset.TransitionOutcome,
+    ) {
         if (serviceStopping ||
+            (terminalOutcome != WebFilterConnectionReset.TransitionOutcome.FAILED_ENTRY_CLOSED &&
+                terminalOutcome != WebFilterConnectionReset.TransitionOutcome.RESTORE_FAILED_CLOSED) ||
             expectedInstanceId <= 0L ||
             expectedInstanceId != instanceId ||
             currentInstanceId != instanceId ||
