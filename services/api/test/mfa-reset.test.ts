@@ -6,7 +6,7 @@ import { deviceRoutes } from "../src/routes/devices.js";
 import { encryptSecret } from "../src/lib/secretVault.js";
 import { totpAtCounter } from "../src/lib/totp.js";
 import { hashRecoveryCode } from "../src/lib/mfaRecovery.js";
-import { MOCKED_MODELS, authHeader, buildApp, deviceHeader, prismaMock, resetPrismaMock } from "./helpers.js";
+import { MOCKED_MODELS, authHeader, buildApp, deviceHeader, evalSessionVersionScript, prismaMock, resetPrismaMock } from "./helpers.js";
 
 vi.mock("../src/db.js", async () => {
   const { prismaMock } = await import("./helpers.js");
@@ -317,7 +317,15 @@ async function setup(opts: { familyDevices?: number; mfaEnabled?: boolean } = {}
   redis.get!.mockImplementation(async (k: string) => store.get(k) ?? null);
   redis.set!.mockImplementation(async (k: string, v: string) => { store.set(k, String(v)); return "OK"; });
   redis.del!.mockImplementation(async (...ks: string[]) => ks.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0));
-  redis.eval!.mockImplementation(async (_s: string, _n: number, key: string) => {
+  redis.eval!.mockImplementation(async (s: string, _n: number, key: string, floorArg?: string, allowCreateArg?: string) => {
+    const sv = evalSessionVersionScript(
+      redis as unknown as Pick<import("./helpers.js").MockRedis, "get" | "set" | "incrby" | "del">,
+      s,
+      key,
+      floorArg,
+      allowCreateArg,
+    );
+    if (sv !== undefined) return sv;
     const v = store.get(key) ?? null;
     if (v !== null) store.delete(key);
     return v;

@@ -337,7 +337,16 @@
   "commandRefusedWebFilterStart": "The internet pause couldn't start on your child's phone. Open OSRA there and try again.",
   "commandRefusedUnsupportedCommand": "This command needs a newer OSRA on your child's phone.",
   "commandRefusedNotSupported": "{command} isn't available on {device}: this phone or app version cannot do it, so nothing was sent.",
-  "@commandRefusedNotSupported": {"placeholders": {"command": {"type": "String"}, "device": {"type": "String"}}},
+  "@commandRefusedNotSupported": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "commandRefusedInvalidPayload": "The phone rejected this command's settings.",
   "rulesBehindHint": "The phone hasn't picked this change up yet.",
   "rulesWaitingFirstApply": "Waiting for the phone to apply rules.",
@@ -654,7 +663,7 @@
   "blockedDomainsLabel": "Blocked domains (comma-separated)",
   "enforceSafeSearch": "Enforce SafeSearch",
   "youtubeRestrictedMode": "YouTube Restricted Mode",
-  "youtubeRestrictedDesc": "Filters out potentially mature content on YouTube across child devices.",
+  "youtubeRestrictedDesc": "Hides most mature videos. YouTube's own filter misses some, so to be sure, block YouTube or set a time limit in Apps.",
   "strict": "Strict",
   "moderate": "Moderate",
   "off": "Off",
@@ -734,7 +743,16 @@
   "appUsage": "App usage",
   "totalAverage": "Total {total} min · avg {avg} min/day",
   "chartLegendRow": "{app}: {minutes} min",
-  "@chartLegendRow": {"placeholders": {"app": {"type": "String"}, "minutes": {"type": "int"}}},
+  "@chartLegendRow": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "@totalAverage": {
     "placeholders": {
       "total": {
@@ -977,8 +995,12 @@
   "flagVoteBy": "{name}: {vote}",
   "@flagVoteBy": {
     "placeholders": {
-      "name": { "type": "String" },
-      "vote": { "type": "String" }
+      "name": {
+        "type": "String"
+      },
+      "vote": {
+        "type": "String"
+      }
     }
   },
   "flagVoteA11yConcerning": "Mark as concerning",
@@ -1000,7 +1022,9 @@
   "activityLockRowDetail": "{count, plural, =0{The lock screen did not come up} =1{The lock screen came up once} other{The lock screen came up {count} times}}",
   "@activityLockRowDetail": {
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "unknownNumber": "Unknown number",
@@ -1029,7 +1053,9 @@
   "alertChildLabel": "Child: {name}",
   "@alertChildLabel": {
     "placeholders": {
-      "name": { "type": "String" }
+      "name": {
+        "type": "String"
+      }
     }
   },
   "relativeOverHoursAgo": "more than {count}h ago",
@@ -1764,7 +1790,7 @@
   "grantUsageAccess": "Usage access",
   "grantOverlay": "Display over other apps",
   "grantDeviceAdmin": "Device admin",
-  "grantWebFilter": "Web filter (VPN consent)",
+  "grantWebFilter": "Web filter",
   "grantLocation": "Location (allow all the time)",
   "grantPrivateDns": "Private DNS",
   "grantBattery": "Battery: unrestricted",
@@ -1804,14 +1830,37 @@
   "setupMonitoringConsent": "A flagged message excerpt is kept for 90 days and an alert for 12 months. Nothing is read from an app you untick.",
   "setupMonitoringContinue": "Continue",
   "appRuleHiddenOnIphone": "On the iPhone, this app is hidden instead of showing the OSRA screen.",
-  "@appRuleHiddenOnIphone": {"description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."},
+  "@appRuleHiddenOnIphone": {
+    "description": "ADR-0037 decision 3: under a blocked app rule when the child has an iPhone, where a blocked app id is hidden rather than shielded. Arabic is a draft pending Karim's review."
+  },
   "webSiteNamesOnlyNote": "Names of sites and online services this phone connected to, not the pages opened. Kept for 90 days.",
   "webSiteVisits": "{count, plural, =1{Visited once} other{Visited {count} times}}",
-  "@webSiteVisits": {"placeholders": {"count": {"type": "int"}}},
+  "@webSiteVisits": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "webSiteSeenRange": "{first} to {last}",
-  "@webSiteSeenRange": {"placeholders": {"first": {"type": "String"}, "last": {"type": "String"}}},
+  "@webSiteSeenRange": {
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "last": {
+        "type": "String"
+      }
+    }
+  },
   "webSitesSummary": "{count, plural, =0{No sites visited} =1{1 site visited} other{{count} sites visited}}",
-  "@webSitesSummary": {"placeholders": {"count": {"type": "int"}}},
+  "@webSitesSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "showPassword": "Show password",
   "hidePassword": "Hide password",
   "passwordMinHint": "At least 12 characters.",
@@ -1828,42 +1877,64 @@
   "alertAtTime": "at {time}",
   "@alertAtTime": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "alertYesterdayAtTime": "yesterday at {time}",
   "@alertYesterdayAtTime": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "alertOnDateAtTime": "on {date} at {time}",
   "@alertOnDateAtTime": {
     "placeholders": {
-      "date": { "type": "String" },
-      "time": { "type": "String" }
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
     }
   },
   "alertDetailSent": "Sent {when}",
   "@alertDetailSent": {
     "placeholders": {
-      "when": { "type": "String" }
+      "when": {
+        "type": "String"
+      }
     }
   },
   "alertDeviceRestartedBodyMinutes": "{device} restarted {when} and was back {minutes, plural, =0{in less than a minute} =1{after 1 minute} other{after {minutes} minutes}}.",
   "@alertDeviceRestartedBodyMinutes": {
     "placeholders": {
-      "device": { "type": "String" },
-      "when": { "type": "String" },
-      "minutes": { "type": "int" }
+      "device": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "alertDeviceRestartedBodyHours": "{device} restarted {when} and was back after about {hours, plural, =1{1 hour} other{{hours} hours}}.",
   "@alertDeviceRestartedBodyHours": {
     "placeholders": {
-      "device": { "type": "String" },
-      "when": { "type": "String" },
-      "hours": { "type": "int" }
+      "device": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      },
+      "hours": {
+        "type": "int"
+      }
     }
   },
   "alertTitleSocialConcern": "Social safety alert",
@@ -1873,7 +1944,9 @@
   "socialAlertFlaggedInApp": "Flagged for review in {app}",
   "@socialAlertFlaggedInApp": {
     "placeholders": {
-      "app": { "type": "String" }
+      "app": {
+        "type": "String"
+      }
     }
   },
   "socialAlertOpenActivity": "Open Social activity",
@@ -1886,44 +1959,125 @@
   "socialAlertViewAll": "All alerts",
   "locationUpdatedJustNow": "Updated just now",
   "locationUpdatedMinutes": "{count, plural, =1{Updated 1 min ago} other{Updated {count} min ago}}",
-  "@locationUpdatedMinutes": { "placeholders": { "count": { "type": "int" } } },
+  "@locationUpdatedMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "locationUpdatedHours": "{count, plural, =1{Updated 1 hour ago} other{Updated {count} hours ago}}",
-  "@locationUpdatedHours": { "placeholders": { "count": { "type": "int" } } },
+  "@locationUpdatedHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "locationUpdatedDays": "{count, plural, =1{Updated 1 day ago} other{Updated {count} days ago}}",
-  "@locationUpdatedDays": { "placeholders": { "count": { "type": "int" } } },
+  "@locationUpdatedDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "locationUpdatedUnknown": "Update time unknown",
   "locationFindingAddress": "Finding address…",
   "locationAddressUnavailable": "Address not available",
   "locationMapSemantics": "Map showing where {name} is",
-  "@locationMapSemantics": { "placeholders": { "name": { "type": "String" } } },
+  "@locationMapSemantics": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "locationRecentre": "Centre on the latest location",
   "undo": "Undo",
   "hoursShort": "{hours} h",
-  "@hoursShort": { "placeholders": { "hours": { "type": "int" } } },
+  "@hoursShort": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
   "appStateAllowed": "Allowed",
   "appStateBlocked": "Blocked",
   "appStateLimit": "Limit {limit} a day",
-  "@appStateLimit": { "placeholders": { "limit": { "type": "String" } } },
+  "@appStateLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
   "appAllowedSnack": "{app} allowed",
-  "@appAllowedSnack": { "placeholders": { "app": { "type": "String" } } },
+  "@appAllowedSnack": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "appLimitSnack": "{app} limited to {limit} a day",
-  "@appLimitSnack": { "placeholders": { "app": { "type": "String" }, "limit": { "type": "String" } } },
+  "@appLimitSnack": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      },
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
   "appsFilterAll": "All ({count})",
-  "@appsFilterAll": { "placeholders": { "count": { "type": "int" } } },
+  "@appsFilterAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "appsFilterBlocked": "Blocked ({count})",
-  "@appsFilterBlocked": { "placeholders": { "count": { "type": "int" } } },
+  "@appsFilterBlocked": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "appsFilterLimited": "Time limits ({count})",
-  "@appsFilterLimited": { "placeholders": { "count": { "type": "int" } } },
+  "@appsFilterLimited": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "appsNoMatch": "No apps match",
+  "appsSentToPhone": "Sent to phone",
+  "appsNotYetOnIphone": "Not yet available on iPhone",
   "appAboutThisApp": "About this app",
   "appBlockedNamedSnack": "{app} blocked",
-  "@appBlockedNamedSnack": { "placeholders": { "app": { "type": "String" } } },
+  "@appBlockedNamedSnack": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "socialCheckMessagesIn": "Check messages in",
   "socialNotOnChildPhone": "Not on {child}'s phone ({count})",
   "@socialNotOnChildPhone": {
     "placeholders": {
-      "child": { "type": "String" },
-      "count": { "type": "int" }
+      "child": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "socialChecking": "Checking",
@@ -1933,104 +2087,519 @@
   "socialPrivacyLine": "OSRA only flags concerning messages. It never shows you every chat.",
   "selectAll": "Select all",
   "socialAlertCountTitle": "{count, plural, =1{1 concerning message on {app}} other{{count} concerning messages on {app}}}",
-  "@socialAlertCountTitle": { "placeholders": { "count": { "type": "int" }, "app": { "type": "String" } } },
+  "@socialAlertCountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "socialAlertFromContactOnly": "From {contact}",
-  "@socialAlertFromContactOnly": { "placeholders": { "contact": { "type": "String" } } },
+  "@socialAlertFromContactOnly": {
+    "placeholders": {
+      "contact": {
+        "type": "String"
+      }
+    }
+  },
   "socialAlertLatestAt": "Latest {time}",
-  "@socialAlertLatestAt": { "placeholders": { "time": { "type": "String" } } },
+  "@socialAlertLatestAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "socialAlertUnknownContact": "an unknown contact",
   "socialAlertMorePush": "{count, plural, =1{1 more concerning message for {child} on {app}} other{{count} more concerning messages for {child} on {app}}}",
-  "@socialAlertMorePush": { "placeholders": { "count": { "type": "int" }, "child": { "type": "String" }, "app": { "type": "String" } } },
+  "@socialAlertMorePush": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "socialAlertNewSince": "+{count} new",
-  "@socialAlertNewSince": { "placeholders": { "count": { "type": "int" } } },
+  "@socialAlertNewSince": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "phoneSetupStepsLeftThisPhone": "Setting up this phone: {count, plural, =1{1 step} other{{count} steps}} left",
-  "@phoneSetupStepsLeftThisPhone": { "placeholders": { "count": { "type": "int" } } },
+  "@phoneSetupStepsLeftThisPhone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "phoneSetupProtected": "This phone is protected.",
   "phoneSetupStepsLeft": "Setting up {childName}'s phone: {count, plural, =1{1 step} other{{count} steps}} left",
-  "@phoneSetupStepsLeft": { "placeholders": { "childName": { "type": "String" }, "count": { "type": "int" } } },
+  "@phoneSetupStepsLeft": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alertTitleSetupComplete": "Phone is protected",
   "alertTitleSetupIncomplete": "Phone setup needs attention",
   "alertBodySetupCompleted": "{childName}'s phone is protected.",
-  "@alertBodySetupCompleted": { "placeholders": { "childName": { "type": "String" } } },
+  "@alertBodySetupCompleted": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
   "alertBodySetupIncomplete": "{childName}'s phone still has {count, plural, =1{1 setup step} other{{count} setup steps}} left after 30 minutes{steps}.",
-  "@alertBodySetupIncomplete": { "placeholders": { "childName": { "type": "String" }, "count": { "type": "int" }, "steps": { "type": "String" } } },
+  "@alertBodySetupIncomplete": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "steps": {
+        "type": "String"
+      }
+    }
+  },
   "alertBodySetupIncompleteGeneric": "{childName}'s phone setup is still incomplete after 30 minutes.",
-  "@alertBodySetupIncompleteGeneric": { "placeholders": { "childName": { "type": "String" } } },
+  "@alertBodySetupIncompleteGeneric": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
   "alertBodyDataCleared": "OSRA was reinstalled on {model}. Its protection was off until it was paired again.",
-  "@alertBodyDataCleared": { "placeholders": { "model": { "type": "String" } } },
+  "@alertBodyDataCleared": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestTitle": "{child} asks to use {app}",
-  "@accessRequestTitle": { "placeholders": { "child": { "type": "String" }, "app": { "type": "String" } } },
+  "@accessRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestBlockedTitle": "{app} was blocked on {child}'s phone",
-  "@accessRequestBlockedTitle": { "placeholders": { "app": { "type": "String" }, "child": { "type": "String" } } },
+  "@accessRequestBlockedTitle": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      },
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestBody": "{child} tapped \"Request access\" on the block screen.",
-  "@accessRequestBody": { "placeholders": { "child": { "type": "String" } } },
+  "@accessRequestBody": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestBlockedBody": "{child} tried to open it. Nothing for you to do.",
-  "@accessRequestBlockedBody": { "placeholders": { "child": { "type": "String" } } },
+  "@accessRequestBlockedBody": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestAllow": "Allow",
   "accessRequestAllowing": "Allowing…",
   "accessRequestKeepBlocked": "Keep blocked",
   "accessRequestDisclosure": "{app} will be allowed from now on. Bedtime, school time and Pause still apply.",
-  "@accessRequestDisclosure": { "placeholders": { "app": { "type": "String" } } },
+  "@accessRequestDisclosure": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestAllowFailed": "Couldn't allow {app}. Check your connection and try again.",
-  "@accessRequestAllowFailed": { "placeholders": { "app": { "type": "String" } } },
+  "@accessRequestAllowFailed": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestReadOnly": "Only {owner} can answer this request. Ask them to open OSRA.",
-  "@accessRequestReadOnly": { "placeholders": { "owner": { "type": "String" } } },
+  "@accessRequestReadOnly": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestAllowedBy": "{actor} allowed {app}{timeSuffix}",
-  "@accessRequestAllowedBy": { "placeholders": { "actor": { "type": "String" }, "app": { "type": "String" }, "timeSuffix": { "type": "String" } } },
+  "@accessRequestAllowedBy": {
+    "placeholders": {
+      "actor": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      },
+      "timeSuffix": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestKeptBlockedBy": "{actor} kept {app} blocked{timeSuffix}",
-  "@accessRequestKeptBlockedBy": { "placeholders": { "actor": { "type": "String" }, "app": { "type": "String" }, "timeSuffix": { "type": "String" } } },
+  "@accessRequestKeptBlockedBy": {
+    "placeholders": {
+      "actor": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      },
+      "timeSuffix": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestAllowedByYou": "You allowed {app}{timeSuffix}",
-  "@accessRequestAllowedByYou": { "placeholders": { "app": { "type": "String" }, "timeSuffix": { "type": "String" } } },
+  "@accessRequestAllowedByYou": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      },
+      "timeSuffix": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestKeptBlockedByYou": "You kept {app} blocked{timeSuffix}",
-  "@accessRequestKeptBlockedByYou": { "placeholders": { "app": { "type": "String" }, "timeSuffix": { "type": "String" } } },
+  "@accessRequestKeptBlockedByYou": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      },
+      "timeSuffix": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestHandled": "This request was handled",
   "accessRequestAllowedSnack": "You allowed {app}",
-  "@accessRequestAllowedSnack": { "placeholders": { "app": { "type": "String" } } },
+  "@accessRequestAllowedSnack": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestKeptBlockedSnack": "You kept {app} blocked",
-  "@accessRequestKeptBlockedSnack": { "placeholders": { "app": { "type": "String" } } },
+  "@accessRequestKeptBlockedSnack": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestAllowLabel": "Allow {app}",
-  "@accessRequestAllowLabel": { "placeholders": { "app": { "type": "String" } } },
+  "@accessRequestAllowLabel": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "accessRequestKeepBlockedLabel": "Keep {app} blocked",
-  "@accessRequestKeepBlockedLabel": { "placeholders": { "app": { "type": "String" } } },
+  "@accessRequestKeepBlockedLabel": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "alertsOffBannerBody": "Alerts are off. You won't hear about urgent messages.",
+  "alertsOffTurnOnAction": "Turn on alerts",
   "timeRequestTitle": "{child} asked for {minutes} more minutes today",
-  "@timeRequestTitle": { "placeholders": { "child": { "type": "String" }, "minutes": { "type": "int" } } },
+  "@timeRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "timeRequestGrant": "+{minutes} min",
-  "@timeRequestGrant": { "placeholders": { "minutes": { "type": "String" } } },
+  "@timeRequestGrant": {
+    "placeholders": {
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
   "timeRequestDecline": "Not today",
   "timeRequestGrantedBy": "{actor} already gave {minutes} minutes today",
-  "@timeRequestGrantedBy": { "placeholders": { "actor": { "type": "String" }, "minutes": { "type": "int" } } },
+  "@timeRequestGrantedBy": {
+    "placeholders": {
+      "actor": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "timeRequestGrantedByYou": "You already gave {minutes} minutes today",
-  "@timeRequestGrantedByYou": { "placeholders": { "minutes": { "type": "int" } } },
+  "@timeRequestGrantedByYou": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "timeRequestDeclinedBy": "{actor} already declined this request",
-  "@timeRequestDeclinedBy": { "placeholders": { "actor": { "type": "String" } } },
+  "@timeRequestDeclinedBy": {
+    "placeholders": {
+      "actor": {
+        "type": "String"
+      }
+    }
+  },
   "timeRequestDeclinedByYou": "You already declined this request",
   "timeRequestDecidedAt": "Decided {time}",
-  "@timeRequestDecidedAt": { "placeholders": { "time": { "type": "String" } } },
+  "@timeRequestDecidedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "p15CanBeWrong": "Possible concern — automatic checks can be wrong.",
+  "p15PreviewLoadFailed": "Couldn't load the preview. Check your connection and try again.",
+  "p15ActionsHeader": "What you can do",
+  "p15TalkWithChild": "Talk with {child}",
+  "@p15TalkWithChild": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
+  "p15HelpChildBlockContact": "Help {child} block {contact}",
+  "@p15HelpChildBlockContact": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "contact": {
+        "type": "String"
+      }
+    }
+  },
+  "p15HelpBlockGuideBody": "Sit with {child} and open {app} together to block {contact} and mute their messages.",
+  "@p15HelpBlockGuideBody": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      },
+      "contact": {
+        "type": "String"
+      }
+    }
+  },
+  "p15AdjustLimits": "Adjust screen time & bedtime",
+  "p15ReviewAppRules": "Review app rules",
+  "p15IphoneNotYet": "Not yet available on iPhone",
+  "p14SegmentRequests": "Requests",
+  "p14LevelUrgent": "Urgent",
+  "p14LevelCheckSoon": "Check soon",
+  "p14LevelInfo": "Info",
+  "p14FilterAll": "All",
+  "p14NoRequestsYet": "No requests yet",
+  "p14GroupedCount": "{count, plural, =1{1 time · last {time}} other{{count} times · last {time}}}",
+  "@p14GroupedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "p12NotBlockingYet": "Not blocking yet",
+  "@p12NotBlockingYet": {
+    "description": "P-12: pill on the enforcement banner when the filter is not applied on a device (UI/UX Bureau 7204314039)."
+  },
+  "p12AllowSite": "Allow site",
+  "@p12AllowSite": {
+    "description": "P-12: button on one recently blocked site; opens the prefilled Allow a site dialog."
+  },
+  "p12RecentlyBlocked": "Recently blocked",
+  "@p12RecentlyBlocked": {
+    "description": "P-12: card title over the recent blocks (hidden whole when the server withholds host names)."
+  },
+  "@appsNotYetOnIphone": {
+    "description": "P-12 (#1182 pair): browser coverage for an iPhone-only child."
+  },
+  "p12BlockSiteTitle": "Block a site",
+  "@p12BlockSiteTitle": {
+    "description": "P-12: dialog title when adding a site to always block."
+  },
+  "p12AllowSiteTitle": "Allow a site",
+  "@p12AllowSiteTitle": {
+    "description": "P-12: dialog title when adding a site to always allow, including from Allow site."
+  },
+  "privacyMenu": "Privacy and data",
+  "privacyTitle": "Privacy and data",
+  "privacyKeptHeader": "Kept, then deleted automatically",
+  "privacyFullDetails": "Full details",
+  "privacyRowExcerpts": "Flagged message parts",
+  "privacyRowAlerts": "Alerts",
+  "privacyRowLocation": "Location history",
+  "privacyRowStoredIn": "Stored in",
+  "privacyStorageFrankfurt": "European Union (Frankfurt, Germany)",
+  "privacyStorageStockholm": "European Union (Stockholm, Sweden)",
+  "privacyStorageIreland": "European Union (Ireland)",
+  "privacyDays": "{count, plural, =1{1 day} other{{count} days}}",
+  "@privacyDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyMonths": "{count, plural, =1{1 month} other{{count} months}}",
+  "@privacyMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyWhoCanSee": "Who can see data",
+  "privacyWhoCanSeeDesc": "Adults in the family and what each can see",
+  "privacyManage": "Manage",
+  "privacyCopyTitle": "Get a copy of your family data",
+  "privacyCopyDesc": "Email us from the address you sign in with. We answer within one month.",
+  "privacyCopyAction": "Email",
+  "privacyConsentTitle": "Consent for each child",
+  "privacyConsentDesc": "Review or withdraw, child by child",
+  "privacyOpen": "Open",
+  "privacyChooseChild": "Choose a child",
+  "privacyNoChildren": "No children added yet.",
+  "privacyDeleteFamilyTitle": "Delete family account",
+  "privacyDeleteFamilyDesc": "Deletes the whole family, including the data of every child, at once. Asks for your password.",
+  "privacyDeleteSelfTitle": "Delete my account",
+  "privacyDeleteSelfDesc": "Deletes only your own account. The family carries on.",
+  "privacyDeleteAction": "Delete…",
+  "privacyLoadFailed": "Could not load what is kept. Check your connection and try again.",
+  "privacyLoadFailedServer": "Couldn't load this right now. Try again in a moment.",
+  "@privacyLoadFailedServer": {
+    "description": "P-23: the retention summary failed on the server side (not the parent's connection)."
+  },
+  "privacyRetry": "Try again",
   "homeTabHome": "Home",
   "homeTabFamily": "Family",
   "homeTabSettings": "Settings",
   "homeFilterAll": "All",
   "homeNeedsYou": "Needs you",
   "homeSafetyAlertsToReview": "{count, plural, =1{1 safety alert to review} other{{count} safety alerts to review}}",
-  "@homeSafetyAlertsToReview": {"placeholders":{"count":{"type":"int"}}},
+  "@homeSafetyAlertsToReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeDurationHoursMinutes": "{hours} {minutes}",
-  "@homeDurationHoursMinutes": {"placeholders":{"hours":{"type":"String"},"minutes":{"type":"String"}}},
+  "@homeDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
   "homeTimeLeft": "{duration} left",
-  "@homeTimeLeft": {"placeholders":{"duration":{"type":"String"}}},
+  "@homeTimeLeft": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
   "homeOfLimit": "of {limit}",
-  "@homeOfLimit": {"placeholders":{"limit":{"type":"String"}}},
+  "@homeOfLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
   "homeSeenJustNow": "Seen just now",
   "homeSeenAgo": "Seen {duration} ago",
-  "@homeSeenAgo": {"placeholders":{"duration":{"type":"String"}}},
+  "@homeSeenAgo": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
   "homeOfflineFor": "Offline for {duration}",
-  "@homeOfflineFor": {"placeholders":{"duration":{"type":"String"}}},
+  "@homeOfflineFor": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
   "homeStateAtSchool": "At school",
   "homeStateBedtime": "Bedtime",
   "homeStateFreeTime": "Free time",
   "homeStateHomework": "Homework",
   "homeStatePaused": "Paused",
   "homeBatteryPct": "Battery {pct}",
-  "@homeBatteryPct": {"placeholders":{"pct":{"type":"String"}}},
+  "@homeBatteryPct": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
   "homeBonusPlus15": "+15 min",
   "homeBonusPlus30": "+30 min",
   "homePauseInternet": "Pause internet",
@@ -2042,12 +2611,36 @@
   "homeKeepBlocked": "Keep blocked",
   "homeNotToday": "Not today",
   "homeTimeRequestTitle": "{minutes, plural, =1{{child} asked for 1 more minute of screen time} other{{child} asked for {minutes} more minutes of screen time}}",
-  "@homeTimeRequestTitle": {"placeholders":{"child":{"type":"String"},"minutes":{"type":"int"}}},
+  "@homeTimeRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "homeAccessRequestTitle": "{child} asked to open {app}",
-  "@homeAccessRequestTitle": {"placeholders":{"child":{"type":"String"},"app":{"type":"String"}}},
+  "@homeAccessRequestTitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "homeSentToPhone": "Sent to phone",
   "homeSendingBonusSnack": "Adding {duration} for today",
-  "@homeSendingBonusSnack": {"placeholders":{"duration":{"type":"String"}}},
+  "@homeSendingBonusSnack": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
   "homeExampleBadge": "Example",
   "p01WelcomeSubtitle": "A clearer view of your family's digital day.",
   "p01ExampleBadge": "Example",
