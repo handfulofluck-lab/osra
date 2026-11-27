@@ -33,7 +33,9 @@ import 'features/settings/mfa_settings_screen.dart';
 import 'features/social/social_screen.dart';
 import 'features/content/search_safety_screen.dart';
 import 'l10n/l10n.dart';
+import 'core/alerts_badge_refresh.dart';
 import 'providers/auth_provider.dart';
+import 'providers/family_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/onboarding_provider.dart';
 import 'providers/social_provider.dart';
@@ -251,17 +253,45 @@ final router = GoRouter(
   routes: appRoutes,
 );
 
-/// Refresh cached concerns after app-wide signals that may lack a child ID.
-final _socialActivityRefreshProvider = Provider<void>((ref) {
-  void refresh() => ref.invalidate(socialEventsProvider);
+/// Refresh cached concerns and the bell count after app-wide signals that may lack a child ID.
+///
+/// #1056: the count used to refresh only on a realtime `alert` frame, so a push that woke the app, or the app
+/// coming back to the foreground after a frame the socket missed, left the badge stale until the feed was
+/// opened. Both signals already reached this provider; they refreshed social events only.
+///
+/// Public rather than private so the wiring itself has a row: the class it calls is tested in
+/// `test/alerts_badge_refresh_test.dart`, and `test/app_wide_refresh_test.dart` drives a real lifecycle change
+/// through this provider and checks that the count is re-read.
+final appWideRefreshProvider = Provider<void>((ref) {
+  void refreshSocial() => ref.invalidate(socialEventsProvider);
+  final badge = AlertsBadgeRefresh(
+    refresh: () {
+      // `alertsBadgeCountProvider` watches this one, so the dashboard's badge
+      // follows without watching the count itself.
+      ref.invalidate(unacknowledgedAlertsProvider);
+      ref.invalidate(unacknowledgedCountProvider);
+    },
+  );
 
-  final lifecycle = AppLifecycleListener(onResume: refresh);
-  foregroundAlertWakes.addListener(refresh);
-  notificationTapController.addListener(refresh);
+  void onWake() {
+    refreshSocial();
+    badge.onPush();
+  }
+
+  final lifecycle = AppLifecycleListener(
+    onResume: () {
+      refreshSocial();
+      badge.onResume();
+    },
+    onPause: badge.onPause,
+  );
+  foregroundAlertWakes.addListener(onWake);
+  notificationTapController.addListener(refreshSocial);
   ref.onDispose(() {
     lifecycle.dispose();
-    foregroundAlertWakes.removeListener(refresh);
-    notificationTapController.removeListener(refresh);
+    badge.dispose();
+    foregroundAlertWakes.removeListener(onWake);
+    notificationTapController.removeListener(refreshSocial);
   });
 });
 
@@ -270,7 +300,7 @@ class FamilyShieldApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(_socialActivityRefreshProvider);
+    ref.watch(appWideRefreshProvider);
     ref.watch(notificationLifecycleSyncProvider);
     final mode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
