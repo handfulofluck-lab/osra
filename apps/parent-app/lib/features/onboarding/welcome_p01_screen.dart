@@ -11,7 +11,10 @@ import '../dashboard/home_p07_screen.dart';
 
 /// Build-time switch for UX Final Decisions P-01 Welcome (#1179).
 /// Defaults to `false` so the legacy [WelcomeScreen] stays as fallback.
-const bool kP01WelcomeDefault = bool.fromEnvironment('OSRA_UX_P01', defaultValue: false);
+const bool kP01WelcomeDefault = bool.fromEnvironment(
+  'OSRA_UX_P01',
+  defaultValue: bool.fromEnvironment('OSRA_UX_FINAL', defaultValue: false),
+);
 
 /// Feature switch for P-01 Welcome (#1179).
 final p01WelcomeEnabledProvider = Provider<bool>((ref) => kP01WelcomeDefault);
