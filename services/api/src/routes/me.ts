@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireParent } from "../middleware/requireFamily.js";
+import { registerParentPushToken, type ParentSessionClaims } from "../lib/sessions.js";
 import { ReauthSchema, checkReauth, consentHeldElsewhere, eraseParentAccount } from "../lib/accountDeletion.js";
 import { AUTH_RATE_LIMIT } from "../lib/rateLimits.js";
 import { consentCopyFor } from "../lib/consentCopy.js";
@@ -29,7 +31,7 @@ const PushTokenSchema = z.object({
   appVersion: z.string().max(40).optional(),
 });
 
-type AuthedUser = { sub: string; familyId: string };
+type AuthedUser = ParentSessionClaims & { sub: string; familyId: string };
 
 /** ADR-0043 D3: a write from the app. The version and locale are the wording the parent was shown. */
 const ConsentWriteSchema = z.object({
@@ -44,11 +46,10 @@ export async function meRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = req.user as AuthedUser;
     const { token, platform, appVersion } = parsed.data;
-    const row = await prisma.parentPushToken.upsert({
-      where: { token },
-      update: { parentId: user.sub, platform, appVersion, lastSeenAt: new Date() },
-      create: { parentId: user.sub, token, platform, appVersion },
-    });
+    const row = await registerParentPushToken({ user, token, platform, appVersion });
+    if (!row) {
+      return reply.code(401).send({ error: "session_revoked" });
+    }
     return reply.code(201).send({ id: row.id, platform: row.platform, registeredAt: row.createdAt });
   });
 
@@ -63,11 +64,22 @@ export async function meRoutes(app: FastifyInstance) {
 
   app.get("/push-tokens", { preHandler: requireParent }, async (req) => {
     const user = req.user as AuthedUser;
-    const tokens = await prisma.parentPushToken.findMany({
-      where: { parentId: user.sub },
-      select: { id: true, platform: true, appVersion: true, createdAt: true, lastSeenAt: true },
-      orderBy: { lastSeenAt: "desc" },
-    });
+    const { parent, rows } = await prisma.$transaction(
+      async (tx) => {
+        const p = await tx.parent.findUnique({ where: { id: user.sub }, select: { sessionVersion: true } });
+        const list = await tx.parentPushToken.findMany({
+          where: { parentId: user.sub },
+          select: { id: true, platform: true, appVersion: true, sessionVersion: true, createdAt: true, lastSeenAt: true },
+          orderBy: { lastSeenAt: "desc" },
+        });
+        return { parent: p, rows: list };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    const minVersion = typeof parent?.sessionVersion === "number" ? parent.sessionVersion : 0;
+    const tokens = rows
+      .filter((r) => (typeof r.sessionVersion === "number" ? r.sessionVersion : 0) >= minVersion)
+      .map(({ id, platform, appVersion, createdAt, lastSeenAt }) => ({ id, platform, appVersion, createdAt, lastSeenAt }));
     return { tokens };
   });
 

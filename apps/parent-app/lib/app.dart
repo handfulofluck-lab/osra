@@ -8,10 +8,11 @@ import 'features/children/command_history_screen.dart';
 import 'features/children/consent_screen.dart';
 import 'api/models.dart';
 import 'features/alerts/alert_detail_screen.dart';
-import 'features/alerts/alerts_screen.dart';
+import 'features/alerts/alerts_p14_screen.dart';
 import 'features/auth/mfa_reset_approval_screen.dart';
 import 'features/family/family_screen.dart';
 import 'features/map/family_map_screen.dart';
+import 'features/auth/create_account_screen.dart';
 import 'features/onboarding/setup_child_screen.dart';
 import 'features/onboarding/setup_done_screen.dart';
 import 'features/onboarding/setup_monitoring_screen.dart';
@@ -22,8 +23,10 @@ import 'features/pairing/pair_qr_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/reports/usage_history_screen.dart';
 import 'features/rules/rules_editor_screen.dart';
+import 'features/rules/web_filter_p12_screen.dart' show WebFilterP12Route;
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/digest_prefs_screen.dart';
+import 'features/settings/privacy_screen.dart';
 import 'features/settings/delete_account_screen.dart';
 import 'features/settings/mfa_settings_screen.dart';
 import 'features/social/social_screen.dart';
@@ -32,11 +35,14 @@ import 'l10n/l10n.dart';
 import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/onboarding_provider.dart';
+import 'providers/social_provider.dart';
 import 'providers/theme_provider.dart';
+import 'push/foreground_push.dart';
+import 'push/notification_permission_service.dart';
 import 'push/notification_tap.dart';
 import 'theme/app_theme.dart';
 
-const _setupRoutes = {'/welcome', '/sign-in', '/setup/child', '/setup/pair', '/setup/monitoring', '/setup/done'};
+const _setupRoutes = {'/welcome', '/sign-in', '/create-account', '/setup/child', '/setup/pair', '/setup/monitoring', '/setup/done'};
 
 bool _isSetupRoute(String location) => _setupRoutes.contains(location);
 
@@ -44,6 +50,7 @@ final List<RouteBase> appRoutes = [
   GoRoute(path: '/starting', builder: (_, __) => const StartupScreen()),
   GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
   GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen(onboarding: true)),
+  GoRoute(path: '/create-account', builder: (_, __) => const CreateAccountScreen(onboarding: true)),
   GoRoute(path: '/setup/child', builder: (_, __) => const SetupChildScreen()),
   GoRoute(path: '/setup/pair', builder: (_, __) => const SetupPairScreen()),
   // Play decision 14 A: the parent picks the monitored apps here, between pairing and the hand-over, so the
@@ -60,7 +67,12 @@ final List<RouteBase> appRoutes = [
     routes: [
       GoRoute(
         path: 'alerts',
-        builder: (_, __) => const AlertsScreen(),
+        builder: (_, s) => AlertsRouteEntry(
+          initialChildId: s.uri.queryParameters['childId'],
+          initialSegment: s.uri.queryParameters['segment'] == 'requests'
+              ? P14Segment.requests
+              : P14Segment.alerts,
+        ),
         routes: [
           GoRoute(
             path: ':id',
@@ -110,9 +122,17 @@ final List<RouteBase> appRoutes = [
     ),
   ),
   GoRoute(path: '/child/:id/searches', builder: (_, s) => SearchSafetyScreen(childId: s.pathParameters['id']!)),
+  // #1229 P-12: one entry point for the web filter. The switch decides between the
+  // P-12 screen and the legacy web-filter tab, so a link never dead-ends.
+  GoRoute(
+    path: '/child/:id/web-filter',
+    builder: (_, s) => WebFilterP12Route(childId: s.pathParameters['id']!),
+  ),
   GoRoute(path: '/settings/digests', builder: (_, __) => const DigestPrefsScreen()),
   GoRoute(path: '/settings/appearance', builder: (_, __) => const AppearanceScreen()),
   GoRoute(path: '/settings/mfa', builder: (_, __) => const MfaSettingsScreen()),
+  // P-23: what is kept, where, and the privacy actions (UX final decisions, 25 Nov).
+  GoRoute(path: '/settings/privacy', builder: (_, __) => const PrivacyScreen()),
   // #442 PR 2: Play requires account deletion to be reachable in the app.
   GoRoute(path: '/settings/delete-account', builder: (_, __) => const DeleteAccountScreen()),
   // ADR-0031 step 3b: the co-parent's approval prompt. The dashboard and the
@@ -189,7 +209,7 @@ final router = GoRouter(
       // Sign-in cannot be skipped: every unauthenticated location resolves to
       // either Welcome (fresh) or the account step (a resume that lost its
       // session).
-      if (location == '/sign-in') return null;
+      if (location == '/sign-in' || location == '/create-account') return null;
       return onboarding.step == OnboardingStep.none ? '/welcome' : '/sign-in';
     }
 
@@ -227,11 +247,27 @@ final router = GoRouter(
   routes: appRoutes,
 );
 
+/// Refresh cached concerns after app-wide signals that may lack a child ID.
+final _socialActivityRefreshProvider = Provider<void>((ref) {
+  void refresh() => ref.invalidate(socialEventsProvider);
+
+  final lifecycle = AppLifecycleListener(onResume: refresh);
+  foregroundAlertWakes.addListener(refresh);
+  notificationTapController.addListener(refresh);
+  ref.onDispose(() {
+    lifecycle.dispose();
+    foregroundAlertWakes.removeListener(refresh);
+    notificationTapController.removeListener(refresh);
+  });
+});
+
 class FamilyShieldApp extends ConsumerWidget {
   const FamilyShieldApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(_socialActivityRefreshProvider);
+    ref.watch(notificationLifecycleSyncProvider);
     final mode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
     return MaterialApp.router(

@@ -13,8 +13,10 @@ export interface PushMessage {
   body?: string;
   /** Flat string map; FCM data payloads and APNs custom keys are both string-valued. */
   data: Record<string, string>;
-  /** Collapse/thread key so repeated alerts for one child replace each other on the lock screen. */
+  /** Stable notification group for the iOS lock screen. */
   threadId?: string;
+  /** Optional APNs coalescing ID, separate from the visible notification group. */
+  apnsCollapseId?: string;
   /** "high" wakes the device; "normal" is batched by the OS. Critical alerts are always high. */
   priority: "high" | "normal";
   /**

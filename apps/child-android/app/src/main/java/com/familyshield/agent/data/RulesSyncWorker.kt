@@ -24,6 +24,8 @@ class RulesSyncWorker(
             // the same mutex and before the #444 C4 listeners, so it is fresh on every path — including the one
             // where the VPN tunnel is not running. Refreshing it here as well was a second `GET /v1/blocklists`
             // per sync (Antigravity, #922 review).
+            val ruleRepository = entryPoint.ruleRepository()
+            val beforeWebFilter = runCatching { ruleRepository.currentRules()?.webFilter }.getOrNull()
             val rules = entryPoint.ruleRepository().refresh()
             // #1130: refresh deliberately returns null when a paired device could not fetch its first
             // rule set. That is retryable work, not success; WorkManager supplies the backoff.
@@ -31,9 +33,19 @@ class RulesSyncWorker(
                 RefreshOutcome.RETRY -> return Result.retry()
                 RefreshOutcome.SUCCESS -> Unit
             }
+            val afterWebFilter = rules?.webFilter
             // Plan 1.4: the sinkhole re-reads the web filter (domains, SafeSearch, YouTube mode) after every sync.
             if (com.familyshield.agent.vpn.VpnState.isEnabled(applicationContext)) {
                 runCatching { com.familyshield.agent.vpn.FilterVpnService.reload(applicationContext) }
+                runCatching {
+                    com.familyshield.agent.vpn.WebFilterConnectionReset.resetIfNeeded(
+                        context = applicationContext,
+                        rules = ruleRepository,
+                        consent = entryPoint.consentState(),
+                        before = beforeWebFilter,
+                        after = afterWebFilter,
+                    )
+                }
             }
             Result.success()
         } catch (e: Exception) {

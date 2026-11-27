@@ -59,6 +59,12 @@ class RuleRepository @Inject constructor(
 
     @Volatile private var cached: RuleSetDto? = null
 
+    private val rulesAppliedListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    fun addRulesAppliedListener(listener: () -> Unit) {
+        rulesAppliedListeners += listener
+    }
+
     /** Issue #444 C4: told after each successful rule sync, so a newly blocked app that is playing is paused. */
     private val rulesChangedListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
 
@@ -125,7 +131,7 @@ class RuleRepository @Inject constructor(
     /** Returns the decision for [packageId]; [verdict] is the same walk with the reason attached. */
     fun evaluate(packageId: String): Decision = verdict(packageId).decision
 
-    /** Enables or clears pause-the-internet (Feature #11); while paused every app except alwaysAllowedApps is blocked. */
+    /** Enables or clears network-only pause-the-internet (Feature #11, #1183); VPN sinkhole blocks traffic while offline apps stay open. */
     fun setPausedInternet(paused: Boolean) {
         pausedInternet = paused
     }
@@ -158,6 +164,16 @@ class RuleRepository @Inject constructor(
         resetBonusIfNewDayLocked(LocalDate.now())
         bonusMinutesToday
     }
+
+    /** Public read-only snapshot of today's bonus minutes for UI surfaces (C-01 / C-02). */
+    fun bonusMinutesTodaySnapshot(): Int = bonusMinutes()
+
+    /** Public read-only snapshot of the merged category blocklist for C-02 block explanation. */
+    fun blocklistSnapshot(): Map<String, String> = blocklist.apps()
+
+    /** Public read-only VPN-app classification matching [verdict] for C-02 block explanation. */
+    fun declaresVpnServiceSnapshot(packageId: String): Boolean =
+        settings.isPairedSync() && packageFacts.declaresVpnService(packageId)
 
     private fun resetBonusIfNewDayLocked(today: LocalDate) {
         if (bonusDay != today) {
@@ -258,24 +274,23 @@ class RuleRepository @Inject constructor(
                 return@withLock cached
             }
             consent.onPollStatus(200)
+            // Issue #475 & #1151 review: persist before advancing the in-memory cache or applied version.
+            // An unpersisted fetch is not a successful refresh and must not replace the last durable cache;
+            // the paired-empty case returns null so RulesSyncWorker retries.
+            val persisted = runCatching {
+                settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
+            }.isSuccess
+            if (!persisted) return@withLock cached
+            cached = updated
+            rulesAppliedListeners.forEach { runCatching { it() } }
             // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
             // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
-            // Refreshing it here — under `refreshMutex`, before `cached = updated`, before the #444 C4 listeners
+            // Refreshing it here — under `refreshMutex`, after caching `updated`, before the #444 C4 listeners
             // run — makes a category change live on every path (command, worker, consent re-grant) whether or
             // not the VPN tunnel is up, serializes the fetch instead of duplicating it, and keeps the listeners
             // from observing a stale pack. `BlocklistStore.refresh` already rethrows CancellationException and
             // swallows ordinary failures itself, so it is called directly rather than inside `runCatching`.
             blocklist.refresh(updated.webFilter.blockedCategories)
-            // Issue #475: the applied version moves only when the rules were actually PERSISTED. A failed
-            // write with the version advanced would tell the parent the phone has rules it will lose on the
-            // next process start — the same class of lie the feature exists to prevent.
-            val persisted = runCatching {
-                settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
-            }.isSuccess
-            // #1151 review: an unpersisted fetch is not a successful refresh and must not replace the
-            // last durable cache. The paired-empty case returns null so RulesSyncWorker retries.
-            if (!persisted) return@withLock cached
-            cached = updated
             runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             rulesChangedListeners.forEach { runCatching { it() } }

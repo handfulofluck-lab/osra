@@ -222,6 +222,8 @@ model ParentPushToken {
   token      String   @unique
   platform   String
   appVersion String?
+  /// Parent `sessionVersion` at registration time; delivery skips rows below `Parent.sessionVersion`.
+  sessionVersion Int  @default(0)
   /// ADR-0034 A3: the build a parent's own requests report. A parent's header must never land on the
   /// child's Device row, so it goes here, on the row that belongs to that parent's install.
   clientApp     String?
@@ -293,6 +295,9 @@ model Device {
   /// read excludes it), outside the family's device counts, and deleted by `jobs/pendingDevices.ts`
   /// after 30 minutes. Pair/claim creates it null on purpose; nothing else may.
   pairedAt   DateTime?      @db.Timestamptz(3)
+  /// ADR-0047: null during the bounded initial Android setup window; set only from an authenticated
+  /// telemetry report with every required grant ready. Existing paired rows are backfilled by 0046.
+  setupCompletedAt DateTime? @db.Timestamptz(3)
   /// Issue #867: the instant the AGENT says this phone booted (`now - SystemClock.elapsedRealtime()`),
   /// stable for the life of one boot. Null until an agent reports it. A report that moves it by more than
   /// 90 seconds is a restart (src/lib/bootReport.ts); that is how the parent hears about the 1–2 minute gap
@@ -618,6 +623,8 @@ model Alert {
   attemptCount Int      @default(1)
   createdAt    DateTime @default(now())
   acknowledged Boolean  @default(false)
+  /// ADR-0047: audit-only setup event; never published, pushed, listed, acknowledged or exported.
+  heldDuringSetup Boolean @default(false)
   child        Child    @relation(fields: [childId], references: [id])
   device       Device?  @relation(fields: [deviceId], references: [id])
   @@index([childId, createdAt])
