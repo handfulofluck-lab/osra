@@ -1,0 +1,1 @@
+- OSRA Kids on iOS 17.4 or later can apply daily and weekend screen time limits and use eligible bonus minutes for the current day (#1179). Physical iPhone verification is pending.

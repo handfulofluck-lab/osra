@@ -40,9 +40,61 @@ final class DeviceCommandsTests: XCTestCase {
         XCTAssertEqual(CommandAction.forType("rules_updated"), .syncRules)
         XCTAssertEqual(CommandAction.forType("consent_revoked"), .syncRules)
         XCTAssertEqual(CommandAction.forType("consent_granted"), .syncRules)
+        XCTAssertEqual(CommandAction.forType("bonus_time"), .bonusTime)
         for type in ["lock", "unlock", "ring", "pause_internet", "show_reset_code", "something_new"] {
             XCTAssertEqual(CommandAction.forType(type), .unsupported, type)
         }
+    }
+
+    // MARK: - Bonus command decoding
+
+    private func pollCommands(_ fixtures: [[String: Any]]) async throws -> [DeviceCommand] {
+        pair()
+        StubProtocol.response = (200, json(fixtures))
+        let identity = try XCTUnwrap(AgentIdentityStore.load())
+        return try await CommandClient(session: StubProtocol.session).poll(identity).commands
+    }
+
+    func testBonusCommandDecodesTheGrantFromTheServerTimestamp() async throws {
+        // A formatter without fractional seconds rejects the server's `toISOString()` timestamp.
+        let commands = try await pollCommands([
+            ["id": "bonus-1", "type": "bonus_time", "payload": ["minutes": 15], "ts": "2026-11-27T12:34:56.789Z"],
+            ["id": "bonus-2", "type": "bonus_time", "payload": ["minutes": 5], "ts": "2026-11-27T12:34:56Z"],
+        ])
+        XCTAssertEqual(commands.count, 2)
+        let grant = try XCTUnwrap(commands.first?.bonusGrant)
+        XCTAssertEqual(grant.id, "bonus-1")
+        XCTAssertEqual(grant.minutes, 15)
+        XCTAssertEqual(grant.issuedAt.timeIntervalSince1970, 1_795_782_896.789, accuracy: 0.0001)
+        XCTAssertEqual(commands.last?.bonusGrant?.issuedAt, Date(timeIntervalSince1970: 1_795_782_896))
+    }
+
+    func testMalformedBonusCommandsLeaveThePollUsable() async throws {
+        // Throwing for a bad payload would also lose the valid rules update. Skipping validation would accept a grant.
+        let timestamp = "2026-11-27T12:34:56.789Z"
+        let commands = try await pollCommands([
+            ["id": "zero", "type": "bonus_time", "payload": ["minutes": 0], "ts": timestamp],
+            ["id": "negative", "type": "bonus_time", "payload": ["minutes": -5], "ts": timestamp],
+            ["id": "fraction", "type": "bonus_time", "payload": ["minutes": 1.5], "ts": timestamp],
+            ["id": "string", "type": "bonus_time", "payload": ["minutes": "15"], "ts": timestamp],
+            ["id": "missing-payload", "type": "bonus_time", "ts": timestamp],
+            ["id": "invalid-date", "type": "bonus_time", "payload": ["minutes": 15], "ts": "yesterday"],
+            ["id": "missing-date", "type": "bonus_time", "payload": ["minutes": 15]],
+            ["id": "update", "type": "rules_updated"],
+        ])
+        XCTAssertEqual(commands.map(\.id), ["zero", "negative", "fraction", "string", "missing-payload",
+                                             "invalid-date", "missing-date", "update"])
+        XCTAssertTrue(commands.allSatisfy { $0.bonusGrant == nil })
+    }
+
+    func testOtherCommandsIgnoreBonusFields() async throws {
+        // Decoding every timestamped minutes payload as a grant would misread unrelated commands such as wind_down.
+        let commands = try await pollCommands([
+            ["id": "wind", "type": "wind_down", "payload": ["minutes": 15], "ts": "2026-11-27T12:34:56.789Z"],
+            ["id": "update", "type": "rules_updated", "payload": "ignored", "ts": 0],
+        ])
+        XCTAssertEqual(commands.map(\.type), ["wind_down", "rules_updated"])
+        XCTAssertTrue(commands.allSatisfy { $0.bonusGrant == nil })
     }
 
     // MARK: - One drain
@@ -77,6 +129,43 @@ final class DeviceCommandsTests: XCTestCase {
                        "a parent sees why the iPhone did not lock, not a silent delivered")
         XCTAssertEqual(StubProtocol.requests[3].request.url?.path, "/v1/devices/dev-1/commands/c3/ack")
     }
+
+    func testMalformedBonusIsRefusedWithoutSyncingRules() async {
+        pair()
+        StubProtocol.responder = { request in
+            request.url?.path.hasSuffix("/commands") == true
+                ? (200, self.json([["id": "bad", "type": "bonus_time", "payload": ["minutes": 0]]]))
+                : (200, self.json([:]))
+        }
+        let result = await CommandDrainer.drainNow(client: CommandClient(session: StubProtocol.session)) {
+            XCTFail("Malformed grants must be refused before fetching rules")
+            return .failed("unexpected sync")
+        }
+        XCTAssertEqual(result.refused, ["bonus_time"])
+        XCTAssertEqual(ackBodies().first?["status"] as? String, "failed")
+        XCTAssertEqual((ackBodies().first?["detail"] as? [String: String])?["reason"], "invalid_payload")
+    }
+
+    #if os(iOS)
+    func testATransientRuleFetchLeavesTheBonusAvailableForRedelivery() async throws {
+        guard #available(iOS 17.4, *) else { throw XCTSkip("Cumulative Screen Time requires iOS 17.4") }
+        pair()
+        let now = ISO8601DateFormatter().string(from: Date())
+        StubProtocol.responder = { request in
+            request.url?.path.hasSuffix("/commands") == true
+                ? (200, self.json([["id": "grant", "type": "bonus_time", "ts": now, "payload": ["minutes": 15]]]))
+                : (200, self.json([:]))
+        }
+        let client = CommandClient(session: StubProtocol.session)
+        let deferred = await CommandDrainer.drainNow(client: client) { .failed("HTTP 500") }
+        XCTAssertTrue(ackBodies().isEmpty)
+        XCTAssertTrue(deferred.refused.isEmpty)
+        let redelivered = await CommandDrainer.drainNow(client: client) { .consentWithdrawn }
+        XCTAssertEqual(redelivered.refused, ["bonus_time"])
+        XCTAssertEqual(ackBodies().count, 1)
+        XCTAssertEqual((ackBodies().first?["detail"] as? [String: String])?["reason"], "consent_withdrawn")
+    }
+    #endif
 
     func testAFailedSyncIsAckedFailed() async {
         pair()

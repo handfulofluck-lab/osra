@@ -353,3 +353,14 @@ Remaining pairing-related gaps:
   "Push and commands" above.
 - ~~Routine/rules sync to the app group is still written by "the main agent app"~~ — done 2026-10-25 (5.5 PR C,
   #372): see "Rule sync" above.
+
+## Daily screen time and bonus minutes (#1179)
+
+Use a signed OSRA Kids build on iOS 17.4 or later and a synthetic family with Screen Time authorization. The parent and child must use the same staging environment. Record the exact builds and staging API revision.
+
+1. Set a short daily limit, use a neutral app until the daily shield appears, and check that OSRA Kids and the Phone app remain reachable. Record whether a browser and a second app are shielded.
+2. Send a 15-minute grant. Confirm the command succeeds and the app reopens. Verify that the new threshold includes the minutes already spent. Repeat with a 30-minute grant and confirm that a retry does not add extra minutes.
+3. Check that a separate explicit app block remains in force through the grant. Check the next local day, including a weekend day, and verify that yesterday's grant has expired.
+4. On a staging API with time-request resolution, approve a synthetic request and repeat the same checks. Remove the temporary limit and any separate restrictions at the end of the row.
+
+On older iOS versions the cumulative Screen Time registration API is unavailable. Keep the parent bonus action gated there. Usage counts toward the limit across the device. The daily shield honours OSRA and allowed-app exceptions that Screen Time can resolve to local tokens.

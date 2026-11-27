@@ -1397,6 +1397,9 @@ First run on Karim's MacBook and iPhone 13, 11 Nov 2026 (#372). The ids are the 
    Calculator), **Add group**: the app shows the OSRA screen, not hidden, and **Ask parent** raises an alert on the
    parent side. An older bundle-id rule still hides its app. **Re-pair** also asks for the PIN.
 
+7. **Daily limits and bonus minutes.** Run the [signed iPhone checks](../apps/child-ios/QA-IOS.md#daily-screen-time-and-bonus-minutes-1179)
+   when daily thresholds, bonus delivery or the Screen Time monitor change.
+
 ## 5h. First-run pairing time (roadmap 3.2, proxy)
 
 `scripts/hardware/android-pairing-time.ps1 -Pin <app PIN> [-Runs 3] [-Base http://127.0.0.1:3000]

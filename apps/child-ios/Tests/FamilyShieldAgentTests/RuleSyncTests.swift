@@ -257,6 +257,22 @@ final class RuleSyncTests: XCTestCase {
         XCTAssertEqual(defaults.stringArray(forKey: "apps.blockedBundleIdentifiers"), ["com.example.blocked"])
     }
 
+    func testAResponseForAnOldPairingDoesNotApplyToTheNewDevice() async {
+        pair()
+        StubProtocol.responder = { _ in
+            XCTAssertTrue(AgentIdentityStore.saveNewPairing(AgentIdentity(
+                apiBaseURL: self.base, deviceToken: "new-device-jwt", deviceId: "dev-2",
+                childId: "child-2", familyId: "fam-2", hmacSecret: nil)))
+            return (200, Data(self.rulesJSON.utf8))
+        }
+        let outcome = await RuleSyncer.syncNow(client: stubbedClient, apply: { _ in
+            XCTFail("Rules fetched for the previous pairing must never be applied")
+        })
+        XCTAssertEqual(outcome, .notPaired)
+        XCTAssertNil(RuleStore.syncedAt())
+        XCTAssertEqual(AgentIdentityStore.load()?.deviceId, "dev-2")
+    }
+
     func testWithdrawnConsentClearsTheStoredRules() async throws {
         pair()
         RuleStore.save(try JSONDecoder().decode(RuleSet.self, from: Data(rulesJSON.utf8)))

@@ -221,6 +221,9 @@ public enum RuleStore {
 
     /// Removes every synced rule: on unpairing, and when the server answers 428 (consent withdrawn).
     public static func clear() {
+        #if os(iOS)
+        if #available(iOS 17.4, *) { DailyScreenTimeMonitor.clear() }
+        #endif
         guard let defaults else { return }
         for key in [Keys.blockedApps, Keys.allowedApps, Keys.alwaysAllowedApps, Keys.bedtimeStart, Keys.bedtimeEnd,
                     Keys.blockedDomains, Keys.blockedCategories, Keys.routineSchedules, Keys.unscheduled, Keys.syncedAt,
@@ -322,9 +325,11 @@ public enum RuleSyncer {
     public typealias ReportApplied = (AgentIdentity, Int) async -> Int
 
     /// The real apply: Screen Time, where the frameworks exist; nil (nothing applied) elsewhere.
-    public static var defaultApply: Apply? {
+    public static var defaultApply: Apply? { defaultApply(forDeviceID: nil) }
+
+    private static func defaultApply(forDeviceID deviceID: String?) -> Apply? {
         #if os(iOS)
-        return { try ScreenTimeController().applyRules($0) }
+        return { try ScreenTimeController().applyRules($0, forDeviceID: deviceID) }
         #else
         return nil
         #endif
@@ -343,8 +348,9 @@ public enum RuleSyncer {
         guard let identity = AgentIdentityStore.load() else { return .notPaired }
         do {
             let rules = try await client.fetch(for: identity)
+            guard AgentIdentityStore.load() == identity else { return .notPaired }
             RuleStore.save(rules)
-            if let applying = apply ?? (enforce ? defaultApply : nil) {
+            if let applying = apply ?? (enforce ? defaultApply(forDeviceID: identity.deviceId) : nil) {
                 do {
                     try applying(rules)
                     RuleStore.setAppliedRulesVersion(rules.effectiveRulesVersion)
@@ -355,12 +361,14 @@ public enum RuleSyncer {
             }
             return .synced(rules)
         } catch RuleSyncClient.SyncError.httpError(status: 428) {
+            guard AgentIdentityStore.load() == identity else { return .notPaired }
             RuleStore.clear()
             #if os(iOS)
             if enforce { ScreenTimeController().clearRules() }
             #endif
             return .consentWithdrawn
         } catch RuleSyncClient.SyncError.deviceRevoked {
+            guard AgentIdentityStore.load() == identity else { return .notPaired }
             // #690: the parent removed this phone. Nothing stays paired or enforced; the app shows pairing.
             DeviceRevocation.unpair()
             return .notPaired
