@@ -249,6 +249,44 @@ class WebFilterConnectionResetTest {
         }
     }
 
+    // Mutant: omitting the SafeSearch comparison leaves the policy update without a reset.
+    @Test
+    fun `changing SafeSearch in either direction uses the shared reset`() = runBlocking {
+        val off = WebFilterRuleDto(safeSearchEnforced = false)
+        val on = off.copy(safeSearchEnforced = true)
+        for ((before, after) in listOf(off to on, on to off)) {
+            assertTrue(WebFilterConnectionReset.shouldResetConnections(before, after))
+            val previousPolicy = WebFilterConnectionReset.PolicySnapshot(
+                dnsConfig = DnsFilterPolicy.Config(safeSearch = before.safeSearchEnforced),
+                webFilter = before,
+            )
+            val harness = SyntheticServiceHarness(committedPolicy = previousPolicy)
+            harness.committedPolicy = previousPolicy.copy(
+                dnsConfig = previousPolicy.dnsConfig.copy(safeSearch = after.safeSearchEnforced),
+                webFilter = after,
+            )
+            val outcome = harness.controller.executeReset()
+
+            assertEquals(WebFilterConnectionReset.TransitionOutcome.COMPLETED, outcome)
+            assertEquals(after.safeSearchEnforced, harness.appliedDnsConfig.safeSearch)
+            assertEquals(FilterVpnService.MODE_DNS, harness.activeMode)
+            assertEquals(
+                listOf("open:sinkhole_all#1@0", "active:sinkhole_all@0", "wait:1000@0", "open:dns#1@1000", "active:dns@1000"),
+                harness.log,
+            )
+        }
+    }
+
+    // Mutant: treating a missing prior snapshot as SafeSearch off adds a reset at startup.
+    @Test
+    fun `initial and unchanged SafeSearch snapshots need no extra reset`() {
+        val on = WebFilterRuleDto(safeSearchEnforced = true)
+
+        assertFalse(WebFilterConnectionReset.shouldResetConnections(null, on))
+        assertFalse(WebFilterConnectionReset.shouldResetConnections(on, null))
+        assertFalse(WebFilterConnectionReset.shouldResetConnections(on, on.copy()))
+    }
+
     @Test
     fun `newly blocked domain triggers one service-owned sinkhole-then-DNS transition`() = runBlocking {
         val before = WebFilterRuleDto(blockedDomains = listOf("example.com"))
