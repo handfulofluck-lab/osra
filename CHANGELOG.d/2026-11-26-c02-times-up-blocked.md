@@ -1,0 +1,2 @@
+### Changed
+- Child Android: implemented C-02 Time's up / app blocked screen behind `ChildUxFlags.c02BlockedScreenEnabled` with OSRA design tokens (light/dark, 320 px / 200% responsive layout), exact rule cause and "later of all active rules" return time, "Still open for you" apps, G2/G3 daily-limit-only 15-minute screen-time ask (`requestType: "time"`) vs app access ask (`requestType: "access"`), in-screen rules summary, "Call a parent", and calm outlined "Send SOS to my parents" row (#1179).

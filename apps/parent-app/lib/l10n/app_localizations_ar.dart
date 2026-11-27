@@ -1033,7 +1033,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get tabScreenTime => 'وقت الشاشة';
 
   @override
-  String get tabWebFilter => 'تصفية الويب';
+  String get tabWebFilter => 'تصفية المواقع';
 
   @override
   String get tabRoutines => 'الروتين';
@@ -1173,11 +1173,11 @@ class AppLocalizationsAr extends AppLocalizations {
   String get enforceSafeSearch => 'فرض البحث الآمن';
 
   @override
-  String get youtubeRestrictedMode => 'الوضع المقيّد في يوتيوب';
+  String get youtubeRestrictedMode => 'الوضع المحظور في يوتيوب';
 
   @override
   String get youtubeRestrictedDesc =>
-      'يزيل المحتوى غير المناسب المحتمل على يوتيوب عبر أجهزة الأطفال.';
+      'يُخفي معظم الفيديوهات غير المناسبة، لكن تصفية يوتيوب نفسها تفوّت بعضها، فللتأكد احظر يوتيوب أو اضبط له حدًا زمنيًا في «التطبيقات».';
 
   @override
   String get strict => 'صارم';
@@ -3361,7 +3361,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get grantDeviceAdmin => 'مسؤول الجهاز';
 
   @override
-  String get grantWebFilter => 'تصفية المواقع (موافقة VPN)';
+  String get grantWebFilter => 'تصفية المواقع';
 
   @override
   String get grantLocation => 'الموقع (السماح دائمًا)';
@@ -4036,24 +4036,28 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get p15CanBeWrong => 'ملاحظة محتملة — قد تخطئ الفحوصات التلقائية.';
+  String get p15CanBeWrong => 'مصدر قلق محتمل — قد تخطئ الفحوصات التلقائية.';
+
+  @override
+  String get p15PreviewLoadFailed =>
+      'تعذّر تحميل المعاينة. تحقّق من الاتصال ثم حاول مرة أخرى.';
 
   @override
   String get p15ActionsHeader => 'ما يمكنك فعله';
 
   @override
   String p15TalkWithChild(String child) {
-    return 'تحدّث مع $child';
+    return 'التحدث مع $child';
   }
 
   @override
   String p15HelpChildBlockContact(String child, String contact) {
-    return 'ساعد $child على حظر $contact';
+    return 'مساعدة $child على حظر $contact';
   }
 
   @override
   String p15HelpBlockGuideBody(String child, String app, String contact) {
-    return 'اجلس مع $child وافتحا $app معًا لحظر $contact وكتم رسائله.';
+    return 'الجلوس مع $child وفتح $app معًا لحظر $contact وكتم رسائله.';
   }
 
   @override
@@ -4064,6 +4068,177 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get p15IphoneNotYet => 'غير متاح بعد على آيفون';
+
+  @override
+  String get p14SegmentRequests => 'الطلبات';
+
+  @override
+  String get p14LevelUrgent => 'عاجل';
+
+  @override
+  String get p14LevelCheckSoon => 'للمراجعة قريبًا';
+
+  @override
+  String get p14LevelInfo => 'للعلم';
+
+  @override
+  String get p14FilterAll => 'الكل';
+
+  @override
+  String get p14NoRequestsYet => 'لا توجد طلبات بعد';
+
+  @override
+  String p14GroupedCount(int count, String time) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مرة · آخرها $time',
+      many: '$count مرة · آخرها $time',
+      few: '$count مرات · آخرها $time',
+      two: 'مرتان · آخرها $time',
+      one: 'مرة واحدة · آخرها $time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get p12NotBlockingYet => 'لم يبدأ الحظر بعد';
+
+  @override
+  String get p12AllowSite => 'السماح بالموقع';
+
+  @override
+  String get p12RecentlyBlocked => 'المواقع المحظورة مؤخرًا';
+
+  @override
+  String get p12BlockSiteTitle => 'حظر موقع';
+
+  @override
+  String get p12AllowSiteTitle => 'السماح بموقع';
+
+  @override
+  String get privacyMenu => 'الخصوصية والبيانات';
+
+  @override
+  String get privacyTitle => 'الخصوصية والبيانات';
+
+  @override
+  String get privacyKeptHeader => 'نحتفظ بها ثم تُحذف تلقائيًا';
+
+  @override
+  String get privacyFullDetails => 'التفاصيل الكاملة (بالإنجليزية)';
+
+  @override
+  String get privacyRowExcerpts => 'مقتطفات الرسائل التي أثارت تنبيهًا';
+
+  @override
+  String get privacyRowAlerts => 'التنبيهات';
+
+  @override
+  String get privacyRowLocation => 'سجل المواقع';
+
+  @override
+  String get privacyRowStoredIn => 'مكان التخزين';
+
+  @override
+  String get privacyStorageFrankfurt => 'الاتحاد الأوروبي (فرانكفورت، ألمانيا)';
+
+  @override
+  String get privacyStorageStockholm => 'الاتحاد الأوروبي (ستوكهولم، السويد)';
+
+  @override
+  String get privacyStorageIreland => 'الاتحاد الأوروبي (أيرلندا)';
+
+  @override
+  String privacyDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count يوم',
+      many: '$count يومًا',
+      few: '$count أيام',
+      two: 'يومان',
+      one: 'يوم واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String privacyMonths(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count شهر',
+      many: '$count شهرًا',
+      few: '$count أشهر',
+      two: 'شهران',
+      one: 'شهر واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get privacyWhoCanSee => 'من يمكنه رؤية البيانات';
+
+  @override
+  String get privacyWhoCanSeeDesc =>
+      'البالغون في العائلة وما يمكن لكل منهم رؤيته';
+
+  @override
+  String get privacyManage => 'إدارة';
+
+  @override
+  String get privacyCopyTitle => 'احصل على نسخة من بيانات عائلتك';
+
+  @override
+  String get privacyCopyDesc =>
+      'راسلنا من البريد الإلكتروني الذي تسجّل الدخول به، ونردّ خلال شهر.';
+
+  @override
+  String get privacyCopyAction => 'مراسلة';
+
+  @override
+  String get privacyConsentTitle => 'الموافقة لكل طفل';
+
+  @override
+  String get privacyConsentDesc => 'راجِعها أو اسحبها لكل طفل على حدة';
+
+  @override
+  String get privacyOpen => 'فتح';
+
+  @override
+  String get privacyChooseChild => 'اختر طفلًا';
+
+  @override
+  String get privacyNoChildren => 'لم تُضِف أي طفل بعد.';
+
+  @override
+  String get privacyDeleteFamilyTitle => 'حذف حساب العائلة';
+
+  @override
+  String get privacyDeleteFamilyDesc =>
+      'يحذف العائلة كلها، ومعها بيانات كل طفل، فورًا. ويلزم إدخال كلمة المرور لذلك.';
+
+  @override
+  String get privacyDeleteSelfTitle => 'حذف حسابي';
+
+  @override
+  String get privacyDeleteSelfDesc =>
+      'يحذف حسابك أنت فقط، وتبقى العائلة كما هي.';
+
+  @override
+  String get privacyDeleteAction => 'حذف…';
+
+  @override
+  String get privacyLoadFailed =>
+      'تعذّر تحميل مدد الاحتفاظ. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+
+  @override
+  String get privacyLoadFailedServer =>
+      'تعذّر التحميل الآن. حاول مرة أخرى بعد قليل.';
+
+  @override
+  String get privacyRetry => 'إعادة المحاولة';
 
   @override
   String get homeTabHome => 'الرئيسية';
