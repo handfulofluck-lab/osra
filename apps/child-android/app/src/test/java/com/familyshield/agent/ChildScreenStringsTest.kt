@@ -113,9 +113,12 @@ class ChildScreenStringsTest {
         // `AdminEnrolmentPolicyTest` what the stale-Knox message says). The screens read the resource, so the
         // two must not drift: this row is the pin between them.
         val granted = OnboardingPolicy.rows(notificationCaptureAvailable = true) { true }
-        assertEquals(string("onboarding_progress_complete", 8, 8), OnboardingPolicy.progressLine(granted))
+        assertEquals(string("onboarding_progress_complete"), OnboardingPolicy.progressLine(granted))
         val noOverlay = OnboardingPolicy.rows(notificationCaptureAvailable = true) { it != OnboardingPolicy.Grant.OVERLAY }
-        assertEquals(string("onboarding_progress", 7, 8), OnboardingPolicy.progressLine(noOverlay))
+        assertEquals(
+            string("onboarding_progress", OnboardingPolicy.formatWesternInt(7), OnboardingPolicy.formatWesternInt(8)),
+            OnboardingPolicy.progressLine(noOverlay),
+        )
 
         assertEquals(string("onboarding_capture_notifications"), OnboardingPolicy.captureNotice(false, true))
         assertEquals(string("onboarding_capture_call_sms"), OnboardingPolicy.captureNotice(true, false))

@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,8 +33,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +88,51 @@ data class WelcomeCopy(
 )
 
 /**
+ * C-05 (#1208 B2): One real family rule row shown on the agreement screen (daily limit, bedtime,
+ * school hours, or blocked categories).
+ */
+data class FamilyRuleItemCopy(
+    val label: String,
+    val value: String,
+)
+
+/**
+ * C-05 (#1208 B2): Real family rules summary card shown on the agreement screen. Null or empty
+ * hides the section instead of repeating the welcome transparency card.
+ */
+data class FamilyRulesCardCopy(
+    val items: List<FamilyRuleItemCopy>,
+)
+
+/**
+ * C-05 (#1208 B1): QR review state rendered inside [OnboardingPairingStepScreen] so Roadmap 3.2's
+ * scan -> review -> explicit confirm gate stays intact on the C-05 pairing step.
+ */
+data class ScannedPairingReviewCopy(
+    val title: String,
+    val codeLine: String,
+    val checkLine: String,
+    val confirmButton: String,
+    val cancelButton: String,
+)
+
+/**
+ * C-05 (#1208 B1): Words passed into [OnboardingPairingStepScreen] from Android resources.
+ * Server URL and device name are preset and hidden in the C-05 flow.
+ */
+data class PairingStepCopy(
+    val brandLabel: String,
+    val stepBadge: String,
+    val title: String,
+    val codeLabel: String,
+    val codeHint: String,
+    val connectButton: String,
+    val scanQrButton: String,
+    val wipeNotice: String? = null,
+    val scannedReview: ScannedPairingReviewCopy? = null,
+)
+
+/**
  * C-05 (#1179, Pick 0 — agreement last): Final family rules agreement card rendered after pairing
  * and required permissions are complete, right before opening the child home screen.
  */
@@ -92,7 +142,7 @@ data class FamilyAgreementCopy(
     val title: String,
     val body: String,
     val progressLine: String,
-    val transparencyCard: TransparencyCardCopy,
+    val rulesCard: FamilyRulesCardCopy? = null,
     val captureNotice: String? = null,
     val optionalCallSmsPrompt: String? = null,
     val optionalCallSmsButton: String? = null,
@@ -849,6 +899,360 @@ private fun OsraTransparencyCard(
 }
 
 /**
+ * C-05 (#1208 B1): Step 2 of 3 pairing hand-off screen on [OsraTheme] tokens, matching the
+ * welcome, permission, and agreement step chrome in light and dark mode, RTL, and 320/200%.
+ * Server URL and device name are preset and hidden; the existing QR scanner stays reachable via
+ * [onScanQr].
+ */
+@Composable
+fun OnboardingPairingStepScreen(
+    copy: PairingStepCopy,
+    code: String,
+    onCodeChange: (String) -> Unit,
+    onConnect: () -> Unit,
+    onScanQr: () -> Unit,
+    onCancelScan: (() -> Unit)? = null,
+    isConnecting: Boolean = false,
+    waitingMessage: String? = null,
+    errorMessage: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OsraTheme.LocalOsraPalette.current
+    val radii = OsraTheme.LocalOsraRadii.current
+    val scroll = rememberScrollState()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.page)
+            .systemBarsPadding()
+            .padding(horizontal = OsraTokens.spaces.xl, vertical = OsraTokens.spaces.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.md),
+        ) {
+            OsraBrandMark(brandLabel = copy.brandLabel, compact = true)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(radii.bar))
+                    .background(palette.tint)
+                    .padding(horizontal = OsraTokens.spaces.md, vertical = OsraTokens.spaces.xs),
+            ) {
+                Text(
+                    text = copy.stepBadge,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    color = palette.primary,
+                )
+            }
+            Text(
+                text = copy.title,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    textDirection = TextDirection.Content,
+                ),
+                color = palette.ink,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            copy.wipeNotice?.let { notice ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = palette.danger,
+                            shape = RoundedCornerShape(radii.card),
+                        ),
+                    color = palette.card,
+                    shape = RoundedCornerShape(radii.card),
+                ) {
+                    Text(
+                        text = notice,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.danger,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(OsraTokens.spaces.md),
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        color = palette.cardBorder,
+                        shape = RoundedCornerShape(radii.card),
+                    ),
+                color = palette.card,
+                shape = RoundedCornerShape(radii.card),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(OsraTokens.spaces.md),
+                    verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+                ) {
+                    val review = copy.scannedReview
+                    if (review != null) {
+                        Text(
+                            text = review.title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                textDirection = TextDirection.Content,
+                            ),
+                            color = palette.ok,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = review.codeLine,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                textDirection = TextDirection.Content,
+                            ),
+                            color = palette.ink,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = review.checkLine,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                textDirection = TextDirection.Content,
+                            ),
+                            color = palette.muted,
+                        )
+                    } else {
+                        Text(
+                            text = copy.codeLabel,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                textDirection = TextDirection.Content,
+                            ),
+                            color = palette.ink,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        BasicTextField(
+                            value = code,
+                            onValueChange = { raw -> onCodeChange(raw.take(6)) },
+                            singleLine = true,
+                            enabled = !isConnecting,
+                            textStyle = MaterialTheme.typography.titleLarge.copy(
+                                color = palette.ink,
+                                textDirection = TextDirection.Ltr,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            cursorBrush = SolidColor(palette.primary),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight)
+                                .clip(RoundedCornerShape(radii.control))
+                                .background(palette.page)
+                                .border(
+                                    width = 1.5.dp,
+                                    color = if (errorMessage != null) palette.danger else palette.border,
+                                    shape = RoundedCornerShape(radii.control),
+                                )
+                                .padding(
+                                    horizontal = OsraTokens.spaces.md,
+                                    vertical = OsraTokens.spaces.sm,
+                                ),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) {
+                                    if (code.isEmpty()) {
+                                        Text(
+                                            text = copy.codeHint,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                textDirection = TextDirection.Content,
+                                            ),
+                                            color = palette.muted,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            },
+                        )
+                    }
+
+                    if (isConnecting || waitingMessage != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+                        ) {
+                            if (isConnecting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = palette.primary,
+                                )
+                            }
+                            waitingMessage?.let { msg ->
+                                Text(
+                                    text = msg,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        textDirection = TextDirection.Content,
+                                    ),
+                                    color = palette.muted,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    }
+
+                    errorMessage?.let { err ->
+                        Text(
+                            text = err,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                textDirection = TextDirection.Content,
+                            ),
+                            color = palette.danger,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(OsraTokens.spaces.md))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+        ) {
+            val review = copy.scannedReview
+            Button(
+                onClick = onConnect,
+                enabled = !isConnecting,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                shape = RoundedCornerShape(radii.control),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = palette.primary,
+                    contentColor = palette.onPrimary,
+                ),
+            ) {
+                Text(
+                    text = review?.confirmButton ?: copy.connectButton,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        textDirection = TextDirection.Content,
+                    ),
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            if (review != null && onCancelScan != null) {
+                OutlinedButton(
+                    onClick = onCancelScan,
+                    enabled = !isConnecting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                    shape = RoundedCornerShape(radii.control),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.ink),
+                ) {
+                    Text(
+                        text = review.cancelButton,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        maxLines = 2,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                OutlinedButton(
+                    onClick = onScanQr,
+                    enabled = !isConnecting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = OsraTokens.sizes.primaryButtonHeight),
+                    shape = RoundedCornerShape(radii.control),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.ink),
+                ) {
+                    Text(
+                        text = copy.scanQrButton,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        maxLines = 2,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OsraFamilyRulesCard(
+    card: FamilyRulesCardCopy,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OsraTheme.LocalOsraPalette.current
+    val radii = OsraTheme.LocalOsraRadii.current
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = palette.cardBorder,
+                shape = RoundedCornerShape(radii.card),
+            ),
+        color = palette.card,
+        shape = RoundedCornerShape(radii.card),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(OsraTokens.spaces.md),
+            verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.sm),
+        ) {
+            card.items.forEach { item ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(OsraTokens.spaces.xxs),
+                ) {
+                    Text(
+                        text = item.label,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.muted,
+                    )
+                    Text(
+                        text = item.value,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            textDirection = TextDirection.Content,
+                        ),
+                        color = palette.ink,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * C-05 (#1179, Pick 0 — agreement last): Final family rules agreement screen shown after pairing
  * and required grants are complete, right before opening the child home screen.
  */
@@ -922,7 +1326,9 @@ fun OnboardingFamilyAgreementScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
-            OsraTransparencyCard(card = copy.transparencyCard)
+            copy.rulesCard?.takeIf { it.items.isNotEmpty() }?.let { card ->
+                OsraFamilyRulesCard(card = card)
+            }
             copy.captureNotice?.let { notice ->
                 Text(
                     text = notice,

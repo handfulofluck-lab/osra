@@ -2,6 +2,8 @@ package com.familyshield.agent.setup
 
 import androidx.annotation.StringRes
 import com.familyshield.agent.R
+import com.familyshield.agent.network.dto.RuleSetDto
+import java.util.Locale
 
 /**
  * Plan item 1.6 — guided, verified onboarding. The pure half: which grants the agent needs, which of
@@ -61,11 +63,78 @@ object OnboardingPolicy {
 
     fun canComplete(rows: List<Row>): Boolean = missingRequired(rows).isEmpty()
 
-    /** Short progress line for the header: "5 of 7 required grants done". */
+    /** House rule (#1208 Arabic Bureau): always format user-visible counts with Western ASCII digits. */
+    fun formatWesternInt(value: Int): String = String.format(Locale.US, "%d", value)
+
+    /** Short progress line for the header: "5 of 7 steps done" or "All done. Your phone is protected." */
     fun progressLine(rows: List<Row>): String {
         val counts = counts(rows)
-        return "${counts.done} of ${counts.total} required grants done" +
-            if (counts.done == counts.total) " — protection is complete" else ""
+        return if (counts.done == counts.total) {
+            "All done. Your phone is protected."
+        } else {
+            "${formatWesternInt(counts.done)} of ${formatWesternInt(counts.total)} steps done"
+        }
+    }
+
+    /** C-05 (#1208 B2): real cached family rules shown on the agreement screen, or null when empty. */
+    data class AgreementRulesSummary(
+        val dailyLimitMinutes: Int?,
+        val bedtimeStart: String?,
+        val bedtimeEnd: String?,
+        val schoolStart: String?,
+        val schoolEnd: String?,
+        val blockedCategories: List<String>,
+    ) {
+        val isEmpty: Boolean
+            get() = dailyLimitMinutes == null &&
+                bedtimeStart == null &&
+                schoolStart == null &&
+                blockedCategories.isEmpty()
+    }
+
+    fun agreementRulesSummary(ruleSet: RuleSetDto?): AgreementRulesSummary? {
+        if (ruleSet == null) return null
+        val dailyLimit = ruleSet.screenTime.dailyLimitMinutes.takeIf { it > 0 }
+        val bedtimeStart = ruleSet.screenTime.bedtimeStart.trim().takeIf { it.isNotEmpty() }
+        val bedtimeEnd = ruleSet.screenTime.bedtimeEnd.trim().takeIf { it.isNotEmpty() }
+        val hasBedtime = bedtimeStart != null && bedtimeEnd != null && bedtimeStart != bedtimeEnd
+        val schoolStart = ruleSet.screenTime.schoolHours.start.trim().takeIf { it.isNotEmpty() }
+        val schoolEnd = ruleSet.screenTime.schoolHours.end.trim().takeIf { it.isNotEmpty() }
+        val hasSchool = ruleSet.screenTime.schoolHours.days.isNotEmpty() &&
+            schoolStart != null && schoolEnd != null && schoolStart != schoolEnd
+        val categories = ruleSet.webFilter.blockedCategories
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        val summary = AgreementRulesSummary(
+            dailyLimitMinutes = dailyLimit,
+            bedtimeStart = if (hasBedtime) bedtimeStart else null,
+            bedtimeEnd = if (hasBedtime) bedtimeEnd else null,
+            schoolStart = if (hasSchool) schoolStart else null,
+            schoolEnd = if (hasSchool) schoolEnd else null,
+            blockedCategories = categories,
+        )
+        return summary.takeUnless { it.isEmpty }
+    }
+
+    @StringRes
+    fun webCategoryLabelRes(slug: String): Int? = when (slug.trim().lowercase(Locale.US)) {
+        "pornography", "adult", "adult_content" -> R.string.c05_cat_pornography
+        "gambling" -> R.string.c05_cat_gambling
+        "drugs" -> R.string.c05_cat_drugs
+        "violence" -> R.string.c05_cat_violence
+        "weapons" -> R.string.c05_cat_weapons
+        "hate" -> R.string.c05_cat_hate
+        "self_harm" -> R.string.c05_cat_self_harm
+        "dating" -> R.string.c05_cat_dating
+        "social_media_nsfw" -> R.string.c05_cat_social_media_nsfw
+        "chat_random" -> R.string.c05_cat_chat_random
+        "proxies_vpn" -> R.string.c05_cat_proxies_vpn
+        "warez" -> R.string.c05_cat_warez
+        "ai_chatbots" -> R.string.c05_cat_ai_chatbots
+        "social_media" -> R.string.c05_cat_social_media
+        "chat" -> R.string.c05_cat_chat
+        else -> null
     }
 
     /** The same line as a resource, for a screen that must render it in the phone's language. */

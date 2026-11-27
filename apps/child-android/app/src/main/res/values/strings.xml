@@ -110,7 +110,13 @@
 
     <!-- C-05 (#1179) & #1174: transparent first-run welcome, permissions-before-pairing, agreement last. -->
     <string name="c05_step_badge_1">Step 1 of 3</string>
+    <string name="c05_step_badge_2">Step 2 of 3</string>
     <string name="c05_step_badge_3">Step 3 of 3</string>
+    <string name="c05_pair_title">Connect to your parent</string>
+    <string name="c05_pair_code_label">Your parent\'s code</string>
+    <string name="c05_pair_code_hint">6-digit code</string>
+    <string name="c05_pair_connect">Connect</string>
+    <string name="c05_pair_scan_qr">Scan QR code</string>
     <string name="c05_checks_title">What OSRA checks</string>
     <string name="c05_checks_badge">Never hidden</string>
     <string name="c05_checks_screen_time_title">Your screen time and routines</string>
@@ -128,6 +134,33 @@
     <string name="c05_agreement_title">Your family rules</string>
     <string name="c05_agreement_body">Read these together before opening your phone.</string>
     <string name="c05_agreement_finish">Done, let\'s start</string>
+    <string name="c05_rule_daily_limit_title">Daily limit</string>
+    <string name="c05_rule_time_window">%1$s – %2$s</string>
+    <string name="c05_rule_blocked_categories_title">Blocked categories</string>
+    <plurals name="c05_rule_hours">
+        <item quantity="one">%1$s hour</item>
+        <item quantity="other">%1$s hours</item>
+    </plurals>
+    <plurals name="c05_rule_minutes">
+        <item quantity="one">%1$s minute</item>
+        <item quantity="other">%1$s minutes</item>
+    </plurals>
+    <string name="c05_rule_hours_and_minutes">%1$s %2$s</string>
+    <string name="c05_cat_pornography">Pornography</string>
+    <string name="c05_cat_gambling">Gambling</string>
+    <string name="c05_cat_drugs">Drugs</string>
+    <string name="c05_cat_violence">Violence</string>
+    <string name="c05_cat_weapons">Weapons</string>
+    <string name="c05_cat_hate">Hate speech</string>
+    <string name="c05_cat_self_harm">Self-harm</string>
+    <string name="c05_cat_dating">Dating</string>
+    <string name="c05_cat_social_media_nsfw">NSFW social media</string>
+    <string name="c05_cat_chat_random">Random chat</string>
+    <string name="c05_cat_proxies_vpn">Proxies &amp; VPN</string>
+    <string name="c05_cat_warez">Piracy</string>
+    <string name="c05_cat_ai_chatbots">AI chatbots</string>
+    <string name="c05_cat_social_media">Social media</string>
+    <string name="c05_cat_chat">Chat</string>
 
     <!-- PairingActivity: "protect this device", setup complete, the checklist and the status screen. -->
     <string name="setup_protect_title">Protect this device · أسرة</string>
@@ -138,8 +171,8 @@
     <string name="setup_continue_without">Continue without protection</string>
     <string name="setup_complete_title">Setup complete</string>
     <string name="setup_complete_body">The agent is now monitoring this device.</string>
-    <string name="setup_call_sms_invite">Optional: grant Call Log and SMS permissions so calls and messages are logged for safety review (log-only; the agent never becomes the default dialer).</string>
-    <string name="setup_grant_call_sms">Grant call &amp; SMS permissions</string>
+    <string name="setup_call_sms_invite">Optional: let OSRA check calls and texts for safety</string>
+    <string name="setup_grant_call_sms">Allow calls and texts</string>
     <string name="setup_open_status">Open status</string>
     <string name="setup_checklist_first_title">Finish protecting this device · أسرة</string>
     <string name="setup_checklist_title">Protection checklist · أسرة</string>
@@ -148,7 +181,7 @@
     <string name="setup_back">Back</string>
     <string name="setup_done">Done</string>
     <string name="setup_recommended">(recommended)</string>
-    <string name="setup_grant_button">Grant: %1$s</string>
+    <string name="setup_grant_button">Allow %1$s</string>
     <string name="setup_web_filter_missing">⚠️ Web filter not set up — allow the OSRA VPN (it only filters web addresses on this phone; nothing leaves the device).</string>
     <string name="setup_web_filter_setup">Set up web filter</string>
     <string name="setup_web_filter_connected">✓ Web filter: connected (SafeSearch, blocked sites, pause-internet)</string>
@@ -215,8 +248,8 @@
     <string name="onboarding_grant_notification_why">Reads notifications from monitored apps for the safety scan.</string>
 
     <!-- The progress line, as two whole lines: the sweep forbids building it from pieces. -->
-    <string name="onboarding_progress">%1$d of %2$d required grants done</string>
-    <string name="onboarding_progress_complete">%1$d of %2$d required grants done — protection is complete</string>
+    <string name="onboarding_progress">%1$s of %2$s steps done</string>
+    <string name="onboarding_progress_complete">All done. Your phone is protected.</string>
     <!-- ADR-0021 B3: what this build cannot capture. Three whole lines, one per case. -->
     <string name="onboarding_capture_notifications">This build captures messages from the screen only. The sideloaded Full build adds notification capture.</string>
     <string name="onboarding_capture_call_sms">This build captures messages from the screen only. The sideloaded Full build adds call and SMS capture.</string>

@@ -329,7 +329,42 @@ class FirstRunOrderPolicyTest {
         val waitingLineIdx = screens.indexOf("guide.waitingLine")
         assertTrue("U74 button condition missing", openAppInfoIdx > stepLoopIdx && openAppInfoIdx < waitingLineIdx)
         assertTrue("Agreement-last composable missing", screens.contains("fun OnboardingFamilyAgreementScreen("))
+        assertTrue("B1 C-05 pairing step composable missing", screens.contains("fun OnboardingPairingStepScreen("))
+        assertTrue("B2 real family rules card composable missing", screens.contains("private fun OsraFamilyRulesCard("))
         assertTrue("Transparency card composable missing", screens.contains("private fun OsraTransparencyCard("))
+
+        // B1-B5 & Arabic Bureau wiring checks (#1208).
+        assertTrue(activity.contains("OnboardingPairingStepScreen("))
+        assertTrue(activity.contains("OnboardingPolicy.agreementRulesSummary("))
+        assertTrue(activity.contains("OnboardingPolicy.formatWesternInt("))
+        val agreementFn = activity.substringAfter("private fun renderC05Agreement(").substringBefore("private fun buildFamilyRulesCard(")
+        assertFalse(
+            "Agreement screen must show real family rules (or hide when empty), never repeat buildTransparencyCard()",
+            agreementFn.contains("buildTransparencyCard("),
+        )
+        assertTrue(enStrings.contains("<string name=\"c05_step_badge_2\">Step 2 of 3</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_pair_title\">Connect to your parent</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_pair_code_label\">Your parent\\'s code</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_pair_code_hint\">6-digit code</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_pair_connect\">Connect</string>"))
+        assertTrue(enStrings.contains("<string name=\"c05_pair_scan_qr\">Scan QR code</string>"))
+        assertTrue(enStrings.contains("<string name=\"setup_call_sms_invite\">Optional: let OSRA check calls and texts for safety</string>"))
+        assertTrue(enStrings.contains("<string name=\"setup_grant_call_sms\">Allow calls and texts</string>"))
+        assertTrue(enStrings.contains("<string name=\"onboarding_progress\">%1\$s of %2\$s steps done</string>"))
+        assertTrue(enStrings.contains("<string name=\"onboarding_progress_complete\">All done. Your phone is protected.</string>"))
+        assertTrue(enStrings.contains("<string name=\"setup_grant_button\">Allow %1\$s</string>"))
+        assertTrue(arStrings.contains("<string name=\"setup_welcome_body\">بضع خطوات ليساعدك أهلك في الحفاظ على أمان هذا الهاتف.</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_agreement_finish\">تم، لنبدأ</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_pair_title\">الربط بهاتف أهلك</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_pair_code_label\">الرمز من هاتف أهلك</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_pair_code_hint\">رمز من 6 أرقام</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_pair_connect\">ربط</string>"))
+        assertTrue(arStrings.contains("<string name=\"c05_pair_scan_qr\">مسح رمز QR</string>"))
+        assertTrue(arStrings.contains("<string name=\"onboarding_progress\">الخطوات المكتملة: %1\$s من %2\$s</string>"))
+        assertTrue(arStrings.contains("<string name=\"onboarding_progress_complete\">اكتمل كل شيء. هاتفك محمي الآن.</string>"))
+        assertTrue(arStrings.contains("<string name=\"setup_grant_button\">منح إذن: %1\$s</string>"))
+        assertTrue(arStrings.contains("<string name=\"setup_call_sms_invite\">اختياري: السماح لتطبيق أسرة للأطفال بفحص المكالمات والرسائل القصيرة حفاظًا على سلامتك.</string>"))
+        assertTrue(arStrings.contains("<string name=\"setup_grant_call_sms\">السماح بالمكالمات والرسائل القصيرة</string>"))
 
         // #1174 + osra-security#80: PairingActivity routes unpaired flow and latches completion.
         val policySource = File(root, "java/com/familyshield/agent/setup/FirstRunOrderPolicy.kt").readText()
@@ -380,7 +415,13 @@ class FirstRunOrderPolicyTest {
 
         val c05Keys = listOf(
             "c05_step_badge_1",
+            "c05_step_badge_2",
             "c05_step_badge_3",
+            "c05_pair_title",
+            "c05_pair_code_label",
+            "c05_pair_code_hint",
+            "c05_pair_connect",
+            "c05_pair_scan_qr",
             "c05_checks_title",
             "c05_checks_badge",
             "c05_checks_screen_time_title",
@@ -398,6 +439,10 @@ class FirstRunOrderPolicyTest {
             "c05_agreement_title",
             "c05_agreement_body",
             "c05_agreement_finish",
+            "c05_rule_daily_limit_title",
+            "c05_rule_time_window",
+            "c05_rule_blocked_categories_title",
+            "c05_rule_hours_and_minutes",
         )
         for (key in c05Keys) {
             assertTrue("EN strings missing $key", enStrings.contains("name=\"$key\""))

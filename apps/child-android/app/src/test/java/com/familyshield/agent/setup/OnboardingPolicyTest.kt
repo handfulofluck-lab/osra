@@ -1,6 +1,11 @@
 package com.familyshield.agent.setup
 
+import com.familyshield.agent.network.dto.RuleSetDto
+import com.familyshield.agent.network.dto.SchoolHoursDto
+import com.familyshield.agent.network.dto.ScreenTimeRuleDto
+import com.familyshield.agent.network.dto.WebFilterRuleDto
 import com.familyshield.agent.setup.OnboardingPolicy.Grant
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -35,7 +40,7 @@ class OnboardingPolicyTest {
     fun `cannot complete while a required grant is missing, can with only recommended ones missing`() {
         val allButBattery = OnboardingPolicy.rows { it != Grant.BATTERY && it != Grant.USB_DEBUGGING }
         assertTrue(OnboardingPolicy.canComplete(allButBattery))
-        assertEquals("8 of 8 required grants done — protection is complete", OnboardingPolicy.progressLine(allButBattery))
+        assertEquals("All done. Your phone is protected.", OnboardingPolicy.progressLine(allButBattery))
 
         val noNotificationOnFull = OnboardingPolicy.rows(notificationCaptureAvailable = true) { it != Grant.NOTIFICATION_LISTENER }
         assertFalse(OnboardingPolicy.canComplete(noNotificationOnFull))
@@ -44,7 +49,7 @@ class OnboardingPolicyTest {
         val noOverlay = OnboardingPolicy.rows { it != Grant.OVERLAY }
         assertFalse(OnboardingPolicy.canComplete(noOverlay))
         assertEquals(listOf(Grant.OVERLAY), OnboardingPolicy.missingRequired(noOverlay))
-        assertEquals("7 of 8 required grants done", OnboardingPolicy.progressLine(noOverlay))
+        assertEquals("7 of 8 steps done", OnboardingPolicy.progressLine(noOverlay))
 
         val nothing = OnboardingPolicy.rows { false }
         assertEquals(8, OnboardingPolicy.missingRequired(nothing).size)
@@ -88,8 +93,8 @@ class OnboardingPolicyTest {
         assertTrue(full.any { it.grant == OnboardingPolicy.Grant.NOTIFICATION_LISTENER })
         assertFalse(play.any { it.grant == OnboardingPolicy.Grant.NOTIFICATION_LISTENER })
         // Full requires notification access (8 grants); Play omits it and stays at 7 required grants.
-        assertEquals("0 of 8 required grants done", OnboardingPolicy.progressLine(full))
-        assertEquals("0 of 7 required grants done", OnboardingPolicy.progressLine(play))
+        assertEquals("0 of 8 steps done", OnboardingPolicy.progressLine(full))
+        assertEquals("0 of 7 steps done", OnboardingPolicy.progressLine(play))
         val playAllGranted = OnboardingPolicy.rows(notificationCaptureAvailable = false) { true }
         assertTrue(OnboardingPolicy.canComplete(playAllGranted))
         assertTrue(OnboardingPolicy.canComplete(OnboardingPolicy.rows(notificationCaptureAvailable = true) { true }))
@@ -121,5 +126,68 @@ class OnboardingPolicyTest {
         assertFalse(OnboardingPolicy.usbDebuggingOff(1))
         assertTrue(OnboardingPolicy.usbDebuggingOff(0))
         assertTrue(OnboardingPolicy.usbDebuggingOff(null))
+    }
+
+    @Test
+    fun `#1208 - formatWesternInt emits Western ASCII digits even under Arabic-Indic default locale`() {
+        val prev = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.forLanguageTag("ar-AE-u-nu-arab"))
+            val formatted = OnboardingPolicy.formatWesternInt(8)
+            assertEquals("8", formatted)
+            val arLine = String.format(
+                Locale.getDefault(),
+                "الخطوات المكتملة: %1\$s من %2\$s",
+                OnboardingPolicy.formatWesternInt(0),
+                OnboardingPolicy.formatWesternInt(8),
+            )
+            assertEquals("الخطوات المكتملة: 0 من 8", arLine)
+            assertFalse(
+                "No Arabic-Indic digits may appear in progress line: $arLine",
+                arLine.any { it in '\u0660'..'\u0669' || it in '\u06F0'..'\u06F9' },
+            )
+        } finally {
+            Locale.setDefault(prev)
+        }
+    }
+
+    @Test
+    fun `#1208 B2 - agreementRulesSummary hides when null or empty and lists real family rules when present`() {
+        assertNull(OnboardingPolicy.agreementRulesSummary(null))
+        assertNull(
+            OnboardingPolicy.agreementRulesSummary(
+                RuleSetDto(
+                    screenTime = ScreenTimeRuleDto(
+                        dailyLimitMinutes = 0,
+                        bedtimeStart = "",
+                        bedtimeEnd = "",
+                        schoolHours = SchoolHoursDto(days = emptyList()),
+                    ),
+                    webFilter = WebFilterRuleDto(blockedCategories = emptyList()),
+                ),
+            ),
+        )
+
+        val populated = OnboardingPolicy.agreementRulesSummary(
+            RuleSetDto(
+                screenTime = ScreenTimeRuleDto(
+                    dailyLimitMinutes = 120,
+                    bedtimeStart = "21:00",
+                    bedtimeEnd = "07:00",
+                    schoolHours = SchoolHoursDto(start = "08:00", end = "14:30", days = listOf(1, 2, 3, 4, 5)),
+                ),
+                webFilter = WebFilterRuleDto(blockedCategories = listOf("pornography", "gambling", "pornography")),
+            ),
+        )
+        assertNotNull(populated)
+        assertEquals(120, populated!!.dailyLimitMinutes)
+        assertEquals("21:00", populated.bedtimeStart)
+        assertEquals("07:00", populated.bedtimeEnd)
+        assertEquals("08:00", populated.schoolStart)
+        assertEquals("14:30", populated.schoolEnd)
+        assertEquals(listOf("pornography", "gambling"), populated.blockedCategories)
+        assertNotNull(OnboardingPolicy.webCategoryLabelRes("pornography"))
+        assertNotNull(OnboardingPolicy.webCategoryLabelRes("gambling"))
+        assertNull(OnboardingPolicy.webCategoryLabelRes("unknown_category"))
     }
 }

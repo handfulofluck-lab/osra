@@ -22,6 +22,10 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
@@ -29,14 +33,19 @@ import androidx.lifecycle.lifecycleScope
 import com.familyshield.agent.ui.pairing.ChecklistCopy
 import com.familyshield.agent.ui.pairing.ChecklistRowUi
 import com.familyshield.agent.ui.pairing.FamilyAgreementCopy
+import com.familyshield.agent.ui.pairing.FamilyRuleItemCopy
+import com.familyshield.agent.ui.pairing.FamilyRulesCardCopy
 import com.familyshield.agent.ui.pairing.OnboardingChecklistScreen
 import com.familyshield.agent.ui.pairing.OnboardingFamilyAgreementScreen
 import com.familyshield.agent.ui.pairing.OnboardingLoadingScreen
+import com.familyshield.agent.ui.pairing.OnboardingPairingStepScreen
 import com.familyshield.agent.ui.pairing.OnboardingPermissionStepScreen
 import com.familyshield.agent.ui.pairing.OnboardingWelcomeScreen
+import com.familyshield.agent.ui.pairing.PairingStepCopy
 import com.familyshield.agent.ui.pairing.PermissionStepCopy
 import com.familyshield.agent.ui.pairing.RestrictedSettingsGuideCopy
 import com.familyshield.agent.ui.pairing.RoadmapCardCopy
+import com.familyshield.agent.ui.pairing.ScannedPairingReviewCopy
 import com.familyshield.agent.ui.pairing.TransparencyCardCopy
 import com.familyshield.agent.ui.pairing.TransparencyItemCopy
 import com.familyshield.agent.ui.pairing.WelcomeCopy
@@ -45,9 +54,11 @@ import com.familyshield.agent.ui.theme.OsraTheme
 import com.familyshield.agent.commands.CommandPollWorker
 import com.familyshield.agent.comms.CommsCapture
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.RuleRepository
 import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.network.DeviceUnlinker
 import com.familyshield.agent.network.ServerUrls
+import com.familyshield.agent.network.dto.RuleSetDto
 import com.familyshield.agent.security.AdminEnrolmentMessages
 import com.familyshield.agent.security.AdminEnrolmentPolicy
 import com.familyshield.agent.security.DeviceAdminManager
@@ -83,6 +94,7 @@ import org.json.JSONObject
 class PairingActivity : ComponentActivity() {
 
     @Inject lateinit var settings: AgentSettings
+    @Inject lateinit var rules: RuleRepository
     @Inject lateinit var pinStore: ParentPinStore
     @Inject lateinit var deviceAdmin: DeviceAdminManager
     /** ADR-0034 A2: a new phone is described from its first minute, beside the claim it makes. */
@@ -192,9 +204,9 @@ class PairingActivity : ComponentActivity() {
      * explicit confirm stay in this activity, so a scan can never post a pairing request by itself.
      */
     private val scanLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val prefillServer = formServer?.text?.toString().orEmpty()
-        val prefillCode = formCode?.text?.toString().orEmpty()
-        val prefillName = formName?.text?.toString().orEmpty()
+        val prefillServer = formServer?.text?.toString() ?: composeServer
+        val prefillCode = formCode?.text?.toString() ?: composeCode
+        val prefillName = formName?.text?.toString() ?: composeName
         val raw = result.data?.getStringExtra(PairQrScanActivity.EXTRA_RAW)
         if (result.resultCode == RESULT_OK && raw != null) {
             when (val state = scanFlow.scan(raw)) {
@@ -229,6 +241,9 @@ class PairingActivity : ComponentActivity() {
     private var formServer: EditText? = null
     private var formCode: EditText? = null
     private var formName: EditText? = null
+    private var composeServer: String = ""
+    private var composeCode: String = ""
+    private var composeName: String = ""
 
     private lateinit var root: LinearLayout
 
@@ -397,9 +412,15 @@ class PairingActivity : ComponentActivity() {
         }
         val review = scanFlow.state as? PairingScanFlow.State.Review
         if (review != null) outState.putString(KEY_SCANNED_QR, review.payload.encode())
-        formServer?.let { outState.putString(KEY_TYPED_SERVER, it.text.toString()) }
-        formCode?.let { outState.putString(KEY_TYPED_CODE, it.text.toString()) }
-        formName?.let { outState.putString(KEY_TYPED_NAME, it.text.toString()) }
+        (formServer?.text?.toString() ?: composeServer.takeIf { it.isNotEmpty() })?.let {
+            outState.putString(KEY_TYPED_SERVER, it)
+        }
+        (formCode?.text?.toString() ?: composeCode.takeIf { it.isNotEmpty() })?.let {
+            outState.putString(KEY_TYPED_CODE, it)
+        }
+        (formName?.text?.toString() ?: composeName.takeIf { it.isNotEmpty() })?.let {
+            outState.putString(KEY_TYPED_NAME, it)
+        }
     }
 
     override fun onResume() {
@@ -608,6 +629,22 @@ class PairingActivity : ComponentActivity() {
         statusScreenShown = false
         activeGuidedStage = null
         skippedPermissionSteps.clear()
+        if (ChildUxFlags.c05FirstRunEnabled) {
+            formServer = null
+            formCode = null
+            formName = null
+            showC05PairingStep(
+                prefillServer = prefillServer,
+                prefillCode = prefillCode,
+                prefillName = prefillName,
+                scanned = scanned,
+                scanError = scanError,
+            )
+            return
+        }
+        composeServer = ""
+        composeCode = ""
+        composeName = ""
         replaceWith {
             addView(label(getString(R.string.pair_title)))
             addView(label(getString(R.string.pair_intro)))
@@ -704,14 +741,119 @@ class PairingActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * C-05 (#1208 B1): Step 2 of 3 pairing hand-off rendered inside the Compose C-05 step scaffold.
+     * Server URL and device name are preset and hidden; the existing QR scanner (`PairQrScanActivity`)
+     * stays wired with Roadmap 3.2's explicit review-and-confirm gate.
+     */
+    private fun showC05PairingStep(
+        prefillServer: String = "",
+        prefillCode: String = "",
+        prefillName: String = "",
+        scanned: PairQrPayload? = null,
+        scanError: String? = null,
+    ) {
+        val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        val serverField = PairingServerFieldPolicy.field(
+            scannedUrl = scanned?.apiBaseUrl,
+            builtInUrl = com.familyshield.agent.BuildConfig.API_BASE,
+            typed = prefillServer,
+        )
+        val presetServer = serverField.value
+        val presetName = prefillName.trim()
+        composeServer = presetServer
+        composeCode = scanned?.code ?: prefillCode
+        composeName = presetName
+
+        val reviewCopy = scanned?.let {
+            ScannedPairingReviewCopy(
+                title = getString(R.string.pair_scanned_title),
+                codeLine = getString(R.string.pair_scanned_code, it.maskedCode()),
+                checkLine = getString(R.string.pair_scanned_check),
+                confirmButton = getString(R.string.pair_confirm_button),
+                cancelButton = getString(R.string.pair_cancel),
+            )
+        }
+        val copy = PairingStepCopy(
+            brandLabel = brand,
+            stepBadge = getString(R.string.c05_step_badge_2),
+            title = getString(R.string.c05_pair_title),
+            codeLabel = getString(R.string.c05_pair_code_label),
+            codeHint = getString(R.string.c05_pair_code_hint),
+            connectButton = getString(R.string.c05_pair_connect),
+            scanQrButton = getString(R.string.c05_pair_scan_qr),
+            wipeNotice = if (dataClearedDetected()) getString(R.string.wipe_detected_notice) else null,
+            scannedReview = reviewCopy,
+        )
+
+        replaceWithCompose {
+            var code by remember(scanned, prefillCode) { mutableStateOf(scanned?.code ?: prefillCode) }
+            var isConnecting by remember { mutableStateOf(false) }
+            var waitingMessage by remember { mutableStateOf<String?>(null) }
+            var errorMessage by remember(scanError) { mutableStateOf(scanError) }
+
+            OnboardingPairingStepScreen(
+                copy = copy,
+                code = code,
+                onCodeChange = { updated ->
+                    code = updated
+                    composeCode = updated
+                    if (errorMessage != null) errorMessage = null
+                },
+                onConnect = {
+                    val targetServer: String
+                    val targetCode: String
+                    val targetName: String
+                    if (scanned != null) {
+                        val request = scanFlow.confirm(presetName)
+                        if (request == null) {
+                            errorMessage = getString(R.string.pair_error_rescan)
+                            return@OnboardingPairingStepScreen
+                        }
+                        targetServer = request.serverUrl
+                        targetCode = request.code
+                        targetName = request.deviceName
+                    } else {
+                        targetServer = presetServer
+                        targetCode = code
+                        targetName = presetName
+                    }
+                    executePair(
+                        enteredServer = targetServer,
+                        enteredCode = targetCode,
+                        deviceName = targetName,
+                        onBusyChanged = { busy -> isConnecting = busy },
+                        onWaiting = { msg -> waitingMessage = msg },
+                        onError = { msg ->
+                            waitingMessage = null
+                            errorMessage = msg
+                        },
+                    )
+                },
+                onScanQr = { startScan() },
+                onCancelScan = if (scanned != null) {
+                    {
+                        scanFlow.cancel()
+                        showForm()
+                    }
+                } else {
+                    null
+                },
+                isConnecting = isConnecting,
+                waitingMessage = waitingMessage,
+                errorMessage = errorMessage,
+            )
+        }
+    }
+
     private fun startScan() {
         scanFlow.cancel()
         runCatching { scanLauncher.launch(Intent(this, PairQrScanActivity::class.java)) }
             .onFailure {
                 showForm(
-                    formServer?.text?.toString().orEmpty(),
-                    formCode?.text?.toString().orEmpty(),
-                    formName?.text?.toString().orEmpty(),
+                    formServer?.text?.toString() ?: composeServer,
+                    formCode?.text?.toString() ?: composeCode,
+                    formName?.text?.toString() ?: composeName,
                     scanError = getString(R.string.pair_no_camera),
                 )
             }
@@ -726,35 +868,61 @@ class PairingActivity : ComponentActivity() {
         progress: ProgressBar,
         error: TextView,
     ) {
+        executePair(
+            enteredServer = enteredServer,
+            enteredCode = enteredCode,
+            deviceName = deviceName,
+            onBusyChanged = { busy ->
+                pairButton.isEnabled = !busy
+                progress.visibility = if (busy) View.VISIBLE else View.GONE
+            },
+            onWaiting = { msg ->
+                error.setTextColor(0xFF444444.toInt())
+                error.text = msg
+                error.visibility = View.VISIBLE
+            },
+            onError = { msg ->
+                error.setTextColor(0xFFB00020.toInt())
+                if (msg == null) {
+                    error.visibility = View.GONE
+                } else {
+                    error.text = msg
+                    error.visibility = View.VISIBLE
+                }
+            },
+        )
+    }
+
+    private fun executePair(
+        enteredServer: String,
+        enteredCode: String,
+        deviceName: String,
+        onBusyChanged: (Boolean) -> Unit,
+        onWaiting: (String) -> Unit,
+        onError: (String?) -> Unit,
+    ) {
         val serverUrl = enteredServer.trim()
         if (serverUrl.isBlank()) {
-            error.text = getString(R.string.pair_error_server)
-            error.visibility = View.VISIBLE
+            onError(getString(R.string.pair_error_server))
             return
         }
         val code = Digits.normalize(enteredCode.trim())
         if (!code.matches(Regex("\\d{6}"))) {
-            error.text = getString(R.string.pair_error_code)
-            error.visibility = View.VISIBLE
+            onError(getString(R.string.pair_error_code))
             return
         }
-        pairButton.isEnabled = false
-        progress.visibility = View.VISIBLE
-        error.visibility = View.GONE
+        onBusyChanged(true)
+        onError(null)
         val name = deviceName.trim()
         lifecycleScope.launch {
             val result = runCatching {
                 claim(serverUrl, code, name) {
                     // Plan 2.7: the code is claimed; nothing is paired until the parent taps Allow.
-                    error.setTextColor(0xFF444444.toInt())
-                    error.text = getString(R.string.pair_waiting)
-                    error.visibility = View.VISIBLE
+                    onWaiting(getString(R.string.pair_waiting))
                 }
             }
-            pairButton.isEnabled = true
-            progress.visibility = View.GONE
-            error.setTextColor(0xFFB00020.toInt())
-            error.visibility = View.GONE
+            onBusyChanged(false)
+            onError(null)
             result.onSuccess { pairing ->
                 if (settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)) {
                     val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
@@ -768,12 +936,10 @@ class PairingActivity : ComponentActivity() {
                 } else {
                     // osra-security#8 F2 follow-up: the secure store could not persist the pairing, so nothing
                     // was started and nothing is cached as paired. The form already names the state above.
-                    error.text = getString(R.string.pairing_secure_store_failed)
-                    error.visibility = View.VISIBLE
+                    onError(getString(R.string.pairing_secure_store_failed))
                 }
             }.onFailure { e ->
-                error.text = userMessage(e)
-                error.visibility = View.VISIBLE
+                onError(userMessage(e))
             }
         }
     }
@@ -923,33 +1089,15 @@ class PairingActivity : ComponentActivity() {
         statusScreenShown = false
         activeGuidedStage = GuidedStage.COMPLETE
         if (ChildUxFlags.c05FirstRunEnabled) {
-            val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
-            val noticeRes = OnboardingPolicy.captureNoticeRes(
-                BuildConfig.CAPTURE_NOTIFICATIONS,
-                BuildConfig.CAPTURE_CALL_SMS,
-            )
-            val copy = FamilyAgreementCopy(
-                brandLabel = brand,
-                stepBadge = getString(R.string.c05_step_badge_3),
-                title = getString(R.string.c05_agreement_title),
-                body = getString(R.string.c05_agreement_body),
-                progressLine = progressLine(rows),
-                transparencyCard = buildTransparencyCard(),
-                captureNotice = noticeRes?.let { getString(it) },
-                optionalCallSmsPrompt = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_call_sms_invite) else null,
-                optionalCallSmsButton = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_grant_call_sms) else null,
-                finishButton = getString(R.string.c05_agreement_finish),
-            )
-            replaceWithCompose {
-                OnboardingFamilyAgreementScreen(
-                    copy = copy,
-                    onGrantCallSms = if (BuildConfig.CAPTURE_CALL_SMS) {
-                        { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
-                    } else {
-                        null
-                    },
-                    onFinish = { finishGuidedSetupAndShowStatus() },
-                )
+            val cached = rules.cachedRules()
+            renderC05Agreement(rows, cached)
+            if (cached == null) {
+                lifecycleScope.launch {
+                    val disk = rules.currentRules()
+                    if (disk != null && activeGuidedStage == GuidedStage.COMPLETE) {
+                        renderC05Agreement(rows, disk)
+                    }
+                }
             }
             return
         }
@@ -1611,9 +1759,126 @@ class PairingActivity : ComponentActivity() {
 
     private fun label(text: String): TextView = TextView(this).apply { this.text = text }
 
-    /** The header line, resolved in the phone's language from the policy's own decision. */
+    private fun renderC05Agreement(rows: List<OnboardingPolicy.Row>, ruleSet: RuleSetDto?) {
+        val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
+        val noticeRes = OnboardingPolicy.captureNoticeRes(
+            BuildConfig.CAPTURE_NOTIFICATIONS,
+            BuildConfig.CAPTURE_CALL_SMS,
+        )
+        val copy = FamilyAgreementCopy(
+            brandLabel = brand,
+            stepBadge = getString(R.string.c05_step_badge_3),
+            title = getString(R.string.c05_agreement_title),
+            body = getString(R.string.c05_agreement_body),
+            progressLine = progressLine(rows),
+            rulesCard = buildFamilyRulesCard(ruleSet),
+            captureNotice = noticeRes?.let { getString(it) },
+            optionalCallSmsPrompt = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_call_sms_invite) else null,
+            optionalCallSmsButton = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_grant_call_sms) else null,
+            finishButton = getString(R.string.c05_agreement_finish),
+        )
+        replaceWithCompose {
+            OnboardingFamilyAgreementScreen(
+                copy = copy,
+                onGrantCallSms = if (BuildConfig.CAPTURE_CALL_SMS) {
+                    { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
+                } else {
+                    null
+                },
+                onFinish = { finishGuidedSetupAndShowStatus() },
+            )
+        }
+    }
+
+    /**
+     * C-05 (#1208 B2): builds the real family rules summary from the cached [RuleSetDto] (daily
+     * limit, bedtime, school hours, blocked categories). Returns null when there are no cached
+     * rules so the agreement screen hides the section instead of repeating "What OSRA checks".
+     */
+    private fun buildFamilyRulesCard(ruleSet: RuleSetDto?): FamilyRulesCardCopy? {
+        val summary = OnboardingPolicy.agreementRulesSummary(ruleSet) ?: return null
+        val items = buildList {
+            summary.dailyLimitMinutes?.let { mins ->
+                add(
+                    FamilyRuleItemCopy(
+                        label = getString(R.string.c05_rule_daily_limit_title),
+                        value = formatRuleDuration(mins),
+                    ),
+                )
+            }
+            if (summary.bedtimeStart != null && summary.bedtimeEnd != null) {
+                add(
+                    FamilyRuleItemCopy(
+                        label = getString(R.string.block_window_bedtime),
+                        value = getString(R.string.c05_rule_time_window, summary.bedtimeStart, summary.bedtimeEnd),
+                    ),
+                )
+            }
+            if (summary.schoolStart != null && summary.schoolEnd != null) {
+                add(
+                    FamilyRuleItemCopy(
+                        label = getString(R.string.block_window_school),
+                        value = getString(R.string.c05_rule_time_window, summary.schoolStart, summary.schoolEnd),
+                    ),
+                )
+            }
+            if (summary.blockedCategories.isNotEmpty()) {
+                val sep = getString(R.string.list_separator)
+                val labels = summary.blockedCategories.joinToString(sep) { slug ->
+                    OnboardingPolicy.webCategoryLabelRes(slug)?.let { getString(it) } ?: slug
+                }
+                add(
+                    FamilyRuleItemCopy(
+                        label = getString(R.string.c05_rule_blocked_categories_title),
+                        value = labels,
+                    ),
+                )
+            }
+        }
+        return items.takeIf { it.isNotEmpty() }?.let { FamilyRulesCardCopy(it) }
+    }
+
+    private fun formatRuleDuration(totalMinutes: Int): String {
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+        val hoursStr = if (hours > 0) {
+            resources.getQuantityString(
+                R.plurals.c05_rule_hours,
+                hours,
+                OnboardingPolicy.formatWesternInt(hours),
+            )
+        } else {
+            null
+        }
+        val minsStr = if (minutes > 0 || hours == 0) {
+            resources.getQuantityString(
+                R.plurals.c05_rule_minutes,
+                minutes,
+                OnboardingPolicy.formatWesternInt(minutes),
+            )
+        } else {
+            null
+        }
+        return when {
+            hoursStr != null && minsStr != null -> getString(R.string.c05_rule_hours_and_minutes, hoursStr, minsStr)
+            hoursStr != null -> hoursStr
+            else -> minsStr.orEmpty()
+        }
+    }
+
+    /** The header line, resolved in the phone's language with Western digits (#1208 Arabic Bureau). */
     private fun progressLine(rows: List<OnboardingPolicy.Row>): String =
-        OnboardingPolicy.progressLineRes(rows).let { getString(it.textRes, it.done, it.total) }
+        OnboardingPolicy.progressLineRes(rows).let { line ->
+            if (line.textRes == R.string.onboarding_progress_complete) {
+                getString(line.textRes)
+            } else {
+                getString(
+                    line.textRes,
+                    OnboardingPolicy.formatWesternInt(line.done),
+                    OnboardingPolicy.formatWesternInt(line.total),
+                )
+            }
+        }
 
     private fun editText(initial: String, inputType: Int): EditText =
         EditText(this).apply {
