@@ -212,11 +212,155 @@ class LockEnforcementPolicyTest {
     }
 
     /**
+     * Codex review on #1302: an active protected own screen (PIN gate, Ring, SOS, ResetCode) must
+     * stay uncovered even when a non-exempt secondary app is visible beside it in split screen or
+     * PiP, while an active LockActivity in PiP or split screen still re-raises.
+     *
+     * Mutant that breaks this test: letting `active == ownPackage` with `ownWindowClass in
+     * PROTECTED_OWN_CLASSES` fall through to the secondary-window scan, or short-circuiting
+     * `LockActivity` PiP/split-screen detection.
+     */
+    @Test
+    fun `active protected own screens stay uncovered with secondary visible app while LockActivity PiP still reraises`() {
+        val prodOwn = "com.osratech.child.full"
+        val splitWithBlocked = WindowSnapshot(
+            activePackage = prodOwn,
+            windows = listOf(
+                VisibleWindow(prodOwn, inPictureInPicture = false),
+                VisibleWindow("com.whatsapp", inPictureInPicture = false),
+            ),
+        )
+        for (protectedClass in LockEnforcementPolicy.PROTECTED_OWN_CLASSES) {
+            assertFalse(
+                "$protectedClass must not be covered even when a secondary app is visible",
+                LockEnforcementPolicy.shouldReraise("locked", splitWithBlocked, prodOwn, facts, ownWindowClass = protectedClass),
+            )
+        }
+        val lockInPip = WindowSnapshot(
+            activePackage = prodOwn,
+            windows = listOf(VisibleWindow(prodOwn, inPictureInPicture = true)),
+        )
+        assertTrue(
+            "LockActivity in PiP must still trigger reraise",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                lockInPip,
+                prodOwn,
+                facts,
+                ownWindowClass = LockEnforcementPolicy.LOCK_ACTIVITY_CLASS,
+            ),
+        )
+        assertTrue(
+            "LockActivity beside a non-exempt split app must still trigger reraise",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                splitWithBlocked,
+                prodOwn,
+                facts,
+                ownWindowClass = LockEnforcementPolicy.LOCK_ACTIVITY_CLASS,
+            ),
+        )
+        val allowedWithOwnSplit = WindowSnapshot(
+            activePackage = "com.duolingo",
+            windows = listOf(
+                VisibleWindow("com.duolingo", inPictureInPicture = false),
+                VisibleWindow(prodOwn, inPictureInPicture = false),
+            ),
+        )
+        assertTrue(
+            "non-exempt own window in inactive split pane beside always-allowed app must trigger reraise",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                allowedWithOwnSplit,
+                prodOwn,
+                facts,
+                alwaysAllowedPackages = setOf("com.duolingo"),
+                ownWindowClass = "com.familyshield.agent.setup.PairingActivity",
+            ),
+        )
+        assertTrue(
+            "UNKNOWN_OWN_WINDOW_CLASS sentinel must trigger reraise",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                allowedWithOwnSplit,
+                prodOwn,
+                facts,
+                alwaysAllowedPackages = setOf("com.duolingo"),
+                ownWindowClass = LockEnforcementPolicy.UNKNOWN_OWN_WINDOW_CLASS,
+            ),
+        )
+        assertFalse(
+            "exempt LockActivity beside always-allowed app stays uncovered",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                allowedWithOwnSplit,
+                prodOwn,
+                facts,
+                alwaysAllowedPackages = setOf("com.duolingo"),
+                ownWindowClass = LockEnforcementPolicy.LOCK_ACTIVITY_CLASS,
+            ),
+        )
+    }
+
+    /**
+     * Codex review on #1302: `shouldRaiseOnUserPresent` routes `ACTION_USER_PRESENT` through the
+     * same emergency, always-allowed, and protected-screen exemptions while restoring Lock after
+     * keyguard teardown.
+     *
+     * Mutant that breaks this test: bypassing emergency/protected exemptions on `ACTION_USER_PRESENT`
+     * or refusing to raise when `activePackage` is transient `com.android.systemui` / null.
+     */
+    @Test
+    fun `shouldRaiseOnUserPresent preserves exemptions and raises over transient keyguard teardown or Child Home`() {
+        val prodOwn = "com.osratech.child.full"
+        val emptySnap = WindowSnapshot(activePackage = null, windows = emptyList())
+        val systemUiSnap = WindowSnapshot(
+            activePackage = "com.android.systemui",
+            windows = listOf(VisibleWindow("com.android.systemui", inPictureInPicture = false)),
+        )
+        val dialerSnap = WindowSnapshot(
+            activePackage = "com.samsung.android.emergency",
+            windows = listOf(VisibleWindow("com.samsung.android.emergency", inPictureInPicture = false)),
+        )
+        val ownSnap = WindowSnapshot(
+            activePackage = prodOwn,
+            windows = listOf(VisibleWindow(prodOwn, inPictureInPicture = false)),
+        )
+        val allowedSnap = WindowSnapshot(
+            activePackage = "com.duolingo",
+            windows = listOf(VisibleWindow("com.duolingo", inPictureInPicture = false)),
+        )
+
+        assertTrue("transient systemui with no lock screen showing raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", systemUiSnap, prodOwn, facts))
+        assertTrue("empty snapshot with no lock screen showing raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", emptySnap, prodOwn, facts))
+        assertTrue("Child Home PairingActivity raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", ownSnap, prodOwn, facts, ownWindowClass = "com.familyshield.agent.setup.PairingActivity"))
+        assertTrue("own package with null class and no lock screen showing raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", ownSnap, prodOwn, facts, ownWindowClass = null, lockScreenShowing = false))
+
+        assertFalse("emergency dialer stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", dialerSnap, prodOwn, facts))
+        assertFalse("active PIN gate stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", ownSnap, prodOwn, facts, ownWindowClass = "com.familyshield.agent.security.TamperGuardActivity"))
+        assertFalse("solo always-allowed app stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", allowedSnap, prodOwn, facts, alwaysAllowedPackages = setOf("com.duolingo")))
+        assertFalse("already-showing LockActivity does not relaunch", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", systemUiSnap, prodOwn, facts, lockScreenShowing = true))
+        assertFalse("ringing call stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", systemUiSnap, prodOwn, facts, callRinging = true))
+        assertFalse("ongoing answered call stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", systemUiSnap, prodOwn, facts, inCall = true))
+        val systemUiWithInCall = WindowSnapshot(
+            activePackage = "com.android.systemui",
+            windows = listOf(
+                VisibleWindow("com.android.systemui", inPictureInPicture = false),
+                VisibleWindow("com.samsung.android.incallui", inPictureInPicture = false),
+            ),
+        )
+        assertFalse("visible incallui window beside systemui stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", systemUiWithInCall, prodOwn, facts))
+        assertFalse("ringing alarm stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", systemUiSnap, prodOwn, facts, alarmRinging = true))
+    }
+
+    /**
      * osra-security#95: wiring check on `AccessibilityMonitorService` — own-package branch runs
      * `enforceLockState` before returning, `enforceLockState` defers while keyguard is locked, and
-     * `ACTION_USER_PRESENT` is registered to re-arm and check lock after keyguard dismissal.
+     * `screenStateReceiver`'s `ACTION_USER_PRESENT` branch calls `onUserPresentLockCheck()` which
+     * resets `lockRetryBudget` and delegates to `LockEnforcementPolicy.shouldRaiseOnUserPresent`.
      *
-     * Mutant that breaks this test: deleting any of the three hooks in `AccessibilityMonitorService.kt`.
+     * Mutant that breaks this test: deleting any of the hooks, or removing `onUserPresentLockCheck()`
+     * from `screenStateReceiver`'s `Intent.ACTION_USER_PRESENT` branch.
      */
     @Test
     fun `AccessibilityMonitorService wires own-package lock enforcement, keyguard check, and ACTION_USER_PRESENT`() {
@@ -238,9 +382,28 @@ class LockEnforcementPolicyTest {
             "screenFilter must register ACTION_USER_PRESENT",
             src.contains("addAction(Intent.ACTION_USER_PRESENT)"),
         )
+        val receiverBody = src.substringAfter("private val screenStateReceiver =").substringBefore("private val filterRecoveryCovers")
+        val userPresentCase = receiverBody.substringAfter("Intent.ACTION_USER_PRESENT ->")
+        assertTrue(
+            "screenStateReceiver ACTION_USER_PRESENT branch must call onUserPresentLockCheck()",
+            userPresentCase.contains("onUserPresentLockCheck()"),
+        )
+        val userPresentFn = src.substringAfter("private fun onUserPresentLockCheck()").substringBefore("private fun enforceLockState(")
         assertTrue(
             "onUserPresentLockCheck must reset lockRetryBudget",
-            src.contains("lockRetryBudget.reset()"),
+            userPresentFn.contains("lockRetryBudget.reset()"),
+        )
+        assertTrue(
+            "onUserPresentLockCheck must delegate to LockEnforcementPolicy.shouldRaiseOnUserPresent",
+            userPresentFn.contains("LockEnforcementPolicy.shouldRaiseOnUserPresent("),
+        )
+        assertTrue(
+            "onUserPresentLockCheck must pass TelecomManager inCall state",
+            userPresentFn.contains("isInCall == true") && userPresentFn.contains("inCall = inCall"),
+        )
+        assertTrue(
+            "enforceLockState must use resolveOwnLockWindowClass()",
+            enforceLockFn.contains("val ownWindowClass = resolveOwnLockWindowClass()"),
         )
     }
 }

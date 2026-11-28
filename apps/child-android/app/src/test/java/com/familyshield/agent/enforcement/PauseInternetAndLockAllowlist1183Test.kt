@@ -266,11 +266,22 @@ class PauseInternetAndLockAllowlist1183Test {
         val enforceLockFn = service.substringAfter("private fun enforceLockState(")
             .substringBefore("private fun collectTexts(")
         assertTrue("enforceLockState must read alwaysAllowedApps", enforceLockFn.contains("alwaysAllowedApps"))
+        val normalizedEnforceLock = enforceLockFn.replace(Regex("\\s+"), " ")
         assertTrue(
-            "enforceLockState must pass alwaysAllowed and ownWindowClass to LockEnforcementPolicy",
-            enforceLockFn.contains("LockEnforcementPolicy.shouldReraise(") &&
-                enforceLockFn.contains("alwaysAllowed") &&
-                enforceLockFn.contains("ownWindowClass"),
+            "enforceLockState must pass alwaysAllowed and ownWindowClass to WindowSnapshot shouldReraise",
+            normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise( mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass, )",
+            ) || normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass)",
+            ),
+        )
+        assertTrue(
+            "enforceLockState fallback must pass alwaysAllowed and ownWindowClass to shouldReraise",
+            normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise( mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass, )",
+            ) || normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass)",
+            ),
         )
 
         assertTrue("LockActivity must resolve launchable always-allowed shortcuts", lockActivity.contains("LockAlwaysAllowedPolicy.resolveLaunchable("))

@@ -1260,6 +1260,17 @@ class AccessibilityMonitorService : AccessibilityService() {
      * case where the platform keeps that window above the overlay; the overlay activities are
      * declared `resizeableActivity="false"` so the system launches them full-screen and leaves split.
      */
+    private fun resolveOwnLockWindowClass(): String? {
+        lastClassByPkg[packageName]?.let { return it }
+        if (!com.familyshield.agent.commands.LockActivity.isShowing &&
+            !Ringer.isRinging &&
+            !GuardGateState.showing
+        ) {
+            return LockEnforcementPolicy.UNKNOWN_OWN_WINDOW_CLASS
+        }
+        return null
+    }
+
     private fun onUserPresentLockCheck() {
         val mode = LockState.mode(this)
         if (!LockEnforcementPolicy.isLockingMode(mode)) return
@@ -1267,23 +1278,31 @@ class AccessibilityMonitorService : AccessibilityService() {
         lockRetryBudget.reset()
         lastReraiseMs = 0L
         val snapshot = windowSnapshot()
-        enforceLockState(snapshot, snapshot.activePackage)
-        if (!com.familyshield.agent.commands.LockActivity.isShowing &&
-            !calls.isRinging() &&
-            !Ringer.isRinging &&
-            (
-                snapshot.activePackage.isNullOrBlank() ||
-                    snapshot.activePackage == ShadePolicy.SHADE_PACKAGE ||
-                    (snapshot.activePackage == packageName && lastClassByPkg[packageName] == null)
+        val alwaysAllowed = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty()
+        val inCall = runCatching {
+            getSystemService(android.telecom.TelecomManager::class.java)?.isInCall == true
+        }.getOrDefault(false)
+        if (!LockEnforcementPolicy.shouldRaiseOnUserPresent(
+                mode = mode,
+                snapshot = snapshot,
+                ownPackage = packageName,
+                facts = packageFacts,
+                alwaysAllowedPackages = alwaysAllowed,
+                ownWindowClass = resolveOwnLockWindowClass(),
+                lockScreenShowing = com.familyshield.agent.commands.LockActivity.isShowing,
+                callRinging = calls.isRinging(),
+                inCall = inCall,
+                alarmRinging = Ringer.isRinging,
             )
         ) {
-            lastReraiseMs = System.currentTimeMillis()
-            startActivity(
-                Intent(this, com.familyshield.agent.commands.LockActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                    .putExtra(com.familyshield.agent.commands.LockActivity.EXTRA_MODE, mode),
-            )
+            return
         }
+        lastReraiseMs = System.currentTimeMillis()
+        startActivity(
+            Intent(this, com.familyshield.agent.commands.LockActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra(com.familyshield.agent.commands.LockActivity.EXTRA_MODE, mode),
+        )
     }
 
     private fun enforceLockState(snapshot: WindowSnapshot, fallbackPackage: String?) {
@@ -1295,7 +1314,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // Issue #1183: parent-configured always-allowed apps stay usable while locked, while any
         // non-allowed app (alone or alongside an allowed app in split-screen/PiP) still raises lock.
         val alwaysAllowed = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty()
-        val ownWindowClass = lastClassByPkg[packageName]
+        val ownWindowClass = resolveOwnLockWindowClass()
         var shouldRaise = LockEnforcementPolicy.shouldReraise(
             mode,
             snapshot,
