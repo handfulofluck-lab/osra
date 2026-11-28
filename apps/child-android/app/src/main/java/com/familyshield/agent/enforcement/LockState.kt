@@ -160,6 +160,43 @@ object LockEnforcementPolicy {
         return named && facts.isSystemApp(pkg)
     }
 
+    const val LOCK_ACTIVITY_CLASS: String = "com.familyshield.agent.commands.LockActivity"
+
+    /**
+     * Sentinel passed by [com.familyshield.agent.services.AccessibilityMonitorService] when our
+     * own package is visible before a `TYPE_WINDOW_STATE_CHANGED` class name has been recorded and
+     * no in-process lock, ring, or PIN gate is currently showing.
+     */
+    const val UNKNOWN_OWN_WINDOW_CLASS: String = "unknown_own_window"
+
+    /**
+     * Own-package enforcement/security activities other than [LOCK_ACTIVITY_CLASS] that must NEVER
+     * be covered by a `LockActivity` re-raise when active — even if another non-exempt window is
+     * visible beside them in split screen or PiP (Codex review on #1302).
+     */
+    val PROTECTED_OWN_CLASSES: Set<String> = setOf(
+        "com.familyshield.agent.commands.RingActivity",
+        "com.familyshield.agent.commands.ResetCodeActivity",
+        "com.familyshield.agent.security.TamperGuardActivity",
+        "com.familyshield.agent.security.TamperGuardTaskActivity",
+        "com.familyshield.agent.sos.SosActivity",
+    )
+
+    /**
+     * Own-package activities that are part of lock/pause/ring/PIN/SOS/reset-code enforcement and
+     * stay uncovered when [LockState] is active. Matched by fully-qualified
+     * `com.familyshield.agent.*` class name (independent of `applicationId`, matching
+     * `RingReentryPolicy`).
+     */
+    val LOCK_EXEMPT_OWN_CLASSES: Set<String> = PROTECTED_OWN_CLASSES + LOCK_ACTIVITY_CLASS
+
+    /**
+     * True when [ownWindowClass] is one of our own enforcement/security screens that Lock must
+     * stay behind, or `null` when no own-package class name was supplied.
+     */
+    fun isExemptOwnClass(ownWindowClass: String?): Boolean =
+        ownWindowClass == null || ownWindowClass in LOCK_EXEMPT_OWN_CLASSES
+
     fun isLockingMode(mode: String?): Boolean = mode != null && mode in LOCKING_MODES
 
     /** Whether seeing [foregroundPackage] on top while [mode] is active means the overlay must be re-raised. */
@@ -169,9 +206,12 @@ object LockEnforcementPolicy {
         ownPackage: String,
         facts: PackageFacts,
         alwaysAllowedPackages: Set<String> = emptySet(),
+        ownWindowClass: String? = null,
+        protectedOwnScreenShowing: Boolean = false,
     ): Boolean {
         if (!isLockingMode(mode) || foregroundPackage.isNullOrBlank()) return false
-        if (foregroundPackage == ownPackage) return false
+        if (protectedOwnScreenShowing) return false
+        if (foregroundPackage == ownPackage) return !isExemptOwnClass(ownWindowClass)
         return !isExemptPackage(foregroundPackage, facts, alwaysAllowedPackages)
     }
 
@@ -182,14 +222,18 @@ object LockEnforcementPolicy {
      *
      * Order matters:
      * 1. An active call / emergency surface is never covered, whatever else is visible (issue #80).
-     * 2. An active app that is neither ours nor exempt (including non-denied [alwaysAllowedPackages])
+     * 2. An active protected own enforcement screen ([PROTECTED_OWN_CLASSES]: PIN gate, Ring, SOS,
+     *    ResetCode) is never covered, even if a secondary window is visible beside it (#1302 review).
+     *    Our own non-enforcement UI (such as Child Home `PairingActivity`, osra-security#95) raises
+     *    the overlay immediately.
+     * 3. An active app that is neither ours nor exempt (including non-denied [alwaysAllowedPackages])
      *    raises the overlay immediately.
-     * 3. An active always-allowed app (#1183) stays uncovered ONLY if no non-exempt app is visible
+     * 4. An active always-allowed app (#1183) stays uncovered ONLY if no non-exempt app is visible
      *    beside it in split screen or PiP — so an always-allowed app cannot be used to prop open a
      *    blocked app in the other half of the screen.
-     * 4. Our own overlay in PiP is not coverage either: a PiP window floats above the app behind it,
-     *    so the policy allows the service to replace (and expand) it. The service bounds that retry
-     *    ([OverlayRetryBudget]) because the platform may refuse to leave PiP.
+     * 5. Our own lock overlay in PiP is not coverage either: a PiP window floats above the app
+     *    behind it, so the policy allows the service to replace (and expand) it. The service bounds
+     *    that retry ([OverlayRetryBudget]) because the platform may refuse to leave PiP.
      */
     fun shouldReraise(
         mode: String?,
@@ -197,11 +241,18 @@ object LockEnforcementPolicy {
         ownPackage: String,
         facts: PackageFacts,
         alwaysAllowedPackages: Set<String> = emptySet(),
+        ownWindowClass: String? = null,
+        protectedOwnScreenShowing: Boolean = false,
     ): Boolean {
         if (!isLockingMode(mode)) return false
+        if (protectedOwnScreenShowing) return false
         val active = snapshot.activePackage
         if (!active.isNullOrBlank() && active != ownPackage && isEmergencyOrSystemExempt(active, facts)) {
             return false
+        }
+        if (active == ownPackage) {
+            if (ownWindowClass in PROTECTED_OWN_CLASSES) return false
+            if (!isExemptOwnClass(ownWindowClass)) return true
         }
         val activeAllowed = !active.isNullOrBlank() &&
             active != ownPackage &&
@@ -213,8 +264,55 @@ object LockEnforcementPolicy {
         if (snapshot.windows.any { it.packageName == ownPackage && it.inPictureInPicture }) return true
         return snapshot.windows.any { window ->
             val pkg = window.packageName
-            !pkg.isNullOrBlank() && pkg != ownPackage && !isExemptPackage(pkg, facts, alwaysAllowedPackages)
+            !pkg.isNullOrBlank() && if (pkg == ownPackage) {
+                !isExemptOwnClass(ownWindowClass)
+            } else {
+                !isExemptPackage(pkg, facts, alwaysAllowedPackages)
+            }
         }
+    }
+
+    /**
+     * Pure decision for `ACTION_USER_PRESENT` lock recovery (osra-security#95, Codex #1302 review).
+     *
+     * Routes keyguard-dismissal recovery through the same emergency, call, always-allowed, and
+     * protected own-screen exemptions as [shouldReraise], while raising immediately when no lock
+     * screen is showing and the post-keyguard snapshot reports no active window, transient
+     * `com.android.systemui` teardown, or our own package before its activity class is recorded.
+     */
+    fun shouldRaiseOnUserPresent(
+        mode: String?,
+        snapshot: WindowSnapshot,
+        ownPackage: String,
+        facts: PackageFacts,
+        alwaysAllowedPackages: Set<String> = emptySet(),
+        ownWindowClass: String? = null,
+        lockScreenShowing: Boolean = false,
+        protectedOwnScreenShowing: Boolean = false,
+        callRinging: Boolean = false,
+        inCall: Boolean = false,
+        alarmRinging: Boolean = false,
+    ): Boolean {
+        if (!isLockingMode(mode)) return false
+        if (callRinging || inCall || alarmRinging || protectedOwnScreenShowing) return false
+        val active = snapshot.activePackage
+        if (active == ownPackage && ownWindowClass in PROTECTED_OWN_CLASSES) return false
+        val hasCallOrEmergencyWindow = snapshot.windows.any { window ->
+            val pkg = window.packageName
+            !pkg.isNullOrBlank() &&
+                pkg != ownPackage &&
+                pkg != "com.android.systemui" &&
+                isEmergencyOrSystemExempt(pkg, facts)
+        }
+        if (hasCallOrEmergencyWindow) return false
+        if (shouldReraise(mode, snapshot, ownPackage, facts, alwaysAllowedPackages, ownWindowClass)) {
+            return true
+        }
+        if (lockScreenShowing) return false
+        val transientSystemUi = active == "com.android.systemui"
+        if (!active.isNullOrBlank() && active != ownPackage && !transientSystemUi) return false
+        if (active == ownPackage && ownWindowClass != null) return false
+        return true
     }
 
     /** Minimum gap between two re-raises, so a burst of window events does not start the activity repeatedly. */

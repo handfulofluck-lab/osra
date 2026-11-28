@@ -266,7 +266,27 @@ class PauseInternetAndLockAllowlist1183Test {
         val enforceLockFn = service.substringAfter("private fun enforceLockState(")
             .substringBefore("private fun collectTexts(")
         assertTrue("enforceLockState must read alwaysAllowedApps", enforceLockFn.contains("alwaysAllowedApps"))
-        assertTrue("enforceLockState must pass alwaysAllowed to LockEnforcementPolicy", enforceLockFn.contains("shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed)"))
+        val normalizedEnforceLock = enforceLockFn.replace(Regex("\\s+"), " ")
+        assertTrue(
+            "enforceLockState must read GuardGateState.showing into protectedOwnScreenShowing",
+            normalizedEnforceLock.contains("val protectedOwnScreenShowing = GuardGateState.showing"),
+        )
+        assertTrue(
+            "enforceLockState must pass alwaysAllowed, ownWindowClass, and protectedOwnScreenShowing to WindowSnapshot shouldReraise",
+            normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise( mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing, )",
+            ) || normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing)",
+            ),
+        )
+        assertTrue(
+            "enforceLockState fallback must pass alwaysAllowed, ownWindowClass, and protectedOwnScreenShowing to shouldReraise",
+            normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise( mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing, )",
+            ) || normalizedEnforceLock.contains(
+                "LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing)",
+            ),
+        )
 
         assertTrue("LockActivity must resolve launchable always-allowed shortcuts", lockActivity.contains("LockAlwaysAllowedPolicy.resolveLaunchable("))
         assertTrue("LockActivity must render heading string resource", lockActivity.contains("R.string.lock_always_allowed_heading"))

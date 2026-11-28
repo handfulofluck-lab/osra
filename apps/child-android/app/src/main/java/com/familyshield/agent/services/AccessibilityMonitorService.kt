@@ -336,6 +336,12 @@ class AccessibilityMonitorService : AccessibilityService() {
                     FilterVpnService.flushIfRunning(this@AccessibilityMonitorService)
                 }
                 Intent.ACTION_SCREEN_ON -> scheduleForegroundHeartbeat()
+                Intent.ACTION_USER_PRESENT -> {
+                    scheduleForegroundHeartbeat()
+                    // osra-security#95: re-arm lock enforcement after keyguard dismissal so LockActivity
+                    // appears immediately even when the revealed window is Child Home or emits no new event.
+                    onUserPresentLockCheck()
+                }
             }
         }
     }
@@ -369,6 +375,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         val screenFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
         }
         runCatching { registerReceiver(screenStateReceiver, screenFilter) }
         val interactiveNow = runCatching {
@@ -551,6 +558,9 @@ class AccessibilityMonitorService : AccessibilityService() {
             // is owed; until then this is a comment a reader can check, not a claim of coverage.
             specialAccessLatch = null
             restoreRingScreen(event, packageName)
+            // osra-security#95: run lock enforcement for our own non-enforcement screens (e.g. Child Home
+            // PairingActivity) before returning; LockEnforcementPolicy exempts LockActivity/PIN/Ring/SOS.
+            enforceLockState(windowSnapshot(), packageName)
             return
         }
         // Issue #175: read every visible application window once per event. The active window alone
@@ -1250,17 +1260,84 @@ class AccessibilityMonitorService : AccessibilityService() {
      * case where the platform keeps that window above the overlay; the overlay activities are
      * declared `resizeableActivity="false"` so the system launches them full-screen and leaves split.
      */
+    private fun resolveOwnLockWindowClass(): String? {
+        lastClassByPkg[packageName]?.let { return it }
+        if (!com.familyshield.agent.commands.LockActivity.isShowing &&
+            !Ringer.isRinging &&
+            !GuardGateState.showing
+        ) {
+            return LockEnforcementPolicy.UNKNOWN_OWN_WINDOW_CLASS
+        }
+        return null
+    }
+
+    private fun onUserPresentLockCheck() {
+        val mode = LockState.mode(this)
+        if (!LockEnforcementPolicy.isLockingMode(mode)) return
+        if (getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true) return
+        lockRetryBudget.reset()
+        lastReraiseMs = 0L
+        val snapshot = windowSnapshot()
+        val alwaysAllowed = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty()
+        val inCall = runCatching {
+            getSystemService(android.telecom.TelecomManager::class.java)?.isInCall == true
+        }.getOrDefault(false)
+        if (!LockEnforcementPolicy.shouldRaiseOnUserPresent(
+                mode = mode,
+                snapshot = snapshot,
+                ownPackage = packageName,
+                facts = packageFacts,
+                alwaysAllowedPackages = alwaysAllowed,
+                ownWindowClass = resolveOwnLockWindowClass(),
+                lockScreenShowing = com.familyshield.agent.commands.LockActivity.isShowing,
+                protectedOwnScreenShowing = GuardGateState.showing,
+                callRinging = calls.isRinging(),
+                inCall = inCall,
+                alarmRinging = Ringer.isRinging,
+            )
+        ) {
+            return
+        }
+        lastReraiseMs = System.currentTimeMillis()
+        startActivity(
+            Intent(this, com.familyshield.agent.commands.LockActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra(com.familyshield.agent.commands.LockActivity.EXTRA_MODE, mode),
+        )
+    }
+
     private fun enforceLockState(snapshot: WindowSnapshot, fallbackPackage: String?) {
         val mode = LockState.mode(this)
         if (!LockEnforcementPolicy.isLockingMode(mode)) return
+        // osra-security#95: never launch LockActivity while the system keyguard is still locked
+        // (LockActivity defers to keyguard per #87, so launching over keyguard/AOD only burns lockRetryBudget).
+        if (getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true) return
         // Issue #1183: parent-configured always-allowed apps stay usable while locked, while any
         // non-allowed app (alone or alongside an allowed app in split-screen/PiP) still raises lock.
         val alwaysAllowed = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty()
-        var shouldRaise = LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed)
+        val ownWindowClass = resolveOwnLockWindowClass()
+        val protectedOwnScreenShowing = GuardGateState.showing
+        var shouldRaise = LockEnforcementPolicy.shouldReraise(
+            mode,
+            snapshot,
+            packageName,
+            packageFacts,
+            alwaysAllowed,
+            ownWindowClass,
+            protectedOwnScreenShowing,
+        )
         // No window list from the OS (some OEMs): keep the #165 behaviour and decide from the
         // package resolved for the event, which is a hint but better than no re-raise at all.
         if (!shouldRaise && snapshot.windows.isEmpty() && snapshot.activePackage.isNullOrBlank()) {
-            shouldRaise = LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts, alwaysAllowed)
+            shouldRaise = LockEnforcementPolicy.shouldReraise(
+                mode,
+                fallbackPackage,
+                packageName,
+                packageFacts,
+                alwaysAllowed,
+                ownWindowClass,
+                protectedOwnScreenShowing,
+            )
         }
         if (!shouldRaise) return
         val now = System.currentTimeMillis()
