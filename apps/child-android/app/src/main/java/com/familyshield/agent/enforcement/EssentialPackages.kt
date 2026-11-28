@@ -101,6 +101,17 @@ object EssentialPackages {
     )
 
     /**
+     * Platform in-call UI packages that post an incoming call's notification (`#851` / `#828`).
+     * On One UI, `com.samsung.android.incallui` posts the incoming-call `CATEGORY_CALL` notice while
+     * `TelecomManager.defaultDialerPackage` answers `com.samsung.android.dialer`.
+     */
+    val inCallUi: Set<String> = setOf(
+        "com.android.incallui",
+        "com.google.android.incallui",
+        "com.samsung.android.incallui",
+    )
+
+    /**
      * Issue #1283: OS chrome packages that must not count toward the child's daily screen-time
      * budget (launcher, SystemUI, Settings, and OSRA itself). Shared by
      * [com.familyshield.agent.data.RuleEngine], [com.familyshield.agent.ui.home.ChildHomePolicy],
