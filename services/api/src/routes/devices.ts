@@ -8,6 +8,7 @@ import { guardianPermissions, requireAuth, requireFamily, requireOwnDevice, requ
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
+import { ATTRIBUTED_COMMANDS, actingAdultName, withByName } from "../lib/actingAdult.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
 import { commandRefusal, parseCapabilities, setupFor, withStoredGroups, withStoredProfiles } from "../lib/capabilities.js";
@@ -770,7 +771,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     }
     // Phase 2b: the command is a durable row; the response carries its id so the parent app can
     // poll /commands/history for delivered / acked / failed instead of guessing.
-    const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {}, { requestedBy: user.sub });
+    // C-04 (#1179): a client-sent `byName` is never trusted; attributed commands carry the server's own.
+    const byName = ATTRIBUTED_COMMANDS.has(parsed.data.command) ? await actingAdultName(req) : undefined;
+    const payload = withByName(parsed.data.payload ?? {}, byName);
+    const message = await enqueueDeviceCommand(id, parsed.data.command, payload, { requestedBy: user.sub });
     return { published: true, status: "pending", ...message };
   });
   /**
