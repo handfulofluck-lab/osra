@@ -1383,6 +1383,7 @@
   "p14NoRequestsYet": "لا توجد طلبات بعد",
   "p14GroupedCount": "{count, plural, =1{مرة واحدة · آخرها {time}} =2{مرتان · آخرها {time}} few{{count} مرات · آخرها {time}} many{{count} مرة · آخرها {time}} other{{count} مرة · آخرها {time}}}",
   "p12NotBlockingYet": "لم يبدأ الحظر بعد",
+  "p12IphoneBlockedSitesOnly": "على آيفون، تُحظر المواقع التي تحظرها في Safari والمتصفحات الأخرى. أما الفئات والبحث الآمن فلا تتوفر بعد على آيفون.",
   "p12AllowSite": "السماح بالموقع",
   "p12RecentlyBlocked": "المواقع المحظورة مؤخرًا",
   "p12BlockSiteTitle": "حظر موقع",

@@ -4238,6 +4238,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get p12NotBlockingYet => 'لم يبدأ الحظر بعد';
 
   @override
+  String get p12IphoneBlockedSitesOnly =>
+      'على آيفون، تُحظر المواقع التي تحظرها في Safari والمتصفحات الأخرى. أما الفئات والبحث الآمن فلا تتوفر بعد على آيفون.';
+
+  @override
   String get p12AllowSite => 'السماح بالموقع';
 
   @override

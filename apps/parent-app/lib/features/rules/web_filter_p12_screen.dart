@@ -153,6 +153,14 @@ class WebFilterP12Screen extends ConsumerWidget {
     final tokens = context.tokens;
     final devices = ref.watch(familyProvider).valueOrNull?.devicesFor(childId) ?? const <Device>[];
     final iosOnly = devices.isNotEmpty && devices.every((d) => d.platform == 'ios');
+    // #1279 order (Karim 19:38): an iPhone child whose phone reports the web
+    // filter at all is NOT "not yet available" — WebContentSettings applies
+    // blocked sites there. Only say the features are missing when the phone
+    // has reported nothing.
+    final iosState = iosOnly
+        ? devices.map((d) => d.setup?.feature('web_filter')).firstWhere((f) => f != null,
+            orElse: () => null)
+        : null;
     // #1238 review (Codex, 11:26): the browser card's affirmative sentence claims
     // active enforcement and inspection. Only say that when an Android phone
     // actually reports the filter ready; a pending, empty or degraded device list
@@ -177,7 +185,8 @@ class WebFilterP12Screen extends ConsumerWidget {
         const SizedBox(height: AppSpace.md),
         _safeSearchAndYouTubeCard(context, l10n, tokens),
         const SizedBox(height: AppSpace.md),
-        _browsersCard(context, l10n, tokens, iosOnly: iosOnly, androidReady: androidReady),
+        _browsersCard(context, l10n, tokens,
+            iosOnly: iosOnly, androidReady: androidReady, iosState: iosState),
         const SizedBox(height: AppSpace.sm),
         _searchesRow(context, l10n, tokens),
       ],
@@ -648,7 +657,13 @@ class WebFilterP12Screen extends ConsumerWidget {
   /// Which browsers the filter covers, in the Android wording the existing app
   /// uses; an iPhone-only child gets the "Not yet available" state instead (F8).
   Widget _browsersCard(BuildContext context, AppLocalizations l10n, AppTokens tokens,
-      {required bool iosOnly, required bool androidReady}) {
+      {required bool iosOnly, required bool androidReady, required String? iosState}) {
+    // Codex 7227751401: the iPhone sends `unavailable` when Screen Time access is
+    // absent (CapabilityReport.swift:74–75), so the affirmative sentence belongs
+    // only to a phone that reports it is actually enforcing. Everything else that
+    // is not `ready`/`degraded` reads "Not blocking yet" — the approved fallback
+    // (UI/UX 7224921514) — rather than claiming blocked sites are blocked.
+    final iosEnforcing = iosState == 'ready' || iosState == 'degraded';
     return Card(
       key: const ValueKey('p12-browsers-card'),
       child: Padding(
@@ -657,11 +672,16 @@ class WebFilterP12Screen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // U96 (#650): when the phone has not reported the filter ready, the globe
-            // carries the warning colour rather than the ordinary accent.
+            // carries the warning colour rather than the ordinary accent. On iPhone
+            // (UI/UX 7224921514) an enforcing phone gets the accent, a phone that
+            // reported it cannot enforce gets the same warning, and only a phone
+            // that reported nothing stays muted.
             Icon(
               Icons.public,
               color: iosOnly
-                  ? tokens.onSurfaceVariant
+                  ? (iosState == null
+                      ? tokens.onSurfaceVariant
+                      : (iosEnforcing ? tokens.primary : tokens.warn))
                   : (androidReady ? tokens.primary : tokens.warn),
               size: 20,
             ),
@@ -680,13 +700,41 @@ class WebFilterP12Screen extends ConsumerWidget {
                           l10n.tabWebFilter,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.onSurface),
                         ),
-                        _pill(
-                          context,
-                          key: const ValueKey('p12-iphone-not-available'),
-                          label: l10n.appsNotYetOnIphone,
-                          icon: Icons.phone_iphone,
-                          color: tokens.onSurfaceVariant,
-                        ),
+                        if (iosEnforcing)
+                          // A phone that reports the filter ready or degraded does
+                          // block blocked sites through WebContentSettings, while
+                          // categories and SafeSearch don't exist there yet. The
+                          // Android sentence would overclaim (lead 7224916449,
+                          // UI/UX 7224921514).
+                          Text(
+                            l10n.p12IphoneBlockedSitesOnly,
+                            key: const ValueKey('p12-browsers-ios-reported'),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: tokens.onSurfaceVariant),
+                          )
+                        else if (iosState != null)
+                          // `unavailable` (no Screen Time access) and any other
+                          // reported non-enforcing state: the phone is there, so
+                          // "Not yet available on iPhone" would be false, and
+                          // nothing is blocked, so the affirmative sentence would
+                          // be too. The warn pill is the approved wording.
+                          _pill(
+                            context,
+                            key: const ValueKey('p12-iphone-not-blocking'),
+                            label: l10n.p12NotBlockingYet,
+                            icon: Icons.block,
+                            color: tokens.warn,
+                          )
+                        else
+                          _pill(
+                            context,
+                            key: const ValueKey('p12-iphone-not-available'),
+                            label: l10n.appsNotYetOnIphone,
+                            icon: Icons.phone_iphone,
+                            color: tokens.onSurfaceVariant,
+                          ),
                       ],
                     )
                   : androidReady

@@ -3975,6 +3975,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get p12NotBlockingYet => 'Not blocking yet';
 
   @override
+  String get p12IphoneBlockedSitesOnly =>
+      'On iPhone, the sites you block are blocked in Safari and other browsers. Categories and SafeSearch aren\'t available on iPhone yet.';
+
+  @override
   String get p12AllowSite => 'Allow site';
 
   @override

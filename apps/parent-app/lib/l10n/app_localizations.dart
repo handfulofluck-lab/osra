@@ -6424,6 +6424,12 @@ abstract class AppLocalizations {
   /// **'Not blocking yet'**
   String get p12NotBlockingYet;
 
+  /// P-12 browsers card for an iPhone child whose phone has reported the web filter (ready or degraded). Blocked sites apply through WebContentSettings (WebKit browsers only); categories and SafeSearch don't exist on iPhone yet. UI/UX Bureau 7224921514 on #1280.
+  ///
+  /// In en, this message translates to:
+  /// **'On iPhone, the sites you block are blocked in Safari and other browsers. Categories and SafeSearch aren\'t available on iPhone yet.'**
+  String get p12IphoneBlockedSitesOnly;
+
   /// P-12: button on one recently blocked site; opens the prefilled Allow a site dialog.
   ///
   /// In en, this message translates to:
