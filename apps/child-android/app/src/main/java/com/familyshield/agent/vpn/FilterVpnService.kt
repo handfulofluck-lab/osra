@@ -182,6 +182,14 @@ class FilterVpnService : VpnService() {
         VpnState.setMode(this, wanted)
         startForegroundCompat()
         com.familyshield.agent.security.UnboundTamperWatch.ensureStarted(applicationContext)
+        runCatching {
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.armStandingWatchdogIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consent.isPaused(),
+                unlinkPending = settings.unlinkPendingSync(),
+            )
+        }
         transientResetController.handleAuthoritativeStartOnServiceThread(wanted)
         reloadConfig()
         return START_STICKY

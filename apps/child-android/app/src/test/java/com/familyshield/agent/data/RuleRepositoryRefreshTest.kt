@@ -33,8 +33,9 @@ class RuleRepositoryRefreshTest {
         val writes = AtomicInteger(0)
         val updated = RuleSetDto(rulesVersion = 7)
         Mockito.`when`(settings.childId()).thenAnswer {
+            val current = childId.get()
             initChildIdRead.countDown()
-            childId.get()
+            current
         }
         Mockito.`when`(settings.rulesJson()).thenReturn(null)
         Mockito.`when`(api.getRules("child-1")).thenReturn(updated)

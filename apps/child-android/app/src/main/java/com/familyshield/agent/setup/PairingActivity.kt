@@ -306,6 +306,7 @@ class PairingActivity : ComponentActivity() {
             OnboardingPolicy.Grant.values().firstOrNull { it.name == name }?.let { skippedPermissionSteps.add(it) }
         }
         onBackPressedDispatcher.addCallback(this, guidedBackCallback)
+        consumeOpenDeviceSetupIntent(intent)
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch {
             if (settings.isPaired()) {
@@ -324,6 +325,23 @@ class PairingActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (consumeOpenDeviceSetupIntent(intent)) {
+            lifecycleScope.launch {
+                if (settings.isPaired()) showStatus()
+            }
+        }
+    }
+
+    private fun consumeOpenDeviceSetupIntent(incoming: Intent?): Boolean {
+        if (incoming?.getBooleanExtra(EXTRA_OPEN_DEVICE_SETUP, false) != true) return false
+        incoming.removeExtra(EXTRA_OPEN_DEVICE_SETUP)
+        forceLegacyStatusView = true
+        return true
     }
 
     /**
@@ -1823,6 +1841,18 @@ class PairingActivity : ComponentActivity() {
         startLocationServiceIfPermitted()
         WorkScheduler.scheduleAll(this)
         CommandPollWorker.requestFetchNow(this)
+        runCatching {
+            val consentPaused = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                applicationContext,
+                com.familyshield.agent.di.WorkerEntryPoint::class.java,
+            ).consentState().isPaused()
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.armStandingWatchdogIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentPaused,
+                unlinkPending = settings.unlinkPendingSync(),
+            )
+        }
     }
 
     private val childHomeSendState = androidx.compose.runtime.mutableStateOf(
@@ -2315,6 +2345,9 @@ class PairingActivity : ComponentActivity() {
     )
 
     companion object {
+        /** Launched after a parent-PIN-verified `manageSpaceActivity` gate to open OSRA's reset/setup controls. */
+        const val EXTRA_OPEN_DEVICE_SETUP = "open_device_setup"
+
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         /** Roadmap 3.2: the reviewed payload survives an activity recreation. */

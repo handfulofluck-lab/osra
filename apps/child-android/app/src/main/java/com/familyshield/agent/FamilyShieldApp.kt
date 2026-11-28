@@ -33,9 +33,18 @@ class FamilyShieldApp : Application() {
         appScope.launch {
             val unlinkPending = entry.agentSettings().unlinkPending()
             if (unlinkPending) {
+                com.familyshield.agent.recovery.ServiceRevivalScheduler.cancelAll(this@FamilyShieldApp)
                 entry.deviceUnlinker().unlink()
             } else if (com.familyshield.agent.recovery.ServiceRevivalPolicy.shouldRunStartupRecovery(unlinkPending)) {
                 runCatching { com.familyshield.agent.recovery.ServiceRecovery.run(this@FamilyShieldApp) }
+                runCatching {
+                    com.familyshield.agent.recovery.ServiceRevivalScheduler.armStandingWatchdogIfNeeded(
+                        context = this@FamilyShieldApp,
+                        paired = entry.agentSettings().isPairedSync(),
+                        consentPaused = entry.consentState().isPaused(),
+                        unlinkPending = unlinkPending,
+                    )
+                }
             }
         }
     }

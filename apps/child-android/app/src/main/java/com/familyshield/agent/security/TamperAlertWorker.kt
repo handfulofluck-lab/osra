@@ -14,6 +14,8 @@ import androidx.work.workDataOf
 import com.familyshield.agent.di.WorkerEntryPoint
 import com.familyshield.agent.network.dto.AlertDto
 import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Posts one `tamper` alert to the parent (ADR-0010 §4). Enqueued as expedited work by
@@ -98,24 +100,29 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                     settings.recordTamperAlert(com.familyshield.agent.receivers.AccessibilityOffPolicy.TYPE, inputData.getLong(KEY_EVENT_AT_MS, 0L))
                 }
             }
-            dispatcher.dispatch(postKey) {
-                entry.apiService().postInternalAlert(
-                    AlertDto(
-                        childId = childId,
-                        deviceId = deviceId,
-                        severity = if (type == TYPE_SETUP_INCOMPLETE) "warning" else "critical",
-                        category = "tamper",
-                        title = TITLES[type] ?: "Protection was changed",
-                        body = bodyFor(type, detail, guardWindow),
-                        metadata = metadataFor(type, app, layout),
-                        dedupeKey = dedupeKey,
-                        attemptCount = when (type) {
-                            TYPE_GUARD_TRIGGERED -> guardWindow?.count
-                            TYPE_PIN_LOCKOUT -> inputData.getInt(KEY_ATTEMPT_COUNT, 0).takeIf { it > 0 }
-                            else -> null
-                        },
-                    ),
-                )
+            DISPATCH_MUTEX.withLock {
+                val postedNow = dispatcher.dispatch(postKey) {
+                    entry.apiService().postInternalAlert(
+                        AlertDto(
+                            childId = childId,
+                            deviceId = deviceId,
+                            severity = if (type == TYPE_SETUP_INCOMPLETE) "warning" else "critical",
+                            category = "tamper",
+                            title = TITLES[type] ?: "Protection was changed",
+                            body = bodyFor(type, detail, guardWindow),
+                            metadata = metadataFor(type, app, layout),
+                            dedupeKey = dedupeKey,
+                            attemptCount = when (type) {
+                                TYPE_GUARD_TRIGGERED -> guardWindow?.count
+                                TYPE_PIN_LOCKOUT -> inputData.getInt(KEY_ATTEMPT_COUNT, 0).takeIf { it > 0 }
+                                else -> null
+                            },
+                        ),
+                    )
+                }
+                if (postedNow) {
+                    Log.i(TAG, "tamper alert '$type' sent via expedited worker (dedupeKey=$dedupeKey)")
+                }
             }
             if (type == TYPE_ADMIN_REMOVED) TamperState.setAdminDisabledPending(applicationContext, false)
             Result.success()
@@ -331,6 +338,80 @@ class TamperAlertWorker(context: Context, params: WorkerParameters) : CoroutineW
                 ExistingWorkPolicy.REPLACE,
                 request,
             )
+        }
+
+        private const val DIRECT_ALERT_TIMEOUT_MS = 4_000L
+        private val DISPATCH_MUTEX = kotlinx.coroutines.sync.Mutex()
+        private val directAlertScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+        )
+
+        /**
+         * osra-security#78 (Ahmed review): enqueues the durable expedited [TamperAlertWorker] **and**
+         * launches an immediate bounded (`4 s`) direct HTTP POST sharing [DISPATCH_MUTEX] and
+         * [TamperAlertDedupe] (`postKey` / `dedupeKey`) so an online parent receives the alert before
+         * deactivation confirmation without risking duplicate sends or hijacking ordered-broadcast state.
+         */
+        fun enqueueAndPostGuardTriggeredImmediately(
+            context: Context,
+            detail: String,
+            window: GuardAttemptWindow.State,
+        ) {
+            val appContext = context.applicationContext
+            runCatching {
+                enqueue(
+                    appContext,
+                    TYPE_GUARD_TRIGGERED,
+                    detail = detail,
+                    windowStartMs = window.windowStartMs,
+                    attemptCount = window.count,
+                    screens = window.screens,
+                )
+            }.onFailure { Log.w(TAG, "could not enqueue expedited guard alert", it) }
+
+            directAlertScope.launch {
+                runCatching {
+                    kotlinx.coroutines.withTimeout(DIRECT_ALERT_TIMEOUT_MS) {
+                        val entry = EntryPointAccessors.fromApplication(appContext, WorkerEntryPoint::class.java)
+                        val settings = entry.agentSettings()
+                        val childId = settings.childId() ?: return@withTimeout
+                        val deviceId = settings.deviceId()
+                        com.familyshield.agent.setup.SetupCompletionStore.seedUpgradeLatchIfNeeded(appContext, deviceId)
+                        if (!com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(appContext, deviceId)) {
+                            return@withTimeout
+                        }
+                        val dedupeKey = TamperAlertDedupe.guardAggregateKey(deviceId, window.windowStartMs)
+                        val postKey = TamperAlertDedupe.guardPostKey(deviceId, window)
+                        val dispatcher = TamperAlertDispatcher(
+                            wasPosted = { TamperState.isTamperAlertPosted(appContext, it) },
+                            recordPosted = { TamperState.markTamperAlertPosted(appContext, it) },
+                        )
+                        DISPATCH_MUTEX.withLock {
+                            val postedNow = dispatcher.dispatch(postKey) {
+                                entry.apiService().postInternalAlert(
+                                    AlertDto(
+                                        childId = childId,
+                                        deviceId = deviceId,
+                                        severity = "critical",
+                                        category = "tamper",
+                                        title = TITLES[TYPE_GUARD_TRIGGERED] ?: "Someone tried to remove protection",
+                                        body = bodyFor(TYPE_GUARD_TRIGGERED, detail, window),
+                                        metadata = metadataFor(TYPE_GUARD_TRIGGERED, "", ""),
+                                        dedupeKey = dedupeKey,
+                                        attemptCount = window.count,
+                                    ),
+                                )
+                            }
+                            if (postedNow) {
+                                Log.i(
+                                    TAG,
+                                    "guard tamper alert sent directly (dedupeKey=$dedupeKey, count=${window.count}, detail=$detail)",
+                                )
+                            }
+                        }
+                    }
+                }.onFailure { Log.w(TAG, "direct guard tamper alert failed; expedited worker will retry", it) }
+            }
         }
     }
 }

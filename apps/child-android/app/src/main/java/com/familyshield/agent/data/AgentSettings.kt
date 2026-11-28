@@ -354,6 +354,7 @@ class AgentSettings @Inject constructor(
         com.familyshield.agent.setup.SetupCompletionStore.clear(context)
         com.familyshield.agent.ui.request.AskParentActivity.clearPendingRequest(context)
         com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
+        com.familyshield.agent.recovery.ServiceRevivalScheduler.cancelAll(context)
     }
 
     /**

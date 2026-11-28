@@ -33,9 +33,9 @@ import kotlinx.coroutines.launch
  * Hosted inside the agent's foreground services ([LocationService] and [FilterVpnService]). While
  * [AccessibilityMonitorService.isRunning] is `true`, this watcher sleeps on [UnboundTamperPolicy.DORMANT_CHECK_MS]
  * and performs zero `UsageStatsManager` queries. When Accessibility is unbound on a paired,
- * setup-completed device, it polls recent `ACTIVITY_RESUMED` transitions and launches
- * [TamperGuardTaskActivity] over `DeviceAdminAdd`, package-installer uninstall dialogs, and
- * App-info detail screens.
+ * setup-completed device, it polls recent `ACTIVITY_RESUMED` transitions for phone-wide
+ * second-space setup screens while shared multi-app host screens defer to OSRA's own-component
+ * callbacks ([GuardianAdminReceiver.onDisableRequested] and `android:manageSpaceActivity`).
  */
 object UnboundTamperWatch {
 
@@ -131,7 +131,6 @@ object UnboundTamperWatch {
             val screen = UnboundTamperPolicy.classifyUnboundTop(
                 top = top,
                 ownPackage = appContext.packageName,
-                ourAdminActive = entry.deviceAdminManager().isAdminActive(),
             )
             val suppressed = GuardDebouncePolicy.suppress(
                 nowMs = nowMs,

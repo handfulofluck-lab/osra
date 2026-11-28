@@ -136,6 +136,14 @@ class LocationService : Service() {
         stopRequestedFromCaller = false
         isServiceRunning = true
         com.familyshield.agent.security.UnboundTamperWatch.ensureStarted(applicationContext)
+        runCatching {
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.armStandingWatchdogIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentState.isPaused(),
+                unlinkPending = settings.unlinkPendingSync(),
+            )
+        }
         // #1151: a recreated foreground service must refresh rules immediately after process death.
         WorkScheduler.syncNowAtStartup(this)
         startUpdates(STATIONARY_INTERVAL_MS)

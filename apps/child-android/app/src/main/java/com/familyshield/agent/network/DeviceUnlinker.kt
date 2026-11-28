@@ -131,7 +131,10 @@ class DeviceUnlinker @Inject constructor(
                 removeAdmin = { admin.removeAdmin() },
                 notify = { UnlinkedNotice.show(context) },
             ),
-            markPending = { settings.setUnlinkPending(true) },
+            markPending = {
+                settings.setUnlinkPending(true)
+                com.familyshield.agent.recovery.ServiceRevivalScheduler.cancelAll(context)
+            },
             clearPending = { settings.setUnlinkPending(false) },
             isAdminActive = { admin.isAdminActive() },
         )

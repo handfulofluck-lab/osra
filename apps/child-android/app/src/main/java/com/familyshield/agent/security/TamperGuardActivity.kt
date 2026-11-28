@@ -130,6 +130,9 @@ open class TamperGuardActivity : ComponentActivity() {
                 // The only thing that resets the count.
                 attemptStore.clear()
                 TamperState.grantGrace(this, now + TamperScreenPolicy.GRACE_MS)
+                if (intent.getBooleanExtra(EXTRA_MANAGE_SPACE, false)) {
+                    openManagementScreen(this)
+                }
                 setResult(RESULT_OK)
                 finish()
             } else {
@@ -331,10 +334,58 @@ open class TamperGuardActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_REASON = "reason"
+        const val EXTRA_MANAGE_SPACE = "manage_space"
         const val REASON_SETTINGS = "settings"
         const val REASON_REPAIR = "repair"
         const val REASON_REMOVE = "remove"
         const val REASON_RING = "ring"
+
+        internal fun openManagementScreen(context: android.content.Context) {
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(context, com.familyshield.agent.setup.PairingActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        .putExtra(com.familyshield.agent.setup.PairingActivity.EXTRA_OPEN_DEVICE_SETUP, true),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Pure policy for `<application android:manageSpaceActivity=".security.TamperGuardTaskActivity">`
+ * (osra-security#78, Ahmed review item 3).
+ *
+ * When Android / MIUI App Info routes "Clear data" / "Manage space" into OSRA:
+ * - An unauthenticated child on a paired, setup-completed device hits the Parent PIN gate first,
+ *   and only after entering a valid Parent PIN is routed to OSRA's management screen
+ *   (`PairingActivity` with `EXTRA_OPEN_DEVICE_SETUP`, exposing `Re-pair` and `Remove protection`).
+ * - A parent already inside the 2-minute PIN grace window (or on an unpaired / incomplete device)
+ *   opens that management screen immediately instead of hitting a dead-end `finish()`.
+ */
+object ManageSpaceGatePolicy {
+    enum class Action {
+        FINISH_UNLINKING,
+        OPEN_MANAGEMENT_DIRECTLY,
+        REQUIRE_PIN_THEN_OPEN_MANAGEMENT,
+    }
+
+    fun decide(
+        paired: Boolean,
+        unlinkPending: Boolean,
+        setupCompletedOnce: Boolean,
+        pinConfigured: Boolean,
+        consentPaused: Boolean,
+        nowMs: Long,
+        graceUntilMs: Long,
+        sanctionedUntilMs: Long,
+    ): Action {
+        if (unlinkPending) return Action.FINISH_UNLINKING
+        val inGraceOrSanctioned = nowMs < graceUntilMs || nowMs < sanctionedUntilMs
+        if (!paired || !setupCompletedOnce || !pinConfigured || consentPaused || inGraceOrSanctioned) {
+            return Action.OPEN_MANAGEMENT_DIRECTLY
+        }
+        return Action.REQUIRE_PIN_THEN_OPEN_MANAGEMENT
     }
 }
 
@@ -350,50 +401,58 @@ class TamperGuardTaskActivity : TamperGuardActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (savedInstanceState == null && !intent.hasExtra(EXTRA_REASON)) {
-            val allowWithoutGate = runCatching {
+            val action = runCatching {
                 val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(
                     applicationContext,
                     com.familyshield.agent.di.WorkerEntryPoint::class.java,
                 )
                 val settings = entry.agentSettings()
-                val paired = settings.isPairedSync()
-                val unlinkPending = settings.unlinkPendingSync()
-                val setupCompleted = com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(
-                    applicationContext,
-                    settings.deviceIdSync(),
-                )
-                val pinReady = entry.parentPinStore().isConfigured()
-                val consentPaused = entry.consentState().isPaused()
                 val nowMs = System.currentTimeMillis()
-                val inGraceOrSanctioned =
-                    nowMs < TamperState.graceUntil(applicationContext) ||
-                        nowMs < TamperState.sanctionedRemovalUntil(applicationContext)
-                if (!paired || unlinkPending || !setupCompleted || !pinReady || consentPaused || inGraceOrSanctioned) {
-                    true
-                } else {
+                val decision = ManageSpaceGatePolicy.decide(
+                    paired = settings.isPairedSync(),
+                    unlinkPending = settings.unlinkPendingSync(),
+                    setupCompletedOnce = com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(
+                        applicationContext,
+                        settings.deviceIdSync(),
+                    ),
+                    pinConfigured = entry.parentPinStore().isConfigured(),
+                    consentPaused = entry.consentState().isPaused(),
+                    nowMs = nowMs,
+                    graceUntilMs = TamperState.graceUntil(applicationContext),
+                    sanctionedUntilMs = TamperState.sanctionedRemovalUntil(applicationContext),
+                )
+                if (decision == ManageSpaceGatePolicy.Action.REQUIRE_PIN_THEN_OPEN_MANAGEMENT) {
                     val attempt = GuardAttemptWindow.record(
                         TamperState.guardAttemptWindow(applicationContext),
                         nowMs,
                         TamperScreen.APP_INFO.name.lowercase(),
                     )
                     TamperState.setGuardAttemptWindow(applicationContext, attempt.state)
-                    runCatching {
-                        TamperAlertWorker.enqueue(
-                            applicationContext,
-                            TamperAlertWorker.TYPE_GUARD_TRIGGERED,
-                            detail = "Screen: app_info manage_space",
-                            windowStartMs = attempt.state.windowStartMs,
-                            attemptCount = attempt.state.count,
-                            screens = attempt.state.screens,
-                        )
-                    }
-                    false
+                    TamperAlertWorker.enqueueAndPostGuardTriggeredImmediately(
+                        applicationContext,
+                        detail = "Screen: app_info manage_space",
+                        window = attempt.state,
+                    )
                 }
-            }.getOrDefault(false)
-            if (allowWithoutGate) {
-                super.onCreate(savedInstanceState)
-                finish()
-                return
+                decision
+            }.getOrDefault(ManageSpaceGatePolicy.Action.REQUIRE_PIN_THEN_OPEN_MANAGEMENT)
+
+            when (action) {
+                ManageSpaceGatePolicy.Action.FINISH_UNLINKING -> {
+                    super.onCreate(savedInstanceState)
+                    finish()
+                    return
+                }
+                ManageSpaceGatePolicy.Action.OPEN_MANAGEMENT_DIRECTLY -> {
+                    openManagementScreen(this)
+                    super.onCreate(savedInstanceState)
+                    finish()
+                    return
+                }
+                ManageSpaceGatePolicy.Action.REQUIRE_PIN_THEN_OPEN_MANAGEMENT -> {
+                    intent.putExtra(EXTRA_REASON, REASON_REMOVE)
+                    intent.putExtra(EXTRA_MANAGE_SPACE, true)
+                }
             }
         }
         super.onCreate(savedInstanceState)

@@ -92,16 +92,15 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
                         TamperScreen.DEACTIVATE_ADMIN.name.lowercase(),
                     )
                     TamperState.setGuardAttemptWindow(appContext, attempt.state)
-                    runCatching {
-                        TamperAlertWorker.enqueue(
-                            appContext,
-                            TamperAlertWorker.TYPE_GUARD_TRIGGERED,
-                            detail = "Screen: deactivate_admin in com.android.settings",
-                            windowStartMs = attempt.state.windowStartMs,
-                            attemptCount = attempt.state.count,
-                            screens = attempt.state.screens,
-                        )
-                    }.onFailure { Log.w(TAG, "could not enqueue disable-request guard alert", it) }
+                    Log.i(
+                        TAG,
+                        "disable-request guard triggered: dispatching immediate + expedited alert (count=${attempt.state.count})",
+                    )
+                    TamperAlertWorker.enqueueAndPostGuardTriggeredImmediately(
+                        appContext,
+                        detail = "Screen: deactivate_admin in com.android.settings",
+                        window = attempt.state,
+                    )
 
                     runCatching {
                         appContext.startActivity(

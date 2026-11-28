@@ -8,15 +8,18 @@ package com.familyshield.agent.security
  * fallback stays completely dormant (`shouldMonitor == false`).
  *
  * When Accessibility is unbound on a paired, setup-completed device, `UsageStatsManager.queryEvents`
- * exposes `(packageName, className)` without the visible window text. Shared multi-app host screens
- * (`ADMIN_CLASSES`, `UNINSTALL_CLASSES`, `APP_INFO_CLASSES`) exist for every installed app on the
- * phone, so [classifyUnboundTop] matches them **only** when a target-aware signal identifies
- * [targetPackage] as [ownPackage] — keeping an unrelated app's App Info, `DeviceAdminAdd`, and
- * package-installer uninstall flow usable without a PIN overlay, and deferring OSRA's own
- * deactivation / clear-storage interception to OSRA's own-component callbacks
- * ([GuardianAdminReceiver.onDisableRequested] and `android:manageSpaceActivity` on
- * [TamperGuardTaskActivity]) whenever `targetPackage` is unavailable. Phone-wide second-space setup
- * screens ([TamperScreenPolicy.SPACE_SETUP_SCREENS]) have no per-app target and remain covered.
+ * exposes only `(packageName, className)` without visible window text or intent extras. Shared
+ * multi-app host screens (`ADMIN_CLASSES`, `UNINSTALL_CLASSES`, `APP_INFO_CLASSES`) exist for every
+ * installed app on the phone, so [classifyUnboundTop] intentionally returns [TamperScreen.NONE] for
+ * all shared host screens — keeping unrelated apps' App Info, `DeviceAdminAdd`, and uninstaller
+ * flows usable without a PIN overlay. In the unbound state:
+ * - OSRA device-admin deactivation (and Uninstall while admin is active) is gated by OSRA's own
+ *   [GuardianAdminReceiver.onDisableRequested],
+ * - OSRA App-info storage wipe ("Manage space") is gated by `<application android:manageSpaceActivity>`,
+ * - OSRA Force-stop / `OneKeyClean` process kill is mitigated by Xiaomi Recents exclusion plus
+ *   bounded exit + standing `AlarmManager` / `WorkManager` revival, and
+ * - Phone-wide second-space setup screens ([TamperScreenPolicy.SPACE_SETUP_SCREENS]), which have no
+ *   per-app target, are covered directly by [classifyUnboundTop].
  */
 object UnboundTamperPolicy {
 
@@ -93,18 +96,13 @@ object UnboundTamperPolicy {
     }
 
     /**
-     * Classifies a resumed top activity when Accessibility window text is unavailable.
-     *
-     * Shared multi-app host classes (`ADMIN_CLASSES`, `UNINSTALL_CLASSES`, `APP_INFO_CLASSES`)
-     * require [targetPackage] `==` [ownPackage]; when [targetPackage] is `null` or names another
-     * app, this returns [TamperScreen.NONE] so unrelated apps remain usable and OSRA's own-component
-     * callbacks handle OSRA-targeted actions.
+     * Classifies a resumed top activity from `UsageEvents` when Accessibility window text is
+     * unavailable. Only phone-wide [TamperScreenPolicy.SPACE_SETUP_SCREENS] are gated directly;
+     * shared multi-app host classes return [TamperScreen.NONE] so unrelated apps remain usable.
      */
     fun classifyUnboundTop(
         top: TopActivity?,
         ownPackage: String,
-        ourAdminActive: Boolean,
-        targetPackage: String? = null,
     ): TamperScreen {
         if (top == null) return TamperScreen.NONE
         if (top.packageName == ownPackage) return TamperScreen.NONE
@@ -112,16 +110,7 @@ object UnboundTamperPolicy {
         if ((top.packageName to simple) in TamperScreenPolicy.SPACE_SETUP_SCREENS) {
             return TamperScreen.SPACE_SETUP
         }
-        if (top.packageName !in TamperScreenPolicy.SYSTEM_PACKAGES) return TamperScreen.NONE
-        if (simple == null || simple in TamperScreenPolicy.NEVER_CLASSES) return TamperScreen.NONE
-        if (targetPackage == null || targetPackage != ownPackage) return TamperScreen.NONE
-        return when (simple) {
-            in TamperScreenPolicy.ADMIN_CLASSES ->
-                if (ourAdminActive) TamperScreen.DEACTIVATE_ADMIN else TamperScreen.NONE
-            in TamperScreenPolicy.UNINSTALL_CLASSES -> TamperScreen.UNINSTALL
-            in TamperScreenPolicy.APP_INFO_CLASSES -> TamperScreen.APP_INFO
-            else -> TamperScreen.NONE
-        }
+        return TamperScreen.NONE
     }
 
     fun shouldLaunchPinGate(
