@@ -1,5 +1,6 @@
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { prisma } from "../db.js";
+import { normalizeDigits } from "./digits.js";
 
 /**
  * ADR-0031 state machine, shared by the routes and the expiry job.
@@ -82,12 +83,14 @@ export function generateResetCode(): string {
 
 /** The only form of the code that is stored (decision 7). */
 export function hashResetCode(code: string): string {
-  return createHash("sha256").update(code).digest("hex");
+  const normalized = normalizeDigits(code);
+  if (normalized === null) throw new Error("reset code contains unsupported characters");
+  return createHash("sha256").update(normalized).digest("hex");
 }
 
 /** Constant-time match of a submitted code against a stored hash; a missing hash never matches. */
 export function resetCodeMatches(code: string, codeHash: string | null): boolean {
-  if (!codeHash) return false;
+  if (!codeHash || normalizeDigits(code) === null) return false;
   const submitted = Buffer.from(hashResetCode(code), "hex");
   const stored = Buffer.from(codeHash, "hex");
   return submitted.length === stored.length && timingSafeEqual(submitted, stored);
