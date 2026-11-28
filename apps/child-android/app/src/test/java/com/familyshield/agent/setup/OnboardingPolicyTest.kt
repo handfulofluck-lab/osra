@@ -53,6 +53,20 @@ class OnboardingPolicyTest {
 
         val nothing = OnboardingPolicy.rows { false }
         assertEquals(8, OnboardingPolicy.missingRequired(nothing).size)
+
+        // osra-security#78: Xiaomi/Redmi/POCO promotes Grant.BATTERY (unrestricted + Autostart) to required.
+        val xiaomiMissingBattery = OnboardingPolicy.rows(notificationCaptureAvailable = true, manufacturer = "Xiaomi") {
+            it != Grant.BATTERY && it != Grant.USB_DEBUGGING
+        }
+        assertFalse(OnboardingPolicy.canComplete(xiaomiMissingBattery))
+        assertEquals(listOf(Grant.BATTERY), OnboardingPolicy.missingRequired(xiaomiMissingBattery))
+        assertEquals("8 of 9 steps done", OnboardingPolicy.progressLine(xiaomiMissingBattery))
+
+        val xiaomiAllRequired = OnboardingPolicy.rows(notificationCaptureAvailable = true, manufacturer = "Redmi") {
+            it != Grant.USB_DEBUGGING
+        }
+        assertTrue(OnboardingPolicy.canComplete(xiaomiAllRequired))
+        assertEquals("All done. Your phone is protected.", OnboardingPolicy.progressLine(xiaomiAllRequired))
     }
 
     @Test

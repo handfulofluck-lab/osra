@@ -124,6 +124,7 @@ class LocationService : Service() {
             return START_NOT_STICKY
         }
         isServiceRunning = true
+        com.familyshield.agent.security.UnboundTamperWatch.ensureStarted(applicationContext)
         // #1151: a recreated foreground service must refresh rules immediately after process death.
         WorkScheduler.syncNowAtStartup(this)
         startUpdates(STATIONARY_INTERVAL_MS)
@@ -178,8 +179,27 @@ class LocationService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        runCatching {
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.scheduleIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentState.isPaused(),
+            )
+        }.onFailure { Log.w(TAG, "could not schedule revival on task removal", it) }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         isServiceRunning = false
+        com.familyshield.agent.security.UnboundTamperWatch.stopIfNoHostRunning()
+        runCatching {
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.scheduleIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentState.isPaused(),
+            )
+        }.onFailure { Log.w(TAG, "could not schedule revival on location service destroy", it) }
         fused.removeLocationUpdates(callback)
         serviceScope.cancel()
         super.onDestroy()

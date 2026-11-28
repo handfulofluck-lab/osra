@@ -76,10 +76,21 @@ class AdminReceiverContractTest {
             .flatMap { it.children("action") }
             .mapNotNull { it.attr("android:name") }
             .toSet()
-        assertTrue(
-            "the receiver must handle DEVICE_ADMIN_ENABLED, found $actions",
-            "android.app.action.DEVICE_ADMIN_ENABLED" in actions,
+        assertEquals(
+            "the receiver must declare enabled, disable-requested, and disabled actions (osra-security#78)",
+            setOf(
+                "android.app.action.DEVICE_ADMIN_ENABLED",
+                "android.app.action.DEVICE_ADMIN_DISABLE_REQUESTED",
+                "android.app.action.DEVICE_ADMIN_DISABLED",
+            ),
+            actions,
         )
+
+        val revival = (0 until manifest.getElementsByTagName("receiver").length)
+            .map { manifest.getElementsByTagName("receiver").item(it) as Element }
+            .firstOrNull { it.attr("android:name") == ".recovery.ServiceRevivalReceiver" }
+        assertNotNull("ServiceRevivalReceiver must be registered in AndroidManifest.xml", revival)
+        assertEquals("ServiceRevivalReceiver must stay internal (not exported)", "false", revival!!.attr("android:exported"))
     }
 
     @Test

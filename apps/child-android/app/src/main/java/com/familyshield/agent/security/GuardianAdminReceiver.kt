@@ -3,16 +3,22 @@ package com.familyshield.agent.security
 import android.app.admin.DeviceAdminReceiver
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import android.util.Log
+import com.familyshield.agent.di.WorkerEntryPoint
+import com.familyshield.agent.recovery.ServiceRecovery
+import com.familyshield.agent.services.AccessibilityMonitorService
+import com.familyshield.agent.setup.SetupCompletionStore
+import dagger.hilt.android.EntryPointAccessors
 
 /**
  * Device Admin receiver (ADR-0010). Being an active admin is what lets the agent block uninstall
  * (the user must clear admin first, which we gate behind the parent PIN) and call `lockNow`.
  *
- * `onDisableRequested` returns the warning the OS shows when the child tries to turn admin off; the
- * PIN gate lives in the Settings flow we launch, not here (the OS cannot host a PIN prompt in this
- * callback). `onDisabled` fires after admin is actually removed — we record it so the next agent
- * poll raises a tamper alert to the parent.
+ * `onDisableRequested` returns the warning the OS shows when the child tries to turn admin off,
+ * revives stopped background services (`ServiceRecovery.run`), and launches [TamperGuardTaskActivity]
+ * when an unsanctioned deactivation is attempted (osra-security#78). `onDisabled` fires after admin
+ * is actually removed — we record it so the next agent poll raises a tamper alert to the parent.
  *
  * The class name is itself operationally significant (issues #202 and #217): Samsung Knox keys its
  * admin registry by **component + user**, and a stale row for a previous component name refuses every
@@ -37,9 +43,79 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
         TamperState.setAdminRemovedByParent(context, false)
     }
 
-    override fun onDisableRequested(context: Context, intent: Intent): CharSequence =
-        "Removing OSRA admin turns off the parental-control protections on this device. " +
+    override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
+        val appContext = context.applicationContext
+        runCatching { ServiceRecovery.run(appContext) }
+            .onFailure { Log.w(TAG, "service recovery on disable request failed", it) }
+
+        runCatching {
+            val entry = EntryPointAccessors.fromApplication(appContext, WorkerEntryPoint::class.java)
+            val settings = entry.agentSettings()
+            val paired = settings.isPairedSync()
+            val setupCompleted = SetupCompletionStore.isCompletedForDevice(appContext, settings.deviceIdSync())
+            val pinConfigured = entry.parentPinStore().isConfigured()
+            val consentPaused = entry.consentState().isPaused()
+            val nowMs = System.currentTimeMillis()
+            val suppressed = GuardDebouncePolicy.suppress(
+                nowMs = nowMs,
+                lastGuardMs = lastDisableGuardMs,
+                gateShowing = GuardGateState.showing,
+                gateResumedSinceLaunch = GuardGateState.resumedSince(lastDisableGuardMs),
+                gateMultiWindow = GuardGateState.multiWindow,
+            )
+            val canLaunch = Settings.canDrawOverlays(appContext) || AccessibilityMonitorService.isRunning
+            when (
+                AdminDisableRequestPolicy.decide(
+                    paired = paired,
+                    setupCompletedOnce = setupCompleted,
+                    pinConfigured = pinConfigured,
+                    consentPaused = consentPaused,
+                    nowMs = nowMs,
+                    graceUntilMs = TamperState.graceUntil(appContext),
+                    sanctionedUntilMs = TamperState.sanctionedRemovalUntil(appContext),
+                    gateSuppressed = suppressed,
+                    canLaunchFromBackground = canLaunch,
+                )
+            ) {
+                AdminDisableRequestPolicy.Action.ALLOW_WITHOUT_GATE,
+                AdminDisableRequestPolicy.Action.ALREADY_COVERED,
+                -> Unit
+
+                AdminDisableRequestPolicy.Action.LAUNCH_PIN_GATE,
+                AdminDisableRequestPolicy.Action.RECORD_ATTEMPT_AND_BEST_EFFORT_GATE,
+                -> {
+                    lastDisableGuardMs = nowMs
+                    val attempt = GuardAttemptWindow.record(
+                        TamperState.guardAttemptWindow(appContext),
+                        nowMs,
+                        TamperScreen.DEACTIVATE_ADMIN.name.lowercase(),
+                    )
+                    TamperState.setGuardAttemptWindow(appContext, attempt.state)
+                    runCatching {
+                        TamperAlertWorker.enqueue(
+                            appContext,
+                            TamperAlertWorker.TYPE_GUARD_TRIGGERED,
+                            detail = "Screen: deactivate_admin in com.android.settings",
+                            windowStartMs = attempt.state.windowStartMs,
+                            attemptCount = attempt.state.count,
+                            screens = attempt.state.screens,
+                        )
+                    }.onFailure { Log.w(TAG, "could not enqueue disable-request guard alert", it) }
+
+                    runCatching {
+                        appContext.startActivity(
+                            Intent(appContext, TamperGuardTaskActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                .putExtra(TamperGuardActivity.EXTRA_REASON, TamperGuardActivity.REASON_SETTINGS),
+                        )
+                    }.onFailure { Log.w(TAG, "could not launch TamperGuardTaskActivity on disable request", it) }
+                }
+            }
+        }.onFailure { Log.w(TAG, "onDisableRequested guard handling failed", it) }
+
+        return "Removing OSRA admin turns off the parental-control protections on this device. " +
             "Your parent will be notified."
+    }
 
     override fun onDisabled(context: Context, intent: Intent) {
         val outcome = AdminDisabledPolicy.classify(
@@ -80,6 +156,8 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
          * (issue #202).
          */
         val COMPONENT_CLASS: String = GuardianAdminReceiver::class.java.name
+
+        @Volatile private var lastDisableGuardMs: Long = 0L
 
         private const val TAG = "FSDeviceAdmin"
     }

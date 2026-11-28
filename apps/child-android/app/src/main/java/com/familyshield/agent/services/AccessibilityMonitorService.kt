@@ -108,6 +108,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         } else {
             val rows = com.familyshield.agent.setup.OnboardingPolicy.rows(
                 com.familyshield.agent.BuildConfig.CAPTURE_NOTIFICATIONS,
+                Build.MANUFACTURER,
             ) { grantChecks.isGranted(it) }
             val computed = com.familyshield.agent.setup.OnboardingPolicy.missingRequired(rows)
             lastIncompleteGrantCheckElapsedMs = nowElapsed

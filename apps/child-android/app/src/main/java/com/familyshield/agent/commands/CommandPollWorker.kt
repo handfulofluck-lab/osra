@@ -38,6 +38,8 @@ class CommandPollWorker(
 
     /** Runs one poll pass; a failed fetch is retried up to three attempts, then fails the work. */
     override suspend fun doWork(): Result {
+        runCatching { com.familyshield.agent.recovery.ServiceRecovery.run(applicationContext) }
+            .onFailure { Log.w(TAG, "service recovery before command poll failed", it) }
         val wake = inputData.getBoolean(KEY_WAKE, false)
         if (!IdleCadence.workerShouldPoll(LocationService.isServiceRunning, wake)) return Result.success()
         val entryPoint = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
