@@ -44,7 +44,20 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
     fun fixIntent(grant: OnboardingPolicy.Grant): Intent? {
         val pkg = Uri.parse("package:${context.packageName}")
         return when (grant) {
-            OnboardingPolicy.Grant.ACCESSIBILITY -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            OnboardingPolicy.Grant.ACCESSIBILITY -> {
+                val choice = AccessibilitySettingsIntent.chooseAction(
+                    resolvesDetails = context.packageManager.resolveActivity(
+                        Intent(AccessibilitySettingsIntent.ACTION_DETAILS), 0,
+                    ) != null,
+                )
+                Intent(choice.action).takeIf { choice.withComponent }?.putExtra(
+                    Intent.EXTRA_COMPONENT_NAME,
+                    AccessibilitySettingsIntent.componentExtra(
+                        context.packageName,
+                        AccessibilityMonitorService::class.java.name,
+                    ),
+                ) ?: Intent(choice.action)
+            }
             OnboardingPolicy.Grant.USAGE_ACCESS -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
             OnboardingPolicy.Grant.OVERLAY -> if (!Settings.canDrawOverlays(context)) {
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg)

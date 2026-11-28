@@ -42,9 +42,17 @@ class CommsGrantWiringTest {
 
     @Test
     fun `onPermissionsChanged is called from the grant result, onResume and the flush loop`() {
+        // #1301 review (Codex): bind to the real callback, not a brace shape, so the guard survives an edit that
+        // legitimately adds a statement — and keep the mutant: removing this one line from onCommsPermissionsResult
+        // leaves the grant result doing nothing, which is the defect the row exists for.
         assertTrue(
             "the permission result must retry the registration that failed at start",
-            pairing.contains(") { commsCapture.onPermissionsChanged() }"),
+            pairing.contains(") { onCommsPermissionsResult() }"),
+        )
+        val resultHandler = pairing.substringAfter("private fun onCommsPermissionsResult()", "")
+        assertTrue(
+            "the launcher callback reaches onPermissionsChanged",
+            resultHandler.substringBefore("\n    }").contains("commsCapture.onPermissionsChanged()"),
         )
         val resume = pairing.substringAfter("override fun onResume()")
         assertTrue(

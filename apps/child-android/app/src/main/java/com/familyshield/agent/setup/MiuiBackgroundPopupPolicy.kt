@@ -97,8 +97,25 @@ object MiuiBackgroundPopupPolicy {
     fun isParentConfirmed(context: Context): Boolean =
         prefs(context).getBoolean(KEY_PARENT_CONFIRMED, false)
 
+    /**
+     * Pure (#1287 finding 3): whether a tap on "I turned on background pop-ups" may be stored. Only the
+     * unreadable state keeps the parent's word — a readable allow or a readable denial is the OS's answer.
+     */
+    fun storesConfirmation(state: MiuiPopupState): Boolean = state == MiuiPopupState.UNREADABLE
+
     fun confirmByParent(context: Context) {
-        prefs(context).edit().putBoolean(KEY_PARENT_CONFIRMED, true).apply()
+        // #1287 finding 3: read before trusting. If `10021` has become readable, its value decides — a readable
+        // denial must not be papered over by the tap, and a readable allow makes the stored confirmation
+        // unnecessary. Only the still-unreadable case keeps the parent's word, which is the case the step exists
+        // for; naming the right switch in that step is UI/UX copy and lands with the Bureau.
+        val op10021 = checkOpMode(context, OP_BACKGROUND_START_ACTIVITY)
+        val op10020 = checkOpMode(context, OP_SHOW_WHEN_LOCKED)
+        val store = storesConfirmation(classifyState(Build.MANUFACTURER, op10021, op10020))
+        if (store) {
+            prefs(context).edit().putBoolean(KEY_PARENT_CONFIRMED, true).apply()
+        } else {
+            clearParentConfirmation(context)
+        }
     }
 
     fun clearParentConfirmation(context: Context) {
