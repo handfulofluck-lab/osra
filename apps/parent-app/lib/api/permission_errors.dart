@@ -142,7 +142,7 @@ bool isNetworkDioError(DioException error) {
 }
 
 /// Maps [error] to a plain localized sentence (R-ID-1): permission refusal,
-/// consent refusal, network/timeout failure, 5xx unavailability, or [fallback].
+/// consent refusal, network/timeout failure, rate limit (429), or [fallback].
 String friendlyErrorText(
   AppLocalizations l10n,
   Object error,
@@ -155,8 +155,7 @@ String friendlyErrorText(
   logParentError(error);
   if (error is DioException) {
     if (isNetworkDioError(error)) return l10n.errorNoConnection;
-    final status = error.response?.statusCode;
-    if (status != null && status >= 500) return fallback();
+    if (error.response?.statusCode == 429) return l10n.mfaTooManyAttempts;
   }
   return fallback();
 }

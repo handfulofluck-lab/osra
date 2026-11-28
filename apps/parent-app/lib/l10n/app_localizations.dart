@@ -3383,7 +3383,7 @@ abstract class AppLocalizations {
   /// No description provided for @mfaNetworkError.
   ///
   /// In en, this message translates to:
-  /// **'Could not reach the server. Check your connection and try again.'**
+  /// **'Can\'t reach OSRA. Check your internet connection and try again.'**
   String get mfaNetworkError;
 
   /// No description provided for @mfaRequestFailed.
@@ -3575,7 +3575,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingNoNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t connect to OSRA. Check your internet connection, then try again.'**
+  /// **'Can\'t reach OSRA. Check your internet connection and try again.'**
   String get onboardingNoNetwork;
 
   /// No description provided for @onboardingChildTitle.
@@ -5591,13 +5591,31 @@ abstract class AppLocalizations {
   /// No description provided for @errorNoConnection.
   ///
   /// In en, this message translates to:
-  /// **'No internet connection. Check your connection and try again.'**
+  /// **'Can\'t reach OSRA. Check your internet connection and try again.'**
   String get errorNoConnection;
+
+  /// No description provided for @errorCheckServerAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'If you set a server address, check it too.'**
+  String get errorCheckServerAddress;
+
+  /// No description provided for @errorServerUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'OSRA is not responding right now. Try again in a few minutes.'**
+  String get errorServerUnavailable;
+
+  /// No description provided for @errorSomethingWentWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Try again.'**
+  String get errorSomethingWentWrong;
 
   /// No description provided for @authSignInFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t sign in right now. Check your connection and try again.'**
+  /// **'Something went wrong. Try again.'**
   String get authSignInFailed;
 
   /// No description provided for @authMfaReenrollRequired.

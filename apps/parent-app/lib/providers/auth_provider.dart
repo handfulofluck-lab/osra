@@ -185,7 +185,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await _storage.write(key: 'jwt', value: token);
       final refresh = data['refreshToken'] as String?;
       if (refresh != null) await _storage.write(key: 'refresh', value: refresh);
-      await bootstrap();
+      await bootstrap(silentOn401: false);
     } on DioException catch (e) {
       _setState(AuthState(error: _errorMessage(e)));
     } catch (e) {
@@ -195,7 +195,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// Loads GET /v1/family/me with the stored token; clears it on 401.
-  Future<void> bootstrap() async {
+  ///
+  /// When [silentOn401] is true (startup restore of a stale stored session, #763),
+  /// a 401 clears the stale tokens quietly and returns to the plain sign-in screen
+  /// with no red error message.
+  Future<void> bootstrap({bool silentOn401 = true}) async {
     try {
       await _applyServerUrl();
     } catch (_) {
@@ -228,6 +232,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
           await _storage.delete(key: 'jwt');
           await _storage.delete(key: 'refresh');
         } catch (_) {}
+        if (silentOn401) {
+          _setState(const AuthState());
+          return;
+        }
       }
       _setState(AuthState(error: _errorMessage(e)));
     } catch (e) {
@@ -301,6 +309,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   static String _errorMessage(DioException e) {
     logParentError(e);
     if (isNetworkDioError(e)) return 'network_error';
+    final status = e.response?.statusCode;
+    if (status == 429) return 'too_many_attempts';
+    if (status != null && status >= 500) return 'server_unavailable';
     final data = e.response?.data;
     if (data is Map) {
       final err = data['error'];

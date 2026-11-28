@@ -2184,7 +2184,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mfaNetworkError =>
-      'تعذّر الوصول إلى الخادم. تحقّق من اتصالك ثم حاول مجددًا.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصالك بالإنترنت ثم حاول مجددًا.';
 
   @override
   String get mfaRequestFailed => 'لم ينجح ذلك. حاول مجددًا.';
@@ -2295,7 +2295,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingNoNetwork =>
-      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصالك بالإنترنت ثم حاول مجددًا.';
 
   @override
   String get onboardingChildTitle => 'أضف طفلك';
@@ -3548,11 +3548,21 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get errorNoConnection =>
-      'لا يوجد اتصال بالإنترنت. تحقّق من الاتصال ثم حاول مرة أخرى.';
+      'تعذّر الاتصال بخدمة أسرة. تحقّق من اتصالك بالإنترنت ثم حاول مجددًا.';
 
   @override
-  String get authSignInFailed =>
-      'تعذّر تسجيل الدخول الآن. تحقّق من اتصال الإنترنت ثم حاول مرة أخرى.';
+  String get errorCheckServerAddress =>
+      'إذا كنت قد أدخلت عنوان خادم، فتحقّق منه أيضًا.';
+
+  @override
+  String get errorServerUnavailable =>
+      'خدمة أسرة لا تستجيب الآن. حاول مجددًا بعد بضع دقائق.';
+
+  @override
+  String get errorSomethingWentWrong => 'حدث خطأ. حاول مجددًا.';
+
+  @override
+  String get authSignInFailed => 'حدث خطأ. حاول مجددًا.';
 
   @override
   String get authMfaReenrollRequired =>
