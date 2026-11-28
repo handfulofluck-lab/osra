@@ -157,4 +157,18 @@ describe("digit normalization (#771)", () => {
     }
     await app.close();
   });
+
+  // Mutant (Codex's review finding): transform the refused value to `null` instead of `""` and the pipe reports
+  // `Expected string, received null` — a user-visible message this PR promises not to change.
+  it("keeps the previous field error for a refused character", async () => {
+    const res = await buildApp(deviceRoutes, "/v1/devices").then((app) =>
+      app.inject({
+        method: "POST", url: "/v1/devices/pair/claim",
+        payload: { code: "12345a", platform: "android", model: "test-device", osVersion: "14" },
+      }),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(JSON.stringify(res.json())).toContain("Invalid");
+    expect(JSON.stringify(res.json())).not.toContain("received null");
+  });
 });

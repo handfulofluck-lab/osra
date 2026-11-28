@@ -17,5 +17,12 @@ export function normalizeDigits(value: string): string | null {
   return normalized;
 }
 
+/** The shape a code must have after normalisation: exactly [length] ASCII digits and nothing else.
+ *  A refused character becomes `""` rather than `null`, so the pipe reports the same `Invalid` message this
+ *  field produced before (#771): sending `null` into the string check printed `Expected string, received null`,
+ *  a user-visible wording change Codex caught in review. */
 export const digitsSchema = (length: number) =>
-  z.string().transform(normalizeDigits).pipe(z.string().regex(new RegExp(`^\\d{${length}}$`)));
+  z
+    .string()
+    .transform((value) => normalizeDigits(value) ?? "")
+    .pipe(z.string().regex(new RegExp(`^\\d{${length}}$`)));
