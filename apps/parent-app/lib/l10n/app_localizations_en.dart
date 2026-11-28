@@ -4277,4 +4277,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get appsIphoneNoAppList =>
       'The iPhone doesn\'t send its app list yet.';
+
+  @override
+  String get p14DayToday => 'Today';
+
+  @override
+  String get p14DayYesterday => 'Yesterday';
 }

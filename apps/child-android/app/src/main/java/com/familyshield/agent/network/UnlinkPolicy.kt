@@ -48,7 +48,9 @@ class UnlinkPolicy(
     fun onDeviceRevoked(nowMs: Long): Boolean {
         if (unlinked) return true
         val first = firstRevokedAtMs
-        if (first == null) {
+        // #1162 (Ahmed): the window is enforced in memory too, not only at construction. A phone that stays up
+        // for hours must not confirm on an answer it received before the window.
+        if (first == null || nowMs - first > staleAfterMs) {
             firstRevokedAtMs = nowMs
             persist(nowMs)
             return false

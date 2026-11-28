@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.familyshield.agent.ui.pairing.ChecklistCopy
 import com.familyshield.agent.ui.pairing.ChecklistRowUi
 import com.familyshield.agent.ui.pairing.FamilyAgreementCopy
@@ -395,6 +396,8 @@ class PairingActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        activityResumed = false
+        stopChildHomeRefresh()
         accessibilityBindObserver.stop()
         super.onPause()
     }
@@ -429,6 +432,7 @@ class PairingActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         // Issue #229: a grant made in Settings (not through this screen) reaches the logger here.
         commsCapture.onPermissionsChanged()
         lifecycleScope.launch {
@@ -1435,6 +1439,7 @@ class PairingActivity : ComponentActivity() {
             if (!forceLegacy && com.familyshield.agent.ui.theme.ChildUxFlags.c01ChildHomeEnabled) {
                 val initialCopy = buildChildHomeCopy()
                 childHomeCopyState.value = initialCopy
+                startChildHomeRefresh()
                 replaceWithCompose {
                     com.familyshield.agent.ui.home.ChildHomeScreen(
                         copy = childHomeCopyState.value ?: initialCopy,
@@ -1453,6 +1458,7 @@ class PairingActivity : ComponentActivity() {
                             }
                         },
                         onOpenDeviceSetup = {
+                            stopChildHomeRefresh()
                             forceLegacyStatusView = true
                             showStatus()
                         },
@@ -1461,6 +1467,7 @@ class PairingActivity : ComponentActivity() {
                 }
                 return@launch
             }
+            stopChildHomeRefresh()
 
             val tier = deviceAdmin.tier()
             replaceWith {
@@ -1784,6 +1791,53 @@ class PairingActivity : ComponentActivity() {
         com.familyshield.agent.ui.home.TimeRequestSendState.IDLE,
     )
     private val childHomeCopyState = androidx.compose.runtime.mutableStateOf<com.familyshield.agent.ui.home.ChildHomeCopy?>(null)
+    private var activityResumed: Boolean = false
+    private var childHomeRefreshController: com.familyshield.agent.ui.home.ChildHomeRefreshController? = null
+    private var childHomeRefreshJob: kotlinx.coroutines.Job? = null
+
+    private fun isChildHomeEligible(): Boolean =
+        !isFinishing && !isDestroyed && !forceLegacyStatusView
+
+    private fun isChildHomeResumed(): Boolean =
+        activityResumed && isChildHomeEligible()
+
+    private fun startChildHomeRefresh() {
+        stopChildHomeRefresh()
+        if (!isChildHomeEligible()) return
+        // Issue #1284 review (Codex): bind registration to repeatOnLifecycle(RESUMED) so:
+        // (1) an inline render inside onResume() (before AndroidX dispatches ON_RESUME) starts as
+        //     soon as ON_RESUME arrives rather than returning early and staying stale, and
+        // (2) a suspended showStatus() completing after onPause() never registers while paused.
+        childHomeRefreshJob = lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                if (!isChildHomeEligible()) return@repeatOnLifecycle
+                val controller = childHomeRefreshController ?: com.familyshield.agent.ui.home.ChildHomeRefreshController(
+                    addRulesChangedListener = { listener -> rules.addRulesChangedListener(listener) },
+                    removeRulesChangedListener = { listener -> rules.removeRulesChangedListener(listener) },
+                    onRefresh = {
+                        runOnUiThread {
+                            if (isChildHomeResumed()) {
+                                childHomeCopyState.value = buildChildHomeCopy()
+                            }
+                        }
+                    },
+                    isResumed = { isChildHomeResumed() },
+                ).also { childHomeRefreshController = it }
+                controller.start(this)
+                try {
+                    kotlinx.coroutines.awaitCancellation()
+                } finally {
+                    controller.stop()
+                }
+            }
+        }
+    }
+
+    private fun stopChildHomeRefresh() {
+        childHomeRefreshJob?.cancel()
+        childHomeRefreshJob = null
+        childHomeRefreshController?.stop()
+    }
 
     private fun sendChildHomeTimeRequest(minutes: Int) {
         if (childHomeSendState.value == com.familyshield.agent.ui.home.TimeRequestSendState.SENDING) return

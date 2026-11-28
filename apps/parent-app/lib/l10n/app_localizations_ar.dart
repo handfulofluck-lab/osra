@@ -4550,4 +4550,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appsIphoneNoAppList => 'لا يرسل هاتف آيفون قائمة التطبيقات بعد.';
+
+  @override
+  String get p14DayToday => 'اليوم';
+
+  @override
+  String get p14DayYesterday => 'أمس';
 }

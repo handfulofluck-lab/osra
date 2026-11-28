@@ -6909,6 +6909,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The iPhone doesn\'t send its app list yet.'**
   String get appsIphoneNoAppList;
+
+  /// No description provided for @p14DayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get p14DayToday;
+
+  /// No description provided for @p14DayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get p14DayYesterday;
 }
 
 class _AppLocalizationsDelegate
