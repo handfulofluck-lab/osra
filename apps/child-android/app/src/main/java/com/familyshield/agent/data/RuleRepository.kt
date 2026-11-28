@@ -274,23 +274,24 @@ class RuleRepository @Inject constructor(
                 return@withLock cached
             }
             consent.onPollStatus(200)
+            // Issue #475 & #1151 review: persist before advancing the in-memory cache or applied version.
+            // An unpersisted fetch is not a successful refresh and must not replace the last durable cache;
+            // the paired-empty case returns null so RulesSyncWorker retries.
+            val persisted = runCatching {
+                settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
+            }.isSuccess
+            if (!persisted) return@withLock cached
             cached = updated
             rulesAppliedListeners.forEach { runCatching { it() } }
             // #864/#922 (Antigravity's review): the category pack is a store of its own, and it feeds BOTH
             // `blocklist.domains()` (the DNS sinkhole) and `blocklist.apps()` (`verdict`, RuleRepository.kt:116).
-            // Refreshing it here — under `refreshMutex`, after `cached = updated`, before the #444 C4 listeners
+            // Refreshing it here — under `refreshMutex`, after caching `updated`, before the #444 C4 listeners
             // run — makes a category change live on every path (command, worker, consent re-grant) whether or
             // not the VPN tunnel is up, serializes the fetch instead of duplicating it, and keeps the listeners
             // from observing a stale pack. `BlocklistStore.refresh` already rethrows CancellationException and
             // swallows ordinary failures itself, so it is called directly rather than inside `runCatching`.
             blocklist.refresh(updated.webFilter.blockedCategories)
-            // Issue #475: the applied version moves only when the rules were actually PERSISTED. A failed
-            // write with the version advanced would tell the parent the phone has rules it will lose on the
-            // next process start — the same class of lie the feature exists to prevent.
-            val persisted = runCatching {
-                settings.saveRulesJson(moshi.adapter(RuleSetDto::class.java).toJson(updated))
-            }.isSuccess
-            if (persisted) runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
+            runCatching { settings.saveAppliedRulesVersion(updated.rulesVersion) }
             runCatching { FirebaseMessaging.getInstance().subscribeToTopic("child:$childId:rules") }
             rulesChangedListeners.forEach { runCatching { it() } }
             updated

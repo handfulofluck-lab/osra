@@ -718,6 +718,28 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get p04WhatWeCollect => 'البيانات التي نجمعها';
+
+  @override
+  String get p04GuardianConfirm =>
+      'أنا وليّ أمر هذا الطفل (أحد والديه أو الوصي القانوني عليه).';
+
+  @override
+  String get p04GuardianRequired =>
+      'حدّد المربع لتأكيد أنك وليّ أمر هذا الطفل.';
+
+  @override
+  String get p04AgeLabel => 'العمر';
+
+  @override
+  String p04AgeRange(String min, String max) {
+    return 'أدخل عمرًا من $min إلى $max.';
+  }
+
+  @override
+  String get p04AddTitle => 'إضافة طفل';
+
+  @override
   String get familyDone => 'تم';
 
   @override
@@ -4524,6 +4546,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appsIphoneNoAppList => 'لا يرسل هاتف آيفون قائمة التطبيقات بعد.';
+
+  @override
+  String get p14DayToday => 'اليوم';
+
+  @override
+  String get p14DayYesterday => 'أمس';
 
   @override
   String get locationP13AllChildren => 'الكل';

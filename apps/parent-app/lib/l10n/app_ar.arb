@@ -199,6 +199,22 @@
   "readErrorConsentMissing": "لم يُحفظ هذا التغيير: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.",
   "readErrorConsentRegion": "لم يُحفظ هذا التغيير: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.",
   "addChildConsentRegion": "يجب أن تطابق منطقة الموافقة منطقة عائلتك ({region}). اختر {region} وحاول مرة أخرى.",
+  "p04WhatWeCollect": "البيانات التي نجمعها",
+  "p04GuardianConfirm": "أنا وليّ أمر هذا الطفل (أحد والديه أو الوصي القانوني عليه).",
+  "p04GuardianRequired": "حدّد المربع لتأكيد أنك وليّ أمر هذا الطفل.",
+  "p04AgeLabel": "العمر",
+  "p04AgeRange": "أدخل عمرًا من {min} إلى {max}.",
+  "@p04AgeRange": {
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "p04AddTitle": "إضافة طفل",
   "familyDone": "تم",
   "familyMembersTitle": "أفراد العائلة",
   "familyParentsHeading": "أولياء الأمور",
@@ -1541,6 +1557,8 @@
   "appsLimitSheetTitle": "الحد اليومي لتطبيق {app}",
   "appsNoLimit": "بلا حد",
   "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد.",
+  "p14DayToday": "اليوم",
+  "p14DayYesterday": "أمس",
   "locationP13AllChildren": "الكل",
   "locationP13Refresh": "تحديث",
   "locationP13Refreshing": "جارٍ التحقق…",

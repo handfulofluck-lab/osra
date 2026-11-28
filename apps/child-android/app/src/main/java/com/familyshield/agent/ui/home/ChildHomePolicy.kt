@@ -87,7 +87,7 @@ object ChildHomePolicy {
         minutesUsedToday: Map<String, Int>,
         localBonusMinutes: Int,
     ): ChildTimeBudget {
-        val used = minutesUsedToday.values.sum().coerceAtLeast(0)
+        val used = com.familyshield.agent.enforcement.EssentialPackages.sumDailyBudgetMinutes(minutesUsedToday)
         val st = ruleSet?.screenTime
         if (st == null || st.dailyLimitMinutes <= 0) {
             return ChildTimeBudget(

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.familyshield.agent.data.AgentSettings
+import com.familyshield.agent.data.WorkScheduler
 import com.familyshield.agent.di.WorkerEntryPoint
 import com.familyshield.agent.network.ApiService
 import com.familyshield.agent.network.dto.AlertDto
@@ -49,6 +50,8 @@ class PackageReplacedReceiver : BroadcastReceiver() {
             return
         }
         val childId = settings.childId() ?: return
+        // #1151: an in-place update can carry new rules; the unique durable worker also retries a failed save.
+        WorkScheduler.syncNowAtStartup(context)
         runCatching {
             api.postInternalAlert(
                 AlertDto(
