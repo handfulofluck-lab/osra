@@ -16,7 +16,8 @@ function internetCommandType(paused: boolean): string {
  * Persist the child-wide request and its exact target commands together.
  * The existing child row also serializes requests when there is no prior operation.
  */
-export async function requestChildInternet(childId: string, paused: boolean): Promise<boolean> {
+/** `byName`: the acting adult's server-stamped display name for the child's C-04 feed (#1179), if any. */
+export async function requestChildInternet(childId: string, paused: boolean, byName?: string): Promise<boolean> {
   const type = internetCommandType(paused);
   const commands = await prisma.$transaction(async (tx) => {
     const [child] = await tx.$queryRaw<{ id: string }[]>`
@@ -34,6 +35,7 @@ export async function requestChildInternet(childId: string, paused: boolean): Pr
       data: devices.map(({ id: deviceId }) => ({
         deviceId,
         type,
+        payload: byName ? { byName } : {},
         requestedBy: "system",
         createdAt: requestedAt,
         expiresAt,

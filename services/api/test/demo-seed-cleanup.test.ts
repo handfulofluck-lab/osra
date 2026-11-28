@@ -168,6 +168,8 @@ describeDatabase("demo seed and cleanup against real Postgres", () => {
   it("uses timezone-aware columns for every entitlement timestamp", async () => {
     expect(await sql(`SELECT column_name || '|' || data_type FROM information_schema.columns
       WHERE table_name = 'family_purchases'
+        -- Only the fixture schema: other database suites migrate their own copies (e.g. device_cmd_1237).
+        AND table_schema = current_schema()
         AND column_name IN ('expires_at', 'last_verified_at', 'created_at', 'ended_at') ORDER BY column_name`))
       .toBe([
         "created_at|timestamp with time zone",

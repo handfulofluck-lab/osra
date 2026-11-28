@@ -8,6 +8,7 @@ import { assertProcessingAllowed } from "../lib/consent.js";
 import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { DEFAULT_RULESET } from "../lib/defaultRules.js";
 import { filterAgentRules, toApiRuleSet } from "../lib/ruleSync.js";
+import { actingAdultName, withByName } from "../lib/actingAdult.js";
 import { touchAgentLastSeen } from "../lib/pollCadence.js";
 import { APP_GROUPS_MAX } from "@familyshield/shared-types";
 
@@ -121,10 +122,14 @@ export function windowsOverlap(start1: string, end1: string, start2: string, end
 }
 
 /** Push a rules_updated command to every device of the child so HTTP-polling agents refresh. */
-async function notifyDevices(childId: string): Promise<void> {
+async function notifyDevices(childId: string, byName?: string, rulesVersion?: unknown): Promise<void> {
+  // Codex (#1237 [Sat] 1): the committed version travels with the notice, so an older overlapping edit that
+  // finishes last cannot replace the newer adult on the coalesced row.
+  const base: Record<string, unknown> = { reason: "rules_changed" };
+  if (typeof rulesVersion === "number" && Number.isSafeInteger(rulesVersion)) base.rulesVersion = rulesVersion;
   const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
   for (const { id } of devices) {
-    await enqueueDeviceCommand(id, "rules_updated", { reason: "rules_changed" });
+    await enqueueDeviceCommand(id, "rules_updated", withByName(base, byName));
   }
 }
 
@@ -209,7 +214,7 @@ export async function rulesRoutes(app: FastifyInstance) {
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
-    await notifyDevices(childId);
+    await notifyDevices(childId, await actingAdultName(req), (row as { rulesVersion?: unknown }).rulesVersion);
     return api;
   });
 
@@ -252,7 +257,7 @@ export async function rulesRoutes(app: FastifyInstance) {
     });
     const api = toApiRuleSet(row as unknown as Record<string, unknown>);
     await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
-    await notifyDevices(childId);
+    await notifyDevices(childId, await actingAdultName(req), (row as { rulesVersion?: unknown }).rulesVersion);
     return api;
   });
 }
