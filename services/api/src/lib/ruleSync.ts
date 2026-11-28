@@ -81,6 +81,8 @@ export async function publishChildRules(childId: string, reason = "rules_changed
   await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, toApiRuleSet(row as unknown as Record<string, unknown>)));
   const devices = await prisma.device.findMany({ where: { childId }, select: { id: true } });
   for (const { id } of devices) {
-    await enqueueDeviceCommand(id, "rules_updated", { reason });
+    // Codex (#1237 round 3): a routine refresh carries the committed revision it published, so the coalescer
+    // can tell it apart from an older adult save (the coalescer also fills it in when a caller has none).
+    await enqueueDeviceCommand(id, "rules_updated", typeof row.rulesVersion === "number" ? { reason, rulesVersion: row.rulesVersion } : { reason });
   }
 }

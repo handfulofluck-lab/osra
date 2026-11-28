@@ -8,6 +8,7 @@ import { enqueueDeviceCommand } from "../lib/deviceCommands.js";
 import { latestChildInternet, requestChildInternet } from "../lib/childInternet.js";
 import { defaultRuleSetRow } from "../lib/defaultRules.js";
 import { filterAgentRules, toApiRuleSet } from "../lib/ruleSync.js";
+import { actingAdultName, withByName } from "../lib/actingAdult.js";
 
 const BonusSchema = z.object({
   minutes: z.number().int().min(1),
@@ -33,7 +34,7 @@ async function fanOutToDevices(childId: string, type: string, payload: Record<st
 export async function controlsRoutes(app: FastifyInstance) {
   const changeInternet = (paused: boolean) => async (req: FastifyRequest, reply: FastifyReply) => {
     const { childId } = req.params as { childId: string };
-    if (!(await requestChildInternet(childId, paused))) {
+    if (!(await requestChildInternet(childId, paused, await actingAdultName(req)))) {
       return reply.code(404).send({ error: "child_not_found" });
     }
     return { childId, paused };
@@ -86,7 +87,7 @@ export async function controlsRoutes(app: FastifyInstance) {
         update: { bonusMinutesToday: { increment: minutes }, rulesVersion: { increment: 1 } },
       });
       const api = toApiRuleSet(row as unknown as Record<string, unknown>);
-      await fanOutToDevices(childId, "bonus_time", { minutes });
+      await fanOutToDevices(childId, "bonus_time", withByName({ minutes }, await actingAdultName(req)), (req.user as { sub?: string }).sub);
       // Agents read the extra minutes from the rules payload, so republish it on every grant.
       await publishJson(`child:${childId}:rules`, await filterAgentRules(childId, api));
       return api;
@@ -102,7 +103,7 @@ export async function controlsRoutes(app: FastifyInstance) {
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
       const { childId } = req.params as { childId: string };
       const { minutes } = parsed.data;
-      await fanOutToDevices(childId, "wind_down", { minutes });
+      await fanOutToDevices(childId, "wind_down", withByName({ minutes }, await actingAdultName(req)), (req.user as { sub?: string }).sub);
       return { childId, minutes };
     },
   );
