@@ -94,6 +94,79 @@ export interface EnqueueOptions {
   ttlSeconds?: number;
 }
 
+function revisionOf(payload: unknown): number | null {
+  const v = payload && typeof payload === "object" ? (payload as Record<string, unknown>).rulesVersion : undefined;
+  return typeof v === "number" && Number.isSafeInteger(v) ? v : null;
+}
+
+/** Advisory-lock key for coalesced enqueues of one (device, type). */
+export function coalesceLockKey(deviceId: string, type: string): string {
+  return `device-command:${deviceId}:${type}`;
+}
+
+/**
+ * C-04 (#1179): a coalesced row stands for the LATEST change, so it carries the latest actor. If a second adult
+ * (or a routine, with no name) changes the rules before the phone drains, the pending row takes the newer payload;
+ * it is still pending, so nothing delivered is rewritten.
+ * Codex (#1237 [Sat] 1): saves can arrive out of order. Under the lock:
+ *  - a save whose committed revision is lower than the newest row of this type (pending, or already drained by the
+ *    phone) is the older edit and never adds or rewrites a row, so the phone's last word stays the newest adult;
+ *  - otherwise the pending row is replaced by a compare-and-set on (still pending, same revision as read);
+ *  - if the phone drained it in between, the newer change is queued as its own row.
+ */
+async function coalesceInLock(
+  tx: Prisma.TransactionClient,
+  deviceId: string,
+  type: string,
+  input: Record<string, unknown>,
+  opts: EnqueueOptions,
+): Promise<Row> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${coalesceLockKey(deviceId, type)}))`;
+  const now = new Date();
+  const ttl = opts.ttlSeconds ?? ttlFor(type);
+  const pending = await tx.deviceCommand.findFirst({
+    where: { deviceId, type, status: "pending", expiresAt: { gt: now } },
+    orderBy: { createdAt: "desc" },
+  });
+  const newest = await tx.deviceCommand.findFirst({
+    where: { deviceId, type, createdAt: { gt: new Date(now.getTime() - ttl * 1000) } },
+    orderBy: { createdAt: "desc" },
+  });
+  const known = [revisionOf(pending?.payload), revisionOf(newest?.payload)].filter((v): v is number => v !== null);
+  const greatest = known.length ? Math.max(...known) : null;
+  // Codex (#1237 round 3, ruleSync.ts:84): a change without a revision (a routine refresh) still stands for the
+  // newest committed rules, so it carries the greatest revision already queued. Otherwise it would erase the
+  // revision on the pending row and an older adult save could take the actor back.
+  const payload = revisionOf(input) === null && greatest !== null ? { ...input, rulesVersion: greatest } : input;
+  const nextRevision = revisionOf(payload);
+  if (nextRevision !== null && greatest !== null && nextRevision < greatest) return pending ?? (newest as Row);
+  if (pending) {
+    const prev = (pending.payload ?? {}) as Record<string, unknown>;
+    const prevRevision = revisionOf(prev);
+    if (prevRevision !== null && nextRevision !== null && nextRevision < prevRevision) return pending;
+    if (prev.byName === payload.byName && prevRevision === nextRevision) return pending;
+    const { count } = await tx.deviceCommand.updateMany({
+      where: {
+        id: pending.id,
+        status: "pending",
+        ...(prevRevision !== null ? { payload: { path: ["rulesVersion"], equals: prevRevision } } : {}),
+      },
+      data: { payload: payload as Prisma.InputJsonValue },
+    });
+    if (count > 0) return { ...pending, payload: payload as Prisma.JsonValue };
+    // The phone claimed the row between our read and this write: queue the newer change as its own row.
+  }
+  return tx.deviceCommand.create({
+    data: {
+      deviceId,
+      type,
+      payload: payload as Prisma.InputJsonValue,
+      requestedBy: opts.requestedBy ?? "system",
+      expiresAt: new Date(now.getTime() + ttl * 1000),
+    },
+  });
+}
+
 /** Persist a command for a device, then wake any connected agent over Redis pub/sub. */
 export async function enqueueDeviceCommand(
   deviceId: string,
@@ -102,18 +175,18 @@ export async function enqueueDeviceCommand(
   opts: EnqueueOptions = {},
 ): Promise<DeviceCommandMessage> {
   if (COALESCED_TYPES.has(type)) {
-    const existing = await prisma.deviceCommand.findFirst({
-      where: { deviceId, type, status: "pending", expiresAt: { gt: new Date() } },
+    // Codex (#1237 [Sat] 1, round 2): the decision and the write happen in one transaction that holds a
+    // per-(device, type) advisory lock, so two overlapping saves can no longer compare against the same
+    // earlier read. The phone's drain does not take the lock; the UPDATE's own guard (still pending, same
+    // revision) covers it. The wake runs after commit. Wake again even when no row is added: the pending row
+    // may come from a wake FCM delayed or dropped (Flip4, 29 Oct); duplicates are free (collapse key "wake").
+    const row = await prisma.$transaction((tx) => coalesceInLock(tx, deviceId, type, payload, opts), {
+      maxWait: 10_000,
+      timeout: 10_000,
     });
-    if (existing) {
-      // Wake again even though no row is added. The pending row may come from a wake that FCM delayed
-      // or dropped, or from a change made while push was off; returning silently would leave every
-      // later change waiting for the 15-minute poll (Flip4, 29 Oct). Duplicates are free: the wake
-      // carries collapse key "wake" and the agent drains the queue, not the message.
-      const message = toMessage(existing);
-      await wakeForDeviceCommand(message);
-      return message;
-    }
+    const message = toMessage(row);
+    await wakeForDeviceCommand(message);
+    return message;
   }
   const ttl = opts.ttlSeconds ?? ttlFor(type);
   const row = await prisma.deviceCommand.create({
