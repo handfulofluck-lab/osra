@@ -101,6 +101,51 @@ object EssentialPackages {
     )
 
     /**
+     * Issue #1283: OS chrome packages that must not count toward the child's daily screen-time
+     * budget (launcher, SystemUI, Settings, and OSRA itself). Shared by
+     * [com.familyshield.agent.data.RuleEngine], [com.familyshield.agent.ui.home.ChildHomePolicy],
+     * and [BlockExplainPolicy] so the Child Home counter, block explanations, and enforcement can
+     * never disagree.
+     *
+     * Intentionally explicit and narrow (no browsers, no app stores, no WebView hosts, no
+     * namespace prefixes, and no user-installable dynamic intents) so a child cannot use an
+     * excluded package to escape daily limits.
+     */
+    val DAILY_BUDGET_EXCLUDED_PACKAGES: Set<String> = setOf(
+        OWN_PACKAGE,
+        "com.android.systemui",
+        "com.android.settings",
+        "com.android.launcher3",
+        "com.google.android.apps.nexuslauncher",
+        "com.sec.android.app.launcher",
+        "com.miui.home",
+        "com.mi.android.globallauncher",
+        "com.huawei.android.launcher",
+        "com.hihonor.android.launcher",
+        "com.oppo.launcher",
+        "com.coloros.launcher",
+        "com.oneplus.launcher",
+        "com.bbk.launcher2",
+        "com.transsion.hilauncher",
+    )
+
+    /** True when [packageId] is OS chrome excluded from the daily screen-time budget (#1283). */
+    fun isExcludedFromDailyBudget(packageId: String?): Boolean {
+        if (packageId.isNullOrBlank()) return false
+        return packageId in DAILY_BUDGET_EXCLUDED_PACKAGES
+    }
+
+    /**
+     * Sums today's minutes across all countable apps, excluding [DAILY_BUDGET_EXCLUDED_PACKAGES].
+     * Single source of truth for daily-budget display and enforcement (#1283).
+     */
+    fun sumDailyBudgetMinutes(minutesUsedToday: Map<String, Int>): Int =
+        minutesUsedToday.entries
+            .asSequence()
+            .filterNot { (pkg, _) -> isExcludedFromDailyBudget(pkg) }
+            .sumOf { (_, mins) -> mins.coerceAtLeast(0) }
+
+    /**
      * Issue #1096 (Ahmed's child-2 run, Redmi/MIUI, 24 Nov): the screens a child must reach to finish
      * setup or answer a permission prompt. Pairing a child after 21:00 let the default Bedtime routine
      * cover Xiaomi's Security app (`com.miui.securitycenter`), which hosts the Autostart and permission

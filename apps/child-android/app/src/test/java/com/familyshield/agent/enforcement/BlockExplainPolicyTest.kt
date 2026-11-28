@@ -362,6 +362,28 @@ class BlockExplainPolicyTest {
     }
 
     @Test
+    fun `rulesSummary and liveActivityPayload exclude launcher, SystemUI and Settings (#1283)`() {
+        // Mutant: reverting BlockExplainPolicy.rulesSummary:295/:316 or LiveActivity.kt:12 to
+        // `values.sum()` raises dailyUsedMinutes / payload["minutes"] from 40 to 994.
+        val usage = mapOf(
+            "com.sec.android.app.launcher" to 600,
+            "com.android.systemui" to 240,
+            "com.android.settings" to 114,
+            minecraft to 40,
+        )
+        val rules = RuleSetDto(screenTime = ScreenTimeRuleDto(dailyLimitMinutes = 120))
+        val withRules = BlockExplainPolicy.rulesSummary(rules, wedNight, usage, bonusMinutes = 0)
+        assertEquals(40, withRules.dailyUsedMinutes)
+        assertEquals(120, withRules.dailyLimitMinutes)
+
+        val withoutRules = BlockExplainPolicy.rulesSummary(null, wedNight, usage, bonusMinutes = 0)
+        assertEquals(40, withoutRules.dailyUsedMinutes)
+
+        val live = com.familyshield.agent.telemetry.liveActivityPayload(usage, minecraft)
+        assertEquals(40, live.payload["minutes"])
+    }
+
+    @Test
     fun `C-02 screen keeps calm SOS row, NoActionBar manifest theme, feature switch fallback, and EN-AR string parity`() {
         val root = findAppSrcRoot()
         val manifest = File(root, "AndroidManifest.xml").readText()
