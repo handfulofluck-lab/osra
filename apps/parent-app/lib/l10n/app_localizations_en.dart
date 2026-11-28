@@ -693,6 +693,28 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get p04WhatWeCollect => 'What we collect';
+
+  @override
+  String get p04GuardianConfirm =>
+      'I\'m this child\'s parent or legal guardian.';
+
+  @override
+  String get p04GuardianRequired =>
+      'Tick the box to confirm you\'re this child\'s parent or guardian.';
+
+  @override
+  String get p04AgeLabel => 'Age';
+
+  @override
+  String p04AgeRange(String min, String max) {
+    return 'Enter an age from $min to $max.';
+  }
+
+  @override
+  String get p04AddTitle => 'Add a child';
+
+  @override
   String get familyDone => 'Done';
 
   @override
@@ -4234,4 +4256,75 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get p01PreviewLocationValue => 'At school';
+
+  @override
+  String appsFilterAllowed(Object count) {
+    return 'Allowed ($count)';
+  }
+
+  @override
+  String appsLimitSheetTitle(Object app) {
+    return 'Daily limit for $app';
+  }
+
+  @override
+  String get appsNoLimit => 'No limit';
+
+  @override
+  String get appsIphoneNoAppList =>
+      'The iPhone doesn\'t send its app list yet.';
+
+  @override
+  String get p14DayToday => 'Today';
+
+  @override
+  String get p14DayYesterday => 'Yesterday';
+
+  @override
+  String get locationP13AllChildren => 'All';
+
+  @override
+  String get locationP13Refresh => 'Refresh';
+
+  @override
+  String get locationP13Refreshing => 'Checking…';
+
+  @override
+  String get locationP13Directions => 'Directions';
+
+  @override
+  String get locationP13EarlierToday => 'Earlier today';
+
+  @override
+  String get locationP13EarlierTodayEmpty =>
+      'No earlier places recorded today.';
+
+  @override
+  String get locationP13SavedPlacesTitle => 'Saved places';
+
+  @override
+  String get locationP13AddPlace => 'Add place';
+
+  @override
+  String get locationP13AlertsEnterLeave => 'Arrive & leave alerts';
+
+  @override
+  String get locationP13AlertsEnterOnly => 'Arrive alert';
+
+  @override
+  String get locationP13AlertsLeaveOnly => 'Leave alert';
+
+  @override
+  String get locationP13AlertsOff => 'Alerts off';
+
+  @override
+  String get locationP13NoLocationYet => 'No location reported yet.';
+
+  @override
+  String get locationP13RingNotYetOnIphone => 'Not yet available on iPhone';
+
+  @override
+  String locationP13RadiusMeters(String meters) {
+    return '$meters m radius';
+  }
 }

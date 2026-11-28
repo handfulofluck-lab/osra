@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart' as ll;
 import 'package:intl/intl.dart';
 
 import '../../api/models.dart';
+import '../../core/command_in_flight.dart';
 import '../../l10n/l10n.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
@@ -18,6 +19,7 @@ import '../../api/permission_errors.dart';
 import '../../widgets/error_retry_view.dart';
 import '../children/command_messages.dart';
 import 'child_location_view.dart';
+import 'location_p13_screen.dart';
 
 /// Marker hue per device status.
 double _statusHue(String status) => switch (status) {
@@ -93,6 +95,11 @@ class FamilyMapScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #1179 P-13 Location behind switch (old FamilyMapScreen stays as fallback;
+    // SOS-focused map opens keep legacy focus behavior unless P-13 is off).
+    if (focus == null && ref.watch(p13LocationEnabledProvider)) {
+      return const LocationP13Screen();
+    }
     ref.watch(wsProvider); // keep the live channel subscribed while on this screen
     final family = ref.watch(familyProvider);
     final overview = family.valueOrNull;
@@ -189,6 +196,17 @@ class ChildMapSheet extends ConsumerWidget {
     // `{status: "failed", reason}`. The map used to report "queued" for those, so a parent whose
     // ring or lock was refused up front was told it had been sent. Both refusals now read the same
     // mapping as child detail (`commandRefusalText`), so one command never has two stories.
+    // PA06 (#738): a second tap on the same command while this POST is outstanding sends nothing, and
+    // the guard is shared with child detail — tapping Ring here and then there is still one ring.
+    if (!beginCommandSend(device.id, command)) return;
+    try {
+      await _postCommand(context, ref, device, command);
+    } finally {
+      endCommandSend(device.id, command);
+    }
+  }
+
+  Future<void> _postCommand(BuildContext context, WidgetRef ref, Device device, String command) async {
     final l10n = context.l10n;
     try {
       final response = await ref.read(apiClientProvider).raw.post('/v1/devices/${device.id}/command', data: {'command': command});

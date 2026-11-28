@@ -1250,6 +1250,42 @@ abstract class AppLocalizations {
   /// **'The consent region must match your family\'s region ({region}). Choose {region} and try again.'**
   String addChildConsentRegion(String region);
 
+  /// No description provided for @p04WhatWeCollect.
+  ///
+  /// In en, this message translates to:
+  /// **'What we collect'**
+  String get p04WhatWeCollect;
+
+  /// No description provided for @p04GuardianConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I\'m this child\'s parent or legal guardian.'**
+  String get p04GuardianConfirm;
+
+  /// No description provided for @p04GuardianRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Tick the box to confirm you\'re this child\'s parent or guardian.'**
+  String get p04GuardianRequired;
+
+  /// No description provided for @p04AgeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Age'**
+  String get p04AgeLabel;
+
+  /// No description provided for @p04AgeRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an age from {min} to {max}.'**
+  String p04AgeRange(String min, String max);
+
+  /// No description provided for @p04AddTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a child'**
+  String get p04AddTitle;
+
   /// No description provided for @familyDone.
   ///
   /// In en, this message translates to:
@@ -6843,6 +6879,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'At school'**
   String get p01PreviewLocationValue;
+
+  /// No description provided for @appsFilterAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed ({count})'**
+  String appsFilterAllowed(Object count);
+
+  /// No description provided for @appsLimitSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily limit for {app}'**
+  String appsLimitSheetTitle(Object app);
+
+  /// No description provided for @appsNoLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'No limit'**
+  String get appsNoLimit;
+
+  /// No description provided for @appsIphoneNoAppList.
+  ///
+  /// In en, this message translates to:
+  /// **'The iPhone doesn\'t send its app list yet.'**
+  String get appsIphoneNoAppList;
+
+  /// No description provided for @p14DayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get p14DayToday;
+
+  /// No description provided for @p14DayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get p14DayYesterday;
+
+  /// No description provided for @locationP13AllChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get locationP13AllChildren;
+
+  /// No description provided for @locationP13Refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get locationP13Refresh;
+
+  /// No description provided for @locationP13Refreshing.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get locationP13Refreshing;
+
+  /// No description provided for @locationP13Directions.
+  ///
+  /// In en, this message translates to:
+  /// **'Directions'**
+  String get locationP13Directions;
+
+  /// No description provided for @locationP13EarlierToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier today'**
+  String get locationP13EarlierToday;
+
+  /// No description provided for @locationP13EarlierTodayEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No earlier places recorded today.'**
+  String get locationP13EarlierTodayEmpty;
+
+  /// No description provided for @locationP13SavedPlacesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved places'**
+  String get locationP13SavedPlacesTitle;
+
+  /// No description provided for @locationP13AddPlace.
+  ///
+  /// In en, this message translates to:
+  /// **'Add place'**
+  String get locationP13AddPlace;
+
+  /// No description provided for @locationP13AlertsEnterLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrive & leave alerts'**
+  String get locationP13AlertsEnterLeave;
+
+  /// No description provided for @locationP13AlertsEnterOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrive alert'**
+  String get locationP13AlertsEnterOnly;
+
+  /// No description provided for @locationP13AlertsLeaveOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave alert'**
+  String get locationP13AlertsLeaveOnly;
+
+  /// No description provided for @locationP13AlertsOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts off'**
+  String get locationP13AlertsOff;
+
+  /// No description provided for @locationP13NoLocationYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No location reported yet.'**
+  String get locationP13NoLocationYet;
+
+  /// No description provided for @locationP13RingNotYetOnIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get locationP13RingNotYetOnIphone;
+
+  /// No description provided for @locationP13RadiusMeters.
+  ///
+  /// In en, this message translates to:
+  /// **'{meters} m radius'**
+  String locationP13RadiusMeters(String meters);
 }
 
 class _AppLocalizationsDelegate

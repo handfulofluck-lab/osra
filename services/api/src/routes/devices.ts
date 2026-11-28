@@ -7,7 +7,9 @@ import { getRedis, getJson, setJson, setJsonNx } from "../redis.js";
 import { guardianPermissions, requireAuth, requireFamily, requireOwnDevice, requireParent, requirePermission, sanitizeDevice } from "../middleware/requireFamily.js";
 import { requireConsent } from "../middleware/requireConsent.js";
 import { checkActiveConsent, assertProcessingAllowed } from "../lib/consent.js";
+import { digitsSchema, normalizeDigits } from "../lib/digits.js";
 import { ackDeviceCommand, claimPendingCommands, enqueueDeviceCommand, enqueueFailedDeviceCommand, listDeviceCommands } from "../lib/deviceCommands.js";
+import { ATTRIBUTED_COMMANDS, actingAdultName, withByName } from "../lib/actingAdult.js";
 import { BUDGET_WINDOW_MINUTES, RETENTION_MINUTES, countingEnabled, idleBudgetThreshold, readDeviceCounts, summarise, withinBudget } from "../lib/idleBudget.js";
 import { LOCATION_GRANT_STATES, locateNowRefusal } from "../lib/locationGrant.js";
 import { commandRefusal, parseCapabilities, setupFor, withStoredGroups, withStoredProfiles } from "../lib/capabilities.js";
@@ -97,7 +99,7 @@ const PairSchema = z.object({ childId: z.string().min(1) });
 // (`cleanDeviceText`), and a `model` or `osVersion` with nothing left is refused.
 const DeviceText = z.string().max(1000).transform(cleanDeviceText);
 const ClaimSchema = z.object({
-  code: z.string().regex(/^\d{6}$/),
+  code: digitsSchema(6),
   platform: PLATFORM,
   model: DeviceText.pipe(z.string().min(1)),
   osVersion: DeviceText.pipe(z.string().min(1)),
@@ -452,9 +454,10 @@ export async function deviceRoutes(app: FastifyInstance) {
    */
   app.get("/pair/:code/claim", { preHandler: [requireParent, requirePermission("devices")] }, async (req, reply) => {
     const { code } = req.params as { code: string };
-    if (!/^\d{6}$/.test(code)) return reply.code(404).send({ error: "invalid_or_expired_code" });
+    const normalized = normalizeDigits(code);
+    if (normalized === null || !/^\d{6}$/.test(normalized)) return reply.code(404).send({ error: "invalid_or_expired_code" });
     const user = req.user as AuthedUser;
-    const { codeLive, familyId, claim } = await readClaimForCode(code);
+    const { codeLive, familyId, claim } = await readClaimForCode(normalized);
     if (familyId !== user.familyId || (!codeLive && !claim)) {
       return reply.code(404).send({ error: "invalid_or_expired_code" });
     }
@@ -770,7 +773,10 @@ export async function deviceRoutes(app: FastifyInstance) {
     }
     // Phase 2b: the command is a durable row; the response carries its id so the parent app can
     // poll /commands/history for delivered / acked / failed instead of guessing.
-    const message = await enqueueDeviceCommand(id, parsed.data.command, parsed.data.payload ?? {}, { requestedBy: user.sub });
+    // C-04 (#1179): a client-sent `byName` is never trusted; attributed commands carry the server's own.
+    const byName = ATTRIBUTED_COMMANDS.has(parsed.data.command) ? await actingAdultName(req) : undefined;
+    const payload = withByName(parsed.data.payload ?? {}, byName);
+    const message = await enqueueDeviceCommand(id, parsed.data.command, payload, { requestedBy: user.sub });
     return { published: true, status: "pending", ...message };
   });
   /**

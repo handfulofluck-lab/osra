@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { getRedis } from "../redis.js";
 import { decryptSecret } from "./secretVault.js";
 import { totpAtCounter } from "./totp.js";
+import { normalizeDigits } from "./digits.js";
 
 // Moved from routes/auth.ts unchanged (#442): account deletion re-authenticates with the same check
 // as sign-in, so a code accepted for one is spent for the other.
@@ -12,12 +13,14 @@ import { totpAtCounter } from "./totp.js";
  * within its validity window.
  */
 export async function verifyTotpFresh(parentId: string, storedSecret: string | null, code: string): Promise<boolean> {
+  const normalized = normalizeDigits(code);
+  if (normalized === null) return false;
   const secret = decryptSecret(storedSecret);
   if (!secret) return false;
   const now = Math.floor(Date.now() / 1000 / 30);
   let matched: number | null = null;
   for (const counter of [now - 1, now, now + 1]) {
-    if (timingSafeEq(totpAtCounter(secret, counter), code)) { matched = counter; break; }
+    if (timingSafeEq(totpAtCounter(secret, counter), normalized)) { matched = counter; break; }
   }
   if (matched === null) return false;
   const redis = getRedis();

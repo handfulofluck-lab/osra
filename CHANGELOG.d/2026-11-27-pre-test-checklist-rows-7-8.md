@@ -1,0 +1,2 @@
+### Documentation — add live pre-test checklist rows 7 and 8
+- Added Row 7 (`osra-security#78`: notification listener readback via `enabled_notification_listeners` on every Full child phone plus closed-chat and open-chat WhatsApp alert verification) and Row 8 (build-receipt, lab-signer `2ecc2def…`, `versionCode` `>= 90` Child / `> 1406` Parent, `testOnly=false`, iOS `aps-environment`, and never-uninstall upgrade-over-paired guardrail) to `docs/testing/pre-test-checklist.md`, and updated the start-gate count in `docs/README.md`.
