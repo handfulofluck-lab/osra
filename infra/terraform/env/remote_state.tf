@@ -13,4 +13,12 @@ data "terraform_remote_state" "base" {
     },
     var.assume_role_arn != "" ? { assume_role = { role_arn = var.assume_role_arn } } : {},
   )
+
+  # A load-test env must read the load-test base (loadtest.tf), checked here so the read never happens otherwise.
+  lifecycle {
+    precondition {
+      condition     = !var.loadtest_mode || (var.base_state_key == local.loadtest_base_state_key && var.state_bucket == local.loadtest_state_bucket)
+      error_message = "loadtest_mode must read the load-test base: base_state_key = \"loadtest/base/terraform.tfstate\" in the staging state bucket (never staging's base, whose DATABASE_URL secret this env would overwrite)."
+    }
+  }
 }

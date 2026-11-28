@@ -1,0 +1,6 @@
+### Infrastructure — a throw-away load-test stack and simulated families (load-test plan, 27 Nov 2026)
+- `infra/terraform/loadtest.sh` builds, seeds, drives and destroys a separate `loadtest` stack in the staging account with its own base and env state, so neither staging nor production is ever the target. It refuses before Sat 28 Nov 17:30 UAE, outside the staging account, and next to a staging `terraform.tfvars`.
+- `loadtest_mode` (env) adds an AI-engine stub sidecar, `OSRA_DEPLOYMENT_SCOPE=loadtest`, a raised per-address limit, warn-level logs, a k6 task definition and an ALB rule for the generators' NAT address only. The production guard refuses it; staging and production plans are unchanged (new `terraform test` runs pin both).
+- The API honours `RATE_LIMIT_GLOBAL_MAX` only when `OSRA_DEPLOYMENT_SCOPE=loadtest`; anywhere else it is ignored with a warning. The auth and pairing buckets never change.
+- `services/api/scripts/loadtest-seed.ts` writes synthetic families (deterministic ids, `.invalid` e-mails, no push tokens) and refuses outside the load-test stack.
+- `loadtest/k6/family-mix.js`: the device and parent request mix at 0.15 req/s per family, plus push-outage, reconnect-storm, parent-rush (action to the other parent's WebSocket frame), sign-up and socket scenarios.

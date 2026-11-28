@@ -84,6 +84,7 @@ COPY --from=build --chmod=444 /app/services/api/certs/rds-eu-central-1-rsa2048-g
 COPY --from=build --chown=osra:osra \
   /app/services/api/scripts/seed.ts \
   /app/services/api/scripts/seed-password.ts \
+  /app/services/api/scripts/loadtest-seed.ts \
   /app/services/api/scripts/migrate-and-seed.sh \
   /app/services/api/scripts/check-db-tls.mjs \
   ./services/api/scripts/
