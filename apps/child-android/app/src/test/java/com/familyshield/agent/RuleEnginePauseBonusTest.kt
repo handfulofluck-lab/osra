@@ -114,4 +114,26 @@ class RuleEnginePauseBonusTest {
         // Bonus never lowers the limit: with no usage it stays ALLOWED.
         assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", noonSat, bonusMinutes = 30))
     }
+
+    @Test
+    fun `daily budget excludes launcher, SystemUI and Settings but still counts child apps (#1283)`() {
+        // Mutant: reverting RuleEngine to `minutesUsedToday.values.sum()` turns the first
+        // assertion from ALLOW into TIME_LIMIT_REACHED because 600+240+114+30 >= 180.
+        val rs = base().copy(
+            screenTime = base().screenTime.copy(dailyLimitMinutes = 180, weekendLimitMinutes = 180),
+        )
+        val noonSat = at(DayOfWeek.SATURDAY, 12)
+        val mostlyChrome = mapOf(
+            "com.sec.android.app.launcher" to 600,
+            "com.android.systemui" to 240,
+            "com.android.settings" to 114,
+            "com.miui.home" to 45,
+            "com.game" to 30,
+        )
+        assertEquals(Decision.ALLOW, engine.evaluate(rs, "com.game", noonSat, mostlyChrome))
+
+        // Real apps (including browsers) still count and enforce the 180-minute limit.
+        val overLimitRealApps = mostlyChrome + mapOf("com.android.chrome" to 150)
+        assertEquals(Decision.TIME_LIMIT_REACHED, engine.evaluate(rs, "com.game", noonSat, overLimitRealApps))
+    }
 }

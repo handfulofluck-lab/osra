@@ -95,6 +95,38 @@ List<Alert> sortP14Alerts(Iterable<Alert> alerts) {
 int p14GroupCount(Alert alert) =>
     alert.isSocialAlert ? alert.socialMessageCount : alert.attemptCount;
 
+/// Formats a P-14 Alerts list day header (U92, #650):
+/// - Local today -> [AppLocalizations.p14DayToday] ("Today" / "اليوم")
+/// - Local yesterday -> [AppLocalizations.p14DayYesterday] ("Yesterday" / "أمس")
+/// - Same year -> `DateFormat.MMMEd` (no year)
+/// - Different year -> `DateFormat.yMMMEd` (with year)
+/// Always wrapped with `firstStrongIsolate(normalizeDigits(...))` so digits are
+/// Western `0-9` and Arabic RTL day/month order is preserved (never `ltrIsolate`).
+@visibleForTesting
+String formatP14DayHeader(
+  DateTime day, {
+  required AppLocalizations l10n,
+  required String localeName,
+  DateTime? now,
+}) {
+  final refLocal = (now ?? DateTime.now()).toLocal();
+  final today = DateTime(refLocal.year, refLocal.month, refLocal.day);
+  final yesterday = DateTime(refLocal.year, refLocal.month, refLocal.day - 1);
+  final target = DateTime(day.year, day.month, day.day);
+
+  if (target == today) return l10n.p14DayToday;
+  if (target == yesterday) return l10n.p14DayYesterday;
+
+  final isArabic = localeName.toLowerCase().startsWith('ar');
+  final resolvedLocale = DateFormat.localeExists(localeName)
+      ? localeName
+      : (isArabic ? 'ar' : 'en');
+  final formatted = target.year == today.year
+      ? DateFormat.MMMEd(resolvedLocale).format(target)
+      : DateFormat.yMMMEd(resolvedLocale).format(target);
+  return firstStrongIsolate(normalizeDigits(formatted));
+}
+
 /// Routes `/alerts` to [AlertsP14Screen] when `OSRA_UX_P14` is enabled, or
 /// falls back to the legacy [AlertsScreen] when switched off.
 class AlertsRouteEntry extends ConsumerWidget {
@@ -313,7 +345,12 @@ class _AlertsP14ScreenState extends ConsumerState<AlertsP14Screen> {
     if (key == 'Unknown') return context.l10n.unknown;
     final d = DateTime.tryParse(key);
     if (d == null) return key;
-    return normalizeDigits(formatDayHeader(d, context.localeName));
+    return formatP14DayHeader(
+      d,
+      l10n: context.l10n,
+      localeName: context.localeName,
+      now: widget.nowProvider?.call(),
+    );
   }
 
   String _clockLabel(DateTime ts) {

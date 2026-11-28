@@ -368,6 +368,36 @@ class ChildHomePolicyTest {
         assertFalse(ChildHomePolicy.shouldShowRingCaption(2.0f))
     }
 
+    @Test
+    fun `daily budget excludes launcher, SystemUI and Settings and agrees with RuleEngine (#1283)`() {
+        // Mutant: reverting ChildHomePolicy.timeBudget to `minutesUsedToday.values.sum()` raises
+        // usedMinutes from 45 to 999 and drops remainingMinutes from 135 to 0.
+        val rules = RuleSetDto(
+            screenTime = ScreenTimeRuleDto(dailyLimitMinutes = 180, weekendLimitMinutes = 180),
+        )
+        val usage = mapOf(
+            "com.sec.android.app.launcher" to 600,
+            "com.android.systemui" to 240,
+            "com.android.settings" to 114,
+            "com.whatsapp" to 20,
+            "com.android.chrome" to 25,
+        )
+        val budget = ChildHomePolicy.timeBudget(
+            ruleSet = rules,
+            now = wedAfternoon,
+            minutesUsedToday = usage,
+            localBonusMinutes = 0,
+        )
+        assertEquals(45, budget.usedMinutes)
+        assertEquals(135, budget.remainingMinutes)
+
+        // Escape-surface guard: browsers, video, messaging, and app stores are never excluded.
+        assertFalse(com.familyshield.agent.enforcement.EssentialPackages.isExcludedFromDailyBudget("com.android.chrome"))
+        assertFalse(com.familyshield.agent.enforcement.EssentialPackages.isExcludedFromDailyBudget("com.google.android.youtube"))
+        assertFalse(com.familyshield.agent.enforcement.EssentialPackages.isExcludedFromDailyBudget("com.android.vending"))
+        assertFalse(com.familyshield.agent.enforcement.EssentialPackages.isExcludedFromDailyBudget("com.whatsapp"))
+    }
+
     private fun findAppSrcRoot(): File {
         var dir = File(System.getProperty("user.dir") ?: ".")
         repeat(5) {

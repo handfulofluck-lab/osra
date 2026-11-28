@@ -199,6 +199,18 @@
   "readErrorConsentMissing": "لم يُحفظ هذا التغيير: لا توجد موافقة سارية لهذا الطفل، لذلك المراقبة متوقفة. افتح «موافقة الوالدين» في صفحة الطفل لمعرفة السبب.",
   "readErrorConsentRegion": "لم يُحفظ هذا التغيير: أُعطيت موافقة هذا الطفل لمنطقة غير منطقة عائلتك. افتح «موافقة الوالدين» في صفحة الطفل للتفاصيل.",
   "addChildConsentRegion": "يجب أن تطابق منطقة الموافقة منطقة عائلتك ({region}). اختر {region} وحاول مرة أخرى.",
+  "p04WhatWeCollect": "البيانات التي نجمعها",
+  "p04GuardianConfirm": "أنا وليّ أمر هذا الطفل (أحد والديه أو الوصي القانوني عليه).",
+  "p04GuardianRequired": "حدّد المربع لتأكيد أنك وليّ أمر هذا الطفل.",
+  "p04AgeLabel": "العمر",
+  "p04AgeRange": "أدخل عمرًا من {min} إلى {max}.",
+  "@p04AgeRange": {
+    "placeholders": {
+      "min": { "type": "String" },
+      "max": { "type": "String" }
+    }
+  },
+  "p04AddTitle": "إضافة طفل",
   "familyDone": "تم",
   "familyMembersTitle": "أفراد العائلة",
   "familyParentsHeading": "أولياء الأمور",
@@ -1261,22 +1273,52 @@
   "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
   "alertsOffTurnOnAction": "تفعيل التنبيهات",
   "pairP05Title": "ربط هاتف {child}",
-  "@pairP05Title": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05Title": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05TitleGeneric": "ربط هاتف الطفل",
   "pairP05Subtitle": "ثبّت تطبيق أسرة للأطفال على هاتف {child} ثم امسح هذا الرمز.",
-  "@pairP05Subtitle": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05Subtitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05SubtitleGeneric": "ثبّت تطبيق أسرة للأطفال على هاتف الطفل ثم امسح هذا الرمز.",
   "pairP05OrTypeCode": "أو أدخل هذا الرمز",
   "pairP05ValidFor": "صالح لمدة {time}",
-  "@pairP05ValidFor": { "placeholders": { "time": { "type": "String" } } },
+  "@pairP05ValidFor": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05CodeExpired": "انتهت صلاحية الرمز",
   "pairP05NewCode": "رمز جديد",
   "pairP05WaitingFor": "بانتظار هاتف {child}…",
-  "@pairP05WaitingFor": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05WaitingFor": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05WaitingGeneric": "بانتظار هاتف الطفل…",
   "pairP05ConfirmDeviceTitle": "تأكيد هذا الجهاز؟",
   "pairP05ConfirmDeviceBody": "يطلب {model} الاتصال. أكّد الربط للمتابعة.",
-  "@pairP05ConfirmDeviceBody": { "placeholders": { "model": { "type": "String" } } },
+  "@pairP05ConfirmDeviceBody": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05ConfirmLink": "التأكيد والربط",
   "pairP05Decline": "رفض",
   "pairP05Connected": "تم ربط الهاتف.",
@@ -1506,5 +1548,11 @@
   "p01PreviewScreenTimeValue": "المتبقي ساعة و20 دقيقة",
   "p01PreviewBedtimeValue": "من 21:30 إلى 07:00",
   "p01PreviewAppsValue": "تطبيقان محظوران",
-  "p01PreviewLocationValue": "في المدرسة"
+  "p01PreviewLocationValue": "في المدرسة",
+  "appsFilterAllowed": "مسموح ({count})",
+  "appsLimitSheetTitle": "الحد اليومي لتطبيق {app}",
+  "appsNoLimit": "بلا حد",
+  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد.",
+  "p14DayToday": "اليوم",
+  "p14DayYesterday": "أمس"
 }

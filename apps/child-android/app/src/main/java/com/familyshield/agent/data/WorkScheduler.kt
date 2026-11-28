@@ -56,6 +56,9 @@ object WorkScheduler {
                 .setInitialDelay(msUntilNextMidnight(), TimeUnit.MILLISECONDS)
                 .build(),
         )
+        // #1130: periodic KEEP can leave a fresh install waiting hours. Every service start also
+        // requests an immediate fetch; RulesSyncWorker retries while a paired cache stays empty.
+        syncNowAtStartup(context)
     }
 
     /**
@@ -77,8 +80,25 @@ object WorkScheduler {
         )
     }
 
+    /**
+     * Coalesces boot, pairing, package-replacement and foreground-service startup into the latest one
+     * immediate worker. Push-driven [syncNow] deliberately keeps its separate APPEND_OR_REPLACE policy.
+     */
+    fun syncNowAtStartup(context: Context) {
+        val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            RULES_SYNC_NOW_STARTUP,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<RulesSyncWorker>()
+                .setConstraints(network)
+                .build(),
+        )
+    }
+
     /** Unique work name for the post-pairing one-off rules sync. */
     const val RULES_SYNC_NOW: String = "rules_sync_now"
+    /** Unique work name for the coalesced lifecycle-startup rules sync. */
+    const val RULES_SYNC_NOW_STARTUP: String = "rules_sync_now_startup"
 
     /**
      * Issue #1073: asks for one command poll [delayMs] from now.

@@ -1250,6 +1250,42 @@ abstract class AppLocalizations {
   /// **'The consent region must match your family\'s region ({region}). Choose {region} and try again.'**
   String addChildConsentRegion(String region);
 
+  /// No description provided for @p04WhatWeCollect.
+  ///
+  /// In en, this message translates to:
+  /// **'What we collect'**
+  String get p04WhatWeCollect;
+
+  /// No description provided for @p04GuardianConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I\'m this child\'s parent or legal guardian.'**
+  String get p04GuardianConfirm;
+
+  /// No description provided for @p04GuardianRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Tick the box to confirm you\'re this child\'s parent or guardian.'**
+  String get p04GuardianRequired;
+
+  /// No description provided for @p04AgeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Age'**
+  String get p04AgeLabel;
+
+  /// No description provided for @p04AgeRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an age from {min} to {max}.'**
+  String p04AgeRange(String min, String max);
+
+  /// No description provided for @p04AddTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a child'**
+  String get p04AddTitle;
+
   /// No description provided for @familyDone.
   ///
   /// In en, this message translates to:
@@ -6843,6 +6879,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'At school'**
   String get p01PreviewLocationValue;
+
+  /// No description provided for @appsFilterAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed ({count})'**
+  String appsFilterAllowed(Object count);
+
+  /// No description provided for @appsLimitSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily limit for {app}'**
+  String appsLimitSheetTitle(Object app);
+
+  /// No description provided for @appsNoLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'No limit'**
+  String get appsNoLimit;
+
+  /// No description provided for @appsIphoneNoAppList.
+  ///
+  /// In en, this message translates to:
+  /// **'The iPhone doesn\'t send its app list yet.'**
+  String get appsIphoneNoAppList;
+
+  /// No description provided for @p14DayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get p14DayToday;
+
+  /// No description provided for @p14DayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get p14DayYesterday;
 }
 
 class _AppLocalizationsDelegate
