@@ -300,6 +300,75 @@ class LockEnforcementPolicyTest {
                 ownWindowClass = LockEnforcementPolicy.LOCK_ACTIVITY_CLASS,
             ),
         )
+        // Codex review on #1302 (ordinary enforceLockState entry point): authoritative showing flag
+        // overrides null or stale cached ownWindowClass even with a secondary visible window.
+        val stalePairingClass = "com.familyshield.agent.setup.PairingActivity"
+        assertFalse(
+            "active PIN gate with null ownWindowClass and secondary app stays uncovered (WindowSnapshot)",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                splitWithBlocked,
+                prodOwn,
+                facts,
+                ownWindowClass = null,
+                protectedOwnScreenShowing = true,
+            ),
+        )
+        assertTrue(
+            "paired control: null ownWindowClass with secondary app and gate absent still reraises (WindowSnapshot)",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                splitWithBlocked,
+                prodOwn,
+                facts,
+                ownWindowClass = null,
+                protectedOwnScreenShowing = false,
+            ),
+        )
+        assertFalse(
+            "active PIN gate with stale cached PairingActivity stays uncovered (WindowSnapshot)",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                splitWithBlocked,
+                prodOwn,
+                facts,
+                ownWindowClass = stalePairingClass,
+                protectedOwnScreenShowing = true,
+            ),
+        )
+        assertTrue(
+            "paired control: stale cached PairingActivity with gate absent reraises (WindowSnapshot)",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                splitWithBlocked,
+                prodOwn,
+                facts,
+                ownWindowClass = stalePairingClass,
+                protectedOwnScreenShowing = false,
+            ),
+        )
+        assertFalse(
+            "active PIN gate with stale cached PairingActivity stays uncovered (single-package fallback)",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                prodOwn,
+                prodOwn,
+                facts,
+                ownWindowClass = stalePairingClass,
+                protectedOwnScreenShowing = true,
+            ),
+        )
+        assertTrue(
+            "paired control: stale cached PairingActivity with gate absent reraises (single-package fallback)",
+            LockEnforcementPolicy.shouldReraise(
+                "locked",
+                prodOwn,
+                prodOwn,
+                facts,
+                ownWindowClass = stalePairingClass,
+                protectedOwnScreenShowing = false,
+            ),
+        )
     }
 
     /**
@@ -427,8 +496,9 @@ class LockEnforcementPolicyTest {
                 userPresentFn.contains("protectedOwnScreenShowing = GuardGateState.showing"),
         )
         assertTrue(
-            "enforceLockState must use resolveOwnLockWindowClass()",
-            enforceLockFn.contains("val ownWindowClass = resolveOwnLockWindowClass()"),
+            "enforceLockState must use resolveOwnLockWindowClass() and GuardGateState.showing",
+            enforceLockFn.contains("val ownWindowClass = resolveOwnLockWindowClass()") &&
+                enforceLockFn.contains("val protectedOwnScreenShowing = GuardGateState.showing"),
         )
     }
 }

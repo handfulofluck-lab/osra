@@ -207,8 +207,10 @@ object LockEnforcementPolicy {
         facts: PackageFacts,
         alwaysAllowedPackages: Set<String> = emptySet(),
         ownWindowClass: String? = null,
+        protectedOwnScreenShowing: Boolean = false,
     ): Boolean {
         if (!isLockingMode(mode) || foregroundPackage.isNullOrBlank()) return false
+        if (protectedOwnScreenShowing) return false
         if (foregroundPackage == ownPackage) return !isExemptOwnClass(ownWindowClass)
         return !isExemptPackage(foregroundPackage, facts, alwaysAllowedPackages)
     }
@@ -240,8 +242,10 @@ object LockEnforcementPolicy {
         facts: PackageFacts,
         alwaysAllowedPackages: Set<String> = emptySet(),
         ownWindowClass: String? = null,
+        protectedOwnScreenShowing: Boolean = false,
     ): Boolean {
         if (!isLockingMode(mode)) return false
+        if (protectedOwnScreenShowing) return false
         val active = snapshot.activePackage
         if (!active.isNullOrBlank() && active != ownPackage && isEmergencyOrSystemExempt(active, facts)) {
             return false

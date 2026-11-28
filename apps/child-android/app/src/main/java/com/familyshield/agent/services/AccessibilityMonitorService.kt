@@ -1316,6 +1316,7 @@ class AccessibilityMonitorService : AccessibilityService() {
         // non-allowed app (alone or alongside an allowed app in split-screen/PiP) still raises lock.
         val alwaysAllowed = rules.cachedRules()?.alwaysAllowedApps?.toSet().orEmpty()
         val ownWindowClass = resolveOwnLockWindowClass()
+        val protectedOwnScreenShowing = GuardGateState.showing
         var shouldRaise = LockEnforcementPolicy.shouldReraise(
             mode,
             snapshot,
@@ -1323,6 +1324,7 @@ class AccessibilityMonitorService : AccessibilityService() {
             packageFacts,
             alwaysAllowed,
             ownWindowClass,
+            protectedOwnScreenShowing,
         )
         // No window list from the OS (some OEMs): keep the #165 behaviour and decide from the
         // package resolved for the event, which is a hint but better than no re-raise at all.
@@ -1334,6 +1336,7 @@ class AccessibilityMonitorService : AccessibilityService() {
                 packageFacts,
                 alwaysAllowed,
                 ownWindowClass,
+                protectedOwnScreenShowing,
             )
         }
         if (!shouldRaise) return

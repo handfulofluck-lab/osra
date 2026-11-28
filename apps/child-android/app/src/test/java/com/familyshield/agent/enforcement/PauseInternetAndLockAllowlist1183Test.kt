@@ -268,19 +268,23 @@ class PauseInternetAndLockAllowlist1183Test {
         assertTrue("enforceLockState must read alwaysAllowedApps", enforceLockFn.contains("alwaysAllowedApps"))
         val normalizedEnforceLock = enforceLockFn.replace(Regex("\\s+"), " ")
         assertTrue(
-            "enforceLockState must pass alwaysAllowed and ownWindowClass to WindowSnapshot shouldReraise",
+            "enforceLockState must read GuardGateState.showing into protectedOwnScreenShowing",
+            normalizedEnforceLock.contains("val protectedOwnScreenShowing = GuardGateState.showing"),
+        )
+        assertTrue(
+            "enforceLockState must pass alwaysAllowed, ownWindowClass, and protectedOwnScreenShowing to WindowSnapshot shouldReraise",
             normalizedEnforceLock.contains(
-                "LockEnforcementPolicy.shouldReraise( mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass, )",
+                "LockEnforcementPolicy.shouldReraise( mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing, )",
             ) || normalizedEnforceLock.contains(
-                "LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass)",
+                "LockEnforcementPolicy.shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing)",
             ),
         )
         assertTrue(
-            "enforceLockState fallback must pass alwaysAllowed and ownWindowClass to shouldReraise",
+            "enforceLockState fallback must pass alwaysAllowed, ownWindowClass, and protectedOwnScreenShowing to shouldReraise",
             normalizedEnforceLock.contains(
-                "LockEnforcementPolicy.shouldReraise( mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass, )",
+                "LockEnforcementPolicy.shouldReraise( mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing, )",
             ) || normalizedEnforceLock.contains(
-                "LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass)",
+                "LockEnforcementPolicy.shouldReraise(mode, fallbackPackage, packageName, packageFacts, alwaysAllowed, ownWindowClass, protectedOwnScreenShowing)",
             ),
         )
 
