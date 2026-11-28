@@ -4203,6 +4203,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeNotYetOnIphone => 'Not yet available on iPhone';
 
   @override
+  String get homeIosExtraTimeNotYet =>
+      'Extra time isn\'t available on iPhone yet.';
+
+  @override
+  String get homeIosAutoLiftNote =>
+      'On iPhone, Lock and Pause end by themselves after 24 hours. Lock again if you need longer.';
+
+  @override
   String get homeKeepBlocked => 'Keep blocked';
 
   @override

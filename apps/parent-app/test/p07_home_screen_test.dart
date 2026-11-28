@@ -811,10 +811,155 @@ void main() {
 
       expect(find.byKey(const ValueKey('homeIosTimeNotYet-child-ios')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')),
+          matching: find.text('Not yet available on iPhone'),
+        ),
+        findsOneWidget,
+        reason: 'U104: with Lock and Pause not ready, the generic line stays',
+      );
+      expect(find.byKey(const ValueKey('homeIosAutoLiftNote-child-ios')), findsNothing,
+          reason: 'no live Lock or Pause, so no auto-lift line');
 
       await tester.tap(find.byKey(const ValueKey('homeActionPauseInternet-child-ios')));
       await tester.pump();
       expect(api.calls('POST', '/v1/controls/children/child-ios/pause'), isEmpty);
+    });
+
+    /// #1089: once the iPhone's own report says `lock_screen` / `pause_internet` are `ready` (the Screen Time
+    /// shield build), Lock and Pause internet are live for an iPhone-only child; bonus time still is not.
+    /// Mutants: keep fading every button for `iosOnly` (Lock row red); send Lock only to non-iOS devices
+    /// (POST count red); light the buttons from the platform alone, without the report (G6 above red).
+    testWidgets('G6b: iPhone that reports Screen Time controls ready gets live Lock and Pause internet', (tester) async {
+      final api = FakeApiClient({
+        ...p07Routes(
+          familyMe: {
+            ...familyMeTwoChildren(),
+            'children': [
+              {
+                'id': 'child-ios',
+                'familyId': 'fam-1',
+                'displayName': 'Maya',
+                'birthYear': 2014,
+                'screenTimeTodayMinutes': 0,
+              },
+            ],
+            'devices': [
+              {
+                'id': 'dev-ios',
+                'childId': 'child-ios',
+                'platform': 'ios',
+                'model': 'iPhone 14',
+                'osVersion': '17.4',
+                'status': 'online',
+                'batteryPct': 88,
+                'lastSeen': weekdayNow.toIso8601String(),
+                'setup': {
+                  'reportedAt': weekdayNow.toIso8601String(),
+                  'stale': false,
+                  'features': {
+                    'lock_screen': 'ready',
+                    'pause_screen': 'ready',
+                    'pause_internet': 'ready',
+                  },
+                  'missing': <String>[],
+                },
+              },
+            ],
+          },
+        ),
+        'GET /v1/rules/child-ios': (_) => ruleSetPayload('child-ios'),
+        'GET /v1/controls/children/child-ios/status': (_) => {'paused': false},
+        'GET /v1/devices/dev-ios/commands/history': (_) => {'items': <dynamic>[]},
+        'GET /v1/location/child-ios/latest': (_) => {'latest': null},
+        'POST /v1/controls/children/child-ios/pause': (_) =>
+            {'childId': 'child-ios', 'paused': true},
+        'POST /v1/devices/dev-ios/command': (req) => {
+              'id': 'cmd-ios-1',
+              'status': 'pending',
+              'command': req.body['command'],
+            },
+      });
+
+      await tester.pumpWidget(buildP07App(api: api));
+      await flushHttp(tester);
+      await tester.pumpAndSettle();
+
+      // U104: the banner stays, as the visible reason for the still-faded bonus buttons.
+      expect(find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')), findsOneWidget);
+      // U104: with Lock and Pause internet ready, the banner names only extra time.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('homeIosControlsNotYet-child-ios')),
+          matching: find.text("Extra time isn't available on iPhone yet."),
+        ),
+        findsOneWidget,
+      );
+      // #1275: the 24-hour auto-lift line shows while Lock or Pause is live on the iPhone.
+      expect(find.byKey(const ValueKey('homeIosAutoLiftNote-child-ios')), findsOneWidget);
+
+      final lockBtn = find.byKey(const ValueKey('homeActionLock-child-ios'));
+      await tester.scrollUntilVisible(lockBtn, 120, scrollable: homeVerticalScrollable());
+      await tester.pumpAndSettle();
+      await tester.tap(lockBtn);
+      await flushHttp(tester);
+      await tester.pump();
+      final lockCalls = api.calls('POST', '/v1/devices/dev-ios/command');
+      expect(lockCalls, hasLength(1));
+      expect(lockCalls.first.body['command'], 'lock');
+
+      // Undo reaches the iPhone too: `unlock` is no longer refused for child-ios (#1275).
+      await tester.tap(find.text('Undo').last);
+      await flushHttp(tester);
+      await tester.pumpAndSettle();
+      final allLockCalls = api.calls('POST', '/v1/devices/dev-ios/command');
+      expect(allLockCalls, hasLength(2));
+      expect(allLockCalls.last.body['command'], 'unlock');
+      ScaffoldMessenger.of(tester.element(lockBtn)).hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+
+      final pauseBtn = find.byKey(const ValueKey('homeActionPauseInternet-child-ios'));
+      await tester.scrollUntilVisible(pauseBtn, 120, scrollable: homeVerticalScrollable());
+      await tester.pumpAndSettle();
+      await tester.tap(pauseBtn);
+      await flushHttp(tester);
+      await tester.pump();
+      expect(api.calls('POST', '/v1/controls/children/child-ios/pause'), hasLength(1));
+      ScaffoldMessenger.of(tester.element(pauseBtn)).hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+
+      // Bonus time is not part of #1089: it still answers "Not yet available on iPhone" and posts nothing.
+      final plus15 = find.byKey(const ValueKey('homeActionPlus15-child-ios'));
+      await tester.scrollUntilVisible(plus15, 120, scrollable: homeVerticalScrollable());
+      await tester.pumpAndSettle();
+      await tester.tap(plus15);
+      await tester.pump(const Duration(seconds: 10));
+      expect(api.calls('POST', '/v1/controls/children/child-ios/bonus'), isEmpty);
+    });
+
+    test('deviceRunsControl: Android always; iPhone only on its own ready report', () {
+      Device dev(String platform, [Map<String, String>? features]) => Device.fromJson({
+            'id': 'd',
+            'childId': 'c',
+            'platform': platform,
+            'model': 'm',
+            'osVersion': '1',
+            'status': 'online',
+            if (features != null)
+              'setup': {
+                'reportedAt': '2026-11-27T15:00:00.000Z',
+                'stale': false,
+                'features': features,
+                'missing': <String>[],
+              },
+          });
+      expect(deviceRunsControl(dev('android'), 'lock_screen'), isTrue);
+      expect(deviceRunsControl(dev('ios'), 'lock_screen'), isFalse);
+      expect(deviceRunsControl(dev('ios', {'lock_screen': 'not_supported'}), 'lock_screen'), isFalse);
+      expect(deviceRunsControl(dev('ios', {'lock_screen': 'unavailable'}), 'lock_screen'), isFalse);
+      expect(deviceRunsControl(dev('ios', {'lock_screen': 'ready'}), 'lock_screen'), isTrue);
+      expect(deviceRunsControl(dev('IOS', {'pause_internet': 'ready'}), 'lock_screen'), isFalse);
     });
   });
 

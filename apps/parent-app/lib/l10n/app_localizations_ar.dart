@@ -4475,6 +4475,13 @@ class AppLocalizationsAr extends AppLocalizations {
   String get homeNotYetOnIphone => 'غير متاح بعد على آيفون';
 
   @override
+  String get homeIosExtraTimeNotYet => 'الوقت الإضافي غير متاح بعد على آيفون.';
+
+  @override
+  String get homeIosAutoLiftNote =>
+      'على هاتف آيفون، ينتهي القفل وإيقاف الإنترنت تلقائيًا بعد أربع وعشرين ساعة. أعِد تفعيلهما إذا احتجت إلى مدة أطول.';
+
+  @override
   String get homeKeepBlocked => 'إبقاء الحظر';
 
   @override

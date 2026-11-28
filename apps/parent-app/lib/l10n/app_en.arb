@@ -2692,6 +2692,8 @@
   "homeUnlockAllDevices": "Unlock",
   "homeNotYetAvailable": "Not yet available",
   "homeNotYetOnIphone": "Not yet available on iPhone",
+  "homeIosExtraTimeNotYet": "Extra time isn't available on iPhone yet.",
+  "homeIosAutoLiftNote": "On iPhone, Lock and Pause end by themselves after 24 hours. Lock again if you need longer.",
   "homeKeepBlocked": "Keep blocked",
   "homeNotToday": "Not today",
   "homeTimeRequestTitle": "{minutes, plural, =1{{child} asked for 1 more minute of screen time} other{{child} asked for {minutes} more minutes of screen time}}",
