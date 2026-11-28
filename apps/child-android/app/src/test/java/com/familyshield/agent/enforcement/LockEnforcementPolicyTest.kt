@@ -334,7 +334,30 @@ class LockEnforcementPolicyTest {
         assertTrue("transient systemui with no lock screen showing raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", systemUiSnap, prodOwn, facts))
         assertTrue("empty snapshot with no lock screen showing raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", emptySnap, prodOwn, facts))
         assertTrue("Child Home PairingActivity raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", ownSnap, prodOwn, facts, ownWindowClass = "com.familyshield.agent.setup.PairingActivity"))
-        assertTrue("own package with null class and no lock screen showing raises", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", ownSnap, prodOwn, facts, ownWindowClass = null, lockScreenShowing = false))
+        assertTrue(
+            "own package with null class, no gate active, and no lock screen showing raises",
+            LockEnforcementPolicy.shouldRaiseOnUserPresent(
+                "locked",
+                ownSnap,
+                prodOwn,
+                facts,
+                ownWindowClass = null,
+                lockScreenShowing = false,
+                protectedOwnScreenShowing = false,
+            ),
+        )
+        assertFalse(
+            "cold-start active PIN gate with unavailable class stays uncovered (#1302 Codex review)",
+            LockEnforcementPolicy.shouldRaiseOnUserPresent(
+                "locked",
+                ownSnap,
+                prodOwn,
+                facts,
+                ownWindowClass = null,
+                lockScreenShowing = false,
+                protectedOwnScreenShowing = true,
+            ),
+        )
 
         assertFalse("emergency dialer stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", dialerSnap, prodOwn, facts))
         assertFalse("active PIN gate stays uncovered", LockEnforcementPolicy.shouldRaiseOnUserPresent("locked", ownSnap, prodOwn, facts, ownWindowClass = "com.familyshield.agent.security.TamperGuardActivity"))
@@ -398,8 +421,10 @@ class LockEnforcementPolicyTest {
             userPresentFn.contains("LockEnforcementPolicy.shouldRaiseOnUserPresent("),
         )
         assertTrue(
-            "onUserPresentLockCheck must pass TelecomManager inCall state",
-            userPresentFn.contains("isInCall == true") && userPresentFn.contains("inCall = inCall"),
+            "onUserPresentLockCheck must pass TelecomManager inCall and GuardGateState.showing",
+            userPresentFn.contains("isInCall == true") &&
+                userPresentFn.contains("inCall = inCall") &&
+                userPresentFn.contains("protectedOwnScreenShowing = GuardGateState.showing"),
         )
         assertTrue(
             "enforceLockState must use resolveOwnLockWindowClass()",

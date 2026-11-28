@@ -1290,6 +1290,7 @@ class AccessibilityMonitorService : AccessibilityService() {
                 alwaysAllowedPackages = alwaysAllowed,
                 ownWindowClass = resolveOwnLockWindowClass(),
                 lockScreenShowing = com.familyshield.agent.commands.LockActivity.isShowing,
+                protectedOwnScreenShowing = GuardGateState.showing,
                 callRinging = calls.isRinging(),
                 inCall = inCall,
                 alarmRinging = Ringer.isRinging,

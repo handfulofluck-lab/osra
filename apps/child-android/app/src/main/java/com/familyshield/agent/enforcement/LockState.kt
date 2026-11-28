@@ -284,12 +284,13 @@ object LockEnforcementPolicy {
         alwaysAllowedPackages: Set<String> = emptySet(),
         ownWindowClass: String? = null,
         lockScreenShowing: Boolean = false,
+        protectedOwnScreenShowing: Boolean = false,
         callRinging: Boolean = false,
         inCall: Boolean = false,
         alarmRinging: Boolean = false,
     ): Boolean {
         if (!isLockingMode(mode)) return false
-        if (callRinging || inCall || alarmRinging) return false
+        if (callRinging || inCall || alarmRinging || protectedOwnScreenShowing) return false
         val active = snapshot.activePackage
         if (active == ownPackage && ownWindowClass in PROTECTED_OWN_CLASSES) return false
         val hasCallOrEmergencyWindow = snapshot.windows.any { window ->
