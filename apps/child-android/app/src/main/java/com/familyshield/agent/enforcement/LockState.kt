@@ -160,6 +160,32 @@ object LockEnforcementPolicy {
         return named && facts.isSystemApp(pkg)
     }
 
+    /**
+     * Own-package activities that are part of lock/pause/ring/PIN/SOS/reset-code enforcement and
+     * must stay uncovered when [LockState] is active.
+     *
+     * osra-security#95: exempting the entire own package let Child Home (`PairingActivity`) stay
+     * interactive after the system keyguard was dismissed while Lock was active. Narrowing to
+     * these exact fully-qualified `com.familyshield.agent.*` class names (same pattern as
+     * `RingReentryPolicy`, independent of `applicationId`) closes that escape without ever
+     * covering the lock screen or PIN gate itself.
+     */
+    val LOCK_EXEMPT_OWN_CLASSES: Set<String> = setOf(
+        "com.familyshield.agent.commands.LockActivity",
+        "com.familyshield.agent.commands.RingActivity",
+        "com.familyshield.agent.commands.ResetCodeActivity",
+        "com.familyshield.agent.security.TamperGuardActivity",
+        "com.familyshield.agent.security.TamperGuardTaskActivity",
+        "com.familyshield.agent.sos.SosActivity",
+    )
+
+    /**
+     * True when [ownWindowClass] is one of our own enforcement/security screens that Lock must
+     * stay behind, or `null` when no own-package class name was supplied.
+     */
+    fun isExemptOwnClass(ownWindowClass: String?): Boolean =
+        ownWindowClass == null || ownWindowClass in LOCK_EXEMPT_OWN_CLASSES
+
     fun isLockingMode(mode: String?): Boolean = mode != null && mode in LOCKING_MODES
 
     /** Whether seeing [foregroundPackage] on top while [mode] is active means the overlay must be re-raised. */
@@ -169,9 +195,10 @@ object LockEnforcementPolicy {
         ownPackage: String,
         facts: PackageFacts,
         alwaysAllowedPackages: Set<String> = emptySet(),
+        ownWindowClass: String? = null,
     ): Boolean {
         if (!isLockingMode(mode) || foregroundPackage.isNullOrBlank()) return false
-        if (foregroundPackage == ownPackage) return false
+        if (foregroundPackage == ownPackage) return !isExemptOwnClass(ownWindowClass)
         return !isExemptPackage(foregroundPackage, facts, alwaysAllowedPackages)
     }
 
@@ -182,12 +209,14 @@ object LockEnforcementPolicy {
      *
      * Order matters:
      * 1. An active call / emergency surface is never covered, whatever else is visible (issue #80).
-     * 2. An active app that is neither ours nor exempt (including non-denied [alwaysAllowedPackages])
+     * 2. Our own non-enforcement UI (such as Child Home `PairingActivity`, osra-security#95) raises
+     *    the overlay immediately; our own lock/ring/PIN/SOS/reset-code screens stay uncovered.
+     * 3. An active app that is neither ours nor exempt (including non-denied [alwaysAllowedPackages])
      *    raises the overlay immediately.
-     * 3. An active always-allowed app (#1183) stays uncovered ONLY if no non-exempt app is visible
+     * 4. An active always-allowed app (#1183) stays uncovered ONLY if no non-exempt app is visible
      *    beside it in split screen or PiP — so an always-allowed app cannot be used to prop open a
      *    blocked app in the other half of the screen.
-     * 4. Our own overlay in PiP is not coverage either: a PiP window floats above the app behind it,
+     * 5. Our own overlay in PiP is not coverage either: a PiP window floats above the app behind it,
      *    so the policy allows the service to replace (and expand) it. The service bounds that retry
      *    ([OverlayRetryBudget]) because the platform may refuse to leave PiP.
      */
@@ -197,11 +226,15 @@ object LockEnforcementPolicy {
         ownPackage: String,
         facts: PackageFacts,
         alwaysAllowedPackages: Set<String> = emptySet(),
+        ownWindowClass: String? = null,
     ): Boolean {
         if (!isLockingMode(mode)) return false
         val active = snapshot.activePackage
         if (!active.isNullOrBlank() && active != ownPackage && isEmergencyOrSystemExempt(active, facts)) {
             return false
+        }
+        if (active == ownPackage && !isExemptOwnClass(ownWindowClass)) {
+            return true
         }
         val activeAllowed = !active.isNullOrBlank() &&
             active != ownPackage &&

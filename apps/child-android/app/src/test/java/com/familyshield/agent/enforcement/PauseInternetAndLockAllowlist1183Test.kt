@@ -266,7 +266,12 @@ class PauseInternetAndLockAllowlist1183Test {
         val enforceLockFn = service.substringAfter("private fun enforceLockState(")
             .substringBefore("private fun collectTexts(")
         assertTrue("enforceLockState must read alwaysAllowedApps", enforceLockFn.contains("alwaysAllowedApps"))
-        assertTrue("enforceLockState must pass alwaysAllowed to LockEnforcementPolicy", enforceLockFn.contains("shouldReraise(mode, snapshot, packageName, packageFacts, alwaysAllowed)"))
+        assertTrue(
+            "enforceLockState must pass alwaysAllowed and ownWindowClass to LockEnforcementPolicy",
+            enforceLockFn.contains("LockEnforcementPolicy.shouldReraise(") &&
+                enforceLockFn.contains("alwaysAllowed") &&
+                enforceLockFn.contains("ownWindowClass"),
+        )
 
         assertTrue("LockActivity must resolve launchable always-allowed shortcuts", lockActivity.contains("LockAlwaysAllowedPolicy.resolveLaunchable("))
         assertTrue("LockActivity must render heading string resource", lockActivity.contains("R.string.lock_always_allowed_heading"))

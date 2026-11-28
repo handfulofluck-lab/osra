@@ -150,4 +150,97 @@ class LockEnforcementPolicyTest {
             LockEnforcementPolicy.shouldReraise("locked", "com.example.oemphone", own, FakeFacts()),
         )
     }
+
+    /**
+     * osra-security#95: own-package non-enforcement activities (such as Child Home `PairingActivity`)
+     * must trigger lock re-raise, while enforcement/security screens stay exempt even when
+     * `applicationId` (`com.osratech.child.full`) differs from namespace (`com.familyshield.agent`).
+     *
+     * Mutant that breaks this test: reverting `LockEnforcementPolicy.shouldReraise` to blanket
+     * `if (foregroundPackage == ownPackage) return false` or `active != ownPackage`.
+     */
+    @Test
+    fun `own-package Child Home triggers lock reraise while enforcement screens stay exempt`() {
+        val prodOwn = "com.osratech.child.full"
+        val pairingClass = "com.familyshield.agent.setup.PairingActivity"
+        val pairingSnap = WindowSnapshot(
+            activePackage = prodOwn,
+            windows = listOf(VisibleWindow(prodOwn, inPictureInPicture = false)),
+        )
+        assertTrue(
+            "PairingActivity (single-package) must trigger lock reraise",
+            LockEnforcementPolicy.shouldReraise("locked", prodOwn, prodOwn, facts, ownWindowClass = pairingClass),
+        )
+        assertTrue(
+            "PairingActivity (paused, single-package) must trigger lock reraise",
+            LockEnforcementPolicy.shouldReraise("paused", prodOwn, prodOwn, facts, ownWindowClass = pairingClass),
+        )
+        assertTrue(
+            "PairingActivity (WindowSnapshot) must trigger lock reraise",
+            LockEnforcementPolicy.shouldReraise("locked", pairingSnap, prodOwn, facts, ownWindowClass = pairingClass),
+        )
+        assertFalse(
+            "PairingActivity when unlocked must not trigger reraise",
+            LockEnforcementPolicy.shouldReraise("none", pairingSnap, prodOwn, facts, ownWindowClass = pairingClass),
+        )
+        for (exemptClass in LockEnforcementPolicy.LOCK_EXEMPT_OWN_CLASSES) {
+            assertFalse(
+                "$exemptClass (single-package) must stay exempt",
+                LockEnforcementPolicy.shouldReraise("locked", prodOwn, prodOwn, facts, ownWindowClass = exemptClass),
+            )
+            assertFalse(
+                "$exemptClass (WindowSnapshot) must stay exempt",
+                LockEnforcementPolicy.shouldReraise("locked", pairingSnap, prodOwn, facts, ownWindowClass = exemptClass),
+            )
+        }
+    }
+
+    /**
+     * osra-security#95: `OverlayRetryBudget.reset()` re-arms after exhaustion so keyguard dismissal
+     * gets a fresh retry budget.
+     *
+     * Mutant that breaks this test: removing `reset()` or failing to clear `attempts` / `signature`.
+     */
+    @Test
+    fun `OverlayRetryBudget reset re-arms after exhaustion`() {
+        val budget = OverlayRetryBudget(maxAttempts = 2)
+        assertEquals(RetryDecision.ATTEMPT, budget.attempt("sig-a"))
+        assertEquals(RetryDecision.ATTEMPT, budget.attempt("sig-a"))
+        assertEquals(RetryDecision.EXHAUSTED_ONCE, budget.attempt("sig-a"))
+        budget.reset()
+        assertEquals(RetryDecision.ATTEMPT, budget.attempt("sig-a"))
+    }
+
+    /**
+     * osra-security#95: wiring check on `AccessibilityMonitorService` — own-package branch runs
+     * `enforceLockState` before returning, `enforceLockState` defers while keyguard is locked, and
+     * `ACTION_USER_PRESENT` is registered to re-arm and check lock after keyguard dismissal.
+     *
+     * Mutant that breaks this test: deleting any of the three hooks in `AccessibilityMonitorService.kt`.
+     */
+    @Test
+    fun `AccessibilityMonitorService wires own-package lock enforcement, keyguard check, and ACTION_USER_PRESENT`() {
+        val serviceFile = java.io.File("src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
+            .takeIf { it.isFile }
+            ?: java.io.File("app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt")
+        val src = serviceFile.readText()
+        val ownBranch = src.substringAfter("if (eventPkg == packageName) {").substringBefore("val snapshot = windowSnapshot()")
+        assertTrue(
+            "own-package branch must call enforceLockState before return",
+            ownBranch.contains("enforceLockState(windowSnapshot(), packageName)"),
+        )
+        val enforceLockFn = src.substringAfter("private fun enforceLockState(").substringBefore("private fun collectTexts(")
+        assertTrue(
+            "enforceLockState must skip while keyguard is locked",
+            enforceLockFn.contains("isKeyguardLocked == true"),
+        )
+        assertTrue(
+            "screenFilter must register ACTION_USER_PRESENT",
+            src.contains("addAction(Intent.ACTION_USER_PRESENT)"),
+        )
+        assertTrue(
+            "onUserPresentLockCheck must reset lockRetryBudget",
+            src.contains("lockRetryBudget.reset()"),
+        )
+    }
 }

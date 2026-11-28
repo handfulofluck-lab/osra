@@ -44,6 +44,13 @@ class OverlayRetryBudget(private val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS) {
         return RetryDecision.ATTEMPT
     }
 
+    /** Clears the tracked signature and attempt count (e.g. after keyguard dismissal, osra-security#95). */
+    fun reset() {
+        signature = null
+        attempts = 0
+        exhaustedLogged = false
+    }
+
     companion object {
         /** Three raises is enough for a transient layout change and short enough not to churn. */
         const val DEFAULT_MAX_ATTEMPTS: Int = 3
