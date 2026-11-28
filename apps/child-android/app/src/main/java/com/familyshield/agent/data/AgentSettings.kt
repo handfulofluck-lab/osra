@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -45,6 +46,7 @@ class AgentSettings @Inject constructor(
     )
 
     @Volatile private var deviceIdCache: String? = null
+    @Volatile private var deviceIdLoaded: Boolean = false
     @Volatile private var childIdCache: String? = null
     @Volatile private var tokenCache: String? = null
     @Volatile private var hmacCache: String? = null
@@ -53,8 +55,29 @@ class AgentSettings @Inject constructor(
     @Volatile private var baseUrlLoaded: Boolean = false
     @Volatile private var tokenLoaded: Boolean = false
 
+    // Issue #1162: the first `device_revoked` answer, so a process death between the two answers does not
+    // restart the confirmation clock. Same cold-start pattern as the token cache above.
+    @Volatile private var firstRevokedCache: Long? = null
+    @Volatile private var firstRevokedLoaded: Boolean = false
+
     /** Returns the enrolled device id, or null when not yet provisioned. */
-    suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also { deviceIdCache = it }
+    suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also {
+        deviceIdCache = it
+        deviceIdLoaded = true
+    }
+
+    /** Synchronous snapshot of the enrolled device id (loaded once per process, matching [baseUrlSync]). */
+    fun deviceIdSync(): String? {
+        if (!deviceIdLoaded) {
+            synchronized(this) {
+                if (!deviceIdLoaded) {
+                    deviceIdCache = runBlocking { read(KEY_DEVICE_ID) }
+                    deviceIdLoaded = true
+                }
+            }
+        }
+        return deviceIdCache
+    }
 
     /** Returns the enrolled child id, or null when not yet provisioned. */
     suspend fun childId(): String? = read(KEY_CHILD_ID).also { childIdCache = it }
@@ -132,6 +155,32 @@ class AgentSettings @Inject constructor(
 
     /** True when an unlink was started and not finished; see [setUnlinkPending]. */
     suspend fun unlinkPending(): Boolean = store.data.first()[KEY_UNLINK_PENDING] ?: false
+
+    /**
+     * Synchronous snapshot of the persisted first revocation answer, for [com.familyshield.agent.network
+     * .UnlinkPolicy] (#1162). Blocking read once per process, for the same reason [deviceTokenSync] does it:
+     * the provider is not a coroutine.
+     */
+    fun firstRevokedAtMsSync(): Long? {
+        if (!firstRevokedLoaded) {
+            synchronized(this) {
+                if (!firstRevokedLoaded) {
+                    firstRevokedCache = runBlocking { store.data.first()[KEY_FIRST_REVOKED_AT] }
+                    firstRevokedLoaded = true
+                }
+            }
+        }
+        return firstRevokedCache
+    }
+
+    /** Stores the first `device_revoked` answer, or clears it. Called from the policy's persist callback. */
+    suspend fun saveFirstRevokedAtMs(ms: Long?) {
+        firstRevokedCache = ms
+        firstRevokedLoaded = true
+        store.edit { prefs ->
+            if (ms == null) prefs.remove(KEY_FIRST_REVOKED_AT) else prefs[KEY_FIRST_REVOKED_AT] = ms
+        }
+    }
 
     /**
      * Issue #465: drop the cached rule set when this phone is no longer linked to a family. The last
@@ -220,6 +269,8 @@ class AgentSettings @Inject constructor(
     suspend fun savePairing(baseUrl: String, deviceJwt: String, deviceId: String, childId: String, hmacSecret: String? = null): Boolean {
         secure.reopenIfUnreadable()
         if (!secureWriter.writePairing(SECURE_DEVICE_TOKEN, deviceJwt, SECURE_HMAC_SECRET, hmacSecret)) return false
+        // osra-security#80: a fresh pairing saved on this build is never an upgrade from an earlier build.
+        com.familyshield.agent.setup.SetupCompletionStore.markUpgradeMigrated(context)
         store.edit {
             it[KEY_BASE_URL] = baseUrl
             it.remove(KEY_DEVICE_TOKEN)
@@ -230,6 +281,7 @@ class AgentSettings @Inject constructor(
         baseUrlCache = baseUrl
         tokenCache = deviceJwt
         deviceIdCache = deviceId
+        deviceIdLoaded = true
         childIdCache = childId
         if (hmacSecret != null) hmacCache = hmacSecret
         baseUrlLoaded = true
@@ -267,6 +319,7 @@ class AgentSettings @Inject constructor(
         // next blocked app reports their count — across enrolments, possibly across families.
         com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
         com.familyshield.agent.enforcement.AttemptCounter.clear(context)
+        com.familyshield.agent.setup.MiuiBackgroundPopupPolicy.clearParentConfirmation(context)
         // osra-security#24 / #792 (Antigravity B2): and a new enrolment inherits no wrong-PIN debt. Left
         // behind, eight tries from the previous PIN would refuse the new one during the old window and lock
         // for an hour on the first typo afterwards.
@@ -274,8 +327,10 @@ class AgentSettings @Inject constructor(
         baseUrlCache = null
         tokenCache = null
         deviceIdCache = null
+        deviceIdLoaded = true
         childIdCache = null
         tokenLoaded = true // loaded, and known to be null
+        com.familyshield.agent.setup.SetupCompletionStore.clear(context)
         com.familyshield.agent.ui.request.AskParentActivity.clearPendingRequest(context)
         com.familyshield.agent.vpn.VpnState.clearFilterLoss(context)
     }
@@ -538,6 +593,9 @@ class AgentSettings @Inject constructor(
         private val KEY_RULES_JSON = stringPreferencesKey("rules_json")
         private val KEY_APPLIED_RULES_VERSION = stringPreferencesKey("applied_rules_version")
         private val KEY_UNLINK_PENDING = booleanPreferencesKey("unlink_pending")
+
+        /** Issue #1162: when the first `device_revoked` answer arrived, cleared once it is used or disproved. */
+        private val KEY_FIRST_REVOKED_AT = longPreferencesKey("first_revoked_at")
         private val KEY_BLOCKLIST_JSON = stringPreferencesKey("blocklist_json")
         private val KEY_BLOCKLIST_DOMAINS_JSON = stringPreferencesKey("blocklist_domains_json")
         private val KEY_BASE_URL = stringPreferencesKey("base_url")

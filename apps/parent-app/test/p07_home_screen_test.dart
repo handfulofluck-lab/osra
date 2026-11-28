@@ -19,6 +19,8 @@ import 'package:familyshield_parent/features/dashboard/dashboard_screen.dart';
 import 'package:familyshield_parent/features/dashboard/home_p07_screen.dart';
 import 'package:familyshield_parent/features/family/family_screen.dart';
 import 'package:familyshield_parent/features/map/child_location_view.dart';
+import 'package:familyshield_parent/features/settings/settings_screen.dart'
+    show p22SettingsEnabledProvider;
 import 'package:familyshield_parent/l10n/app_localizations.dart';
 import 'package:familyshield_parent/providers/auth_provider.dart';
 import 'package:familyshield_parent/providers/clock_provider.dart';
@@ -129,6 +131,7 @@ void main() {
     double textScale = 1.0,
     Size size = const Size(390, 844),
     bool p07Enabled = true,
+    bool p22Enabled = false,
     Duration bonusHold = const Duration(seconds: 5),
     DateTime? now,
     ActivePairingSession? activePairing,
@@ -167,6 +170,7 @@ void main() {
       overrides: [
         apiClientProvider.overrideWithValue(api),
         p07HomeEnabledProvider.overrideWithValue(p07Enabled),
+        if (p22Enabled) p22SettingsEnabledProvider.overrideWithValue(true),
         p07BonusHoldDurationProvider.overrideWithValue(bonusHold),
         clockProvider.overrideWithValue(() => now ?? weekdayNow),
         if (activePairing != null)
@@ -639,6 +643,33 @@ void main() {
       expect(find.byKey(const ValueKey('homeSettingsDigests')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsMfa')), findsOneWidget);
       expect(find.byKey(const ValueKey('homeSettingsDeleteAccount')), findsOneWidget);
+      // UI/UX Bureau, 17:29: "Privacy and data" is the only entry the P-07 home would otherwise strand, since
+      // its other way in is the dashboard menu this screen replaces. It shows in both switch states.
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget);
+    });
+
+    // P-22 (`#1179`): the P-07 home replaces the dashboard, so the dashboard's Settings menu entry does not
+    // exist here. With both switches on, the tab must offer the grouped Settings screen, or P-22 is a screen
+    // nothing routes to. Mutant: drop the `p22` branch in `_HomeSettingsTab` and the four old rows come back
+    // while no row reaches `/settings`; both assertions fail.
+    testWidgets('with P-22 on too, the settings tab offers one Settings row', (tester) async {
+      final api = FakeApiClient({
+        ...p07Routes(),
+        'GET /v1/family/invites': (_) => {'items': <dynamic>[]},
+      });
+      await tester.pumpWidget(buildP07App(api: api, p22Enabled: true));
+      await flushHttp(tester);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('p07Tab-settings')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('homeSettingsP22')), findsOneWidget);
+      expect(find.byKey(const ValueKey('homeSettingsAppearance')), findsNothing);
+      expect(find.byKey(const ValueKey('homeSettingsSignOut')), findsOneWidget,
+          reason: 'signing out is not a Settings row and stays');
+      expect(find.byKey(const ValueKey('homeSettingsPrivacy')), findsOneWidget,
+          reason: 'Privacy and data has no P-22 row, so it survives the swap');
     });
   });
 

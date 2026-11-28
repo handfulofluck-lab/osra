@@ -16,7 +16,10 @@ const ScanSchema = z.object({
   childId: z.string().min(1),
   deviceId: z.string().optional(),
   app: z.string().min(1),
-  contact: z.string().default(""),
+  // Issue #1050: the agent sends `null` when its heuristic found no sender. Rejecting it dropped the whole
+  // capture (no vault row, no alert), so a message with no identifiable contact vanished. Absent, null and
+  // empty all mean "unknown contact" now.
+  contact: z.string().nullish().transform((v) => v ?? ""),
   text: z.string().min(1),
   /** Plan 2.6: where the agent captured the text — screen (accessibility) or notification. */
   source: z.enum(["screen", "notification"]).optional(),
