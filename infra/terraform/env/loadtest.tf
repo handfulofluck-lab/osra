@@ -154,7 +154,8 @@ output "loadtest_k6_security_group_id" {
 #
 # And a load-test env must read the LOAD-TEST base (Codex's review of #1281): env/secrets.tf writes DATABASE_URL into
 # the secret named by base's state, so a loadtest env reading staging's base would repoint live staging at the test
-# database. The key and bucket are pinned here, not left to tfvars.
+# database. The key and bucket are pinned here, not left to tfvars, and checked as a precondition ON
+# data.terraform_remote_state.base (remote_state.tf), so a wrong key fails before the state is ever read.
 locals {
   loadtest_base_state_key = "loadtest/base/terraform.tfstate"
   loadtest_state_bucket   = "osra-terraform-state-222207908538-eu-north-1"
@@ -165,10 +166,6 @@ resource "terraform_data" "loadtest_guard" {
     precondition {
       condition     = var.loadtest_mode == (var.environment == "loadtest")
       error_message = "loadtest_mode must be true exactly when environment = \"loadtest\"."
-    }
-    precondition {
-      condition     = !var.loadtest_mode || (var.base_state_key == local.loadtest_base_state_key && var.state_bucket == local.loadtest_state_bucket)
-      error_message = "loadtest_mode must read the load-test base: base_state_key = \"loadtest/base/terraform.tfstate\" in the staging state bucket (never staging's base, whose DATABASE_URL secret this env would overwrite)."
     }
   }
 }

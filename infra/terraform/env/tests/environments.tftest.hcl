@@ -1756,6 +1756,8 @@ run "production_refuses_loadtest_mode" {
     allowed_account_ids      = ["000000000000"]
     assume_role_arn          = "arn:aws:iam::000000000000:role/test-deploy"
     loadtest_mode            = true
+    # the load-test base key, so the remote-state precondition passes and these two guards are the ones tested
+    base_state_key = "loadtest/base/terraform.tfstate"
   }
 
   expect_failures = [terraform_data.production_guard, terraform_data.loadtest_guard]
@@ -1765,8 +1767,9 @@ run "staging_refuses_loadtest_mode" {
   command = plan
 
   variables {
-    api_image     = "example/api:test"
-    loadtest_mode = true
+    api_image      = "example/api:test"
+    loadtest_mode  = true
+    base_state_key = "loadtest/base/terraform.tfstate"
   }
 
   expect_failures = [terraform_data.loadtest_guard]
@@ -1783,7 +1786,7 @@ run "loadtest_mode_refuses_staging_base_state" {
     # base_state_key left at its default, staging/base/terraform.tfstate
   }
 
-  expect_failures = [terraform_data.loadtest_guard]
+  expect_failures = [data.terraform_remote_state.base]
 }
 
 run "loadtest_mode_refuses_another_state_bucket" {
@@ -1798,5 +1801,5 @@ run "loadtest_mode_refuses_another_state_bucket" {
     state_bucket   = "osra-terraform-state-000000000000-eu-central-1"
   }
 
-  expect_failures = [terraform_data.loadtest_guard]
+  expect_failures = [data.terraform_remote_state.base]
 }
