@@ -2223,6 +2223,47 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onboardingGoToDashboard => 'Go to dashboard';
 
   @override
+  String p06ProgressTitle(String childName) {
+    return 'Finish setting up $childName\'s device';
+  }
+
+  @override
+  String p06ProgressCount(String confirmed, String total) {
+    return '$confirmed of $total confirmed';
+  }
+
+  @override
+  String get p06ConfirmedOnPhone => 'Confirmed';
+
+  @override
+  String get p06WaitingForPhone => 'Waiting';
+
+  @override
+  String get p06ShowMeHow => 'Show me how';
+
+  @override
+  String p06GuideTitle(String childName) {
+    return 'Finish these steps on $childName\'s device';
+  }
+
+  @override
+  String p06GuideBody(String childName) {
+    return 'Open OSRA on $childName\'s device and allow each item there. This screen updates by itself as each one is confirmed.';
+  }
+
+  @override
+  String get p06BatteryWarning =>
+      'This phone may stop OSRA to save battery. Allow OSRA to run in the background.';
+
+  @override
+  String p06AdminWarning(String childName) {
+    return '$childName\'s account on this computer is an administrator, so it can turn OSRA off. Use a standard account for full protection.';
+  }
+
+  @override
+  String get p06NotYetIphone => 'Not yet available on iPhone';
+
+  @override
   String get onboardingFinishSetupTitle => 'Finish setting up';
 
   @override
@@ -3206,6 +3247,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get phoneSetupFeatureCallSmsLog => 'Calls and texts';
+
+  @override
+  String get phoneSetupFeatureChildAccountAdmin => 'Standard account';
 
   @override
   String get phoneSetupStateReady => 'Ready';

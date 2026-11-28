@@ -2407,6 +2407,47 @@ class AppLocalizationsAr extends AppLocalizations {
   String get onboardingGoToDashboard => 'الانتقال إلى لوحة التحكم';
 
   @override
+  String p06ProgressTitle(String childName) {
+    return 'إكمال إعداد جهاز $childName';
+  }
+
+  @override
+  String p06ProgressCount(String confirmed, String total) {
+    return 'المؤكَّد: $confirmed من $total';
+  }
+
+  @override
+  String get p06ConfirmedOnPhone => 'مؤكَّد';
+
+  @override
+  String get p06WaitingForPhone => 'بانتظار التأكيد';
+
+  @override
+  String get p06ShowMeHow => 'عرض الخطوات';
+
+  @override
+  String p06GuideTitle(String childName) {
+    return 'أكمِل هذه الخطوات على جهاز $childName';
+  }
+
+  @override
+  String p06GuideBody(String childName) {
+    return 'افتح تطبيق أسرة للأطفال على جهاز $childName واسمح بكل عنصر هناك. تتحدّث هذه الشاشة تلقائيًا عند تأكيد كل عنصر.';
+  }
+
+  @override
+  String get p06BatteryWarning =>
+      'قد يوقف هذا الهاتف تطبيق أسرة للأطفال لتوفير البطارية. اسمح للتطبيق بالعمل في الخلفية.';
+
+  @override
+  String p06AdminWarning(String childName) {
+    return 'حساب $childName على هذا الكمبيوتر حساب مسؤول، لذا يمكنه إيقاف تطبيق أسرة للأطفال. استخدم حسابًا قياسيًا لحماية كاملة.';
+  }
+
+  @override
+  String get p06NotYetIphone => 'غير متاح بعد على آيفون';
+
+  @override
   String get onboardingFinishSetupTitle => 'أكمل الإعداد';
 
   @override
@@ -3403,6 +3444,9 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get phoneSetupFeatureCallSmsLog => 'المكالمات والرسائل';
+
+  @override
+  String get phoneSetupFeatureChildAccountAdmin => 'حساب قياسي';
 
   @override
   String get phoneSetupStateReady => 'جاهز';

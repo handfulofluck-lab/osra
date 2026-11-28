@@ -3758,6 +3758,66 @@ abstract class AppLocalizations {
   /// **'Go to dashboard'**
   String get onboardingGoToDashboard;
 
+  /// No description provided for @p06ProgressTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish setting up {childName}\'s device'**
+  String p06ProgressTitle(String childName);
+
+  /// No description provided for @p06ProgressCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{confirmed} of {total} confirmed'**
+  String p06ProgressCount(String confirmed, String total);
+
+  /// No description provided for @p06ConfirmedOnPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed'**
+  String get p06ConfirmedOnPhone;
+
+  /// No description provided for @p06WaitingForPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting'**
+  String get p06WaitingForPhone;
+
+  /// No description provided for @p06ShowMeHow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show me how'**
+  String get p06ShowMeHow;
+
+  /// No description provided for @p06GuideTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish these steps on {childName}\'s device'**
+  String p06GuideTitle(String childName);
+
+  /// No description provided for @p06GuideBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Open OSRA on {childName}\'s device and allow each item there. This screen updates by itself as each one is confirmed.'**
+  String p06GuideBody(String childName);
+
+  /// No description provided for @p06BatteryWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone may stop OSRA to save battery. Allow OSRA to run in the background.'**
+  String get p06BatteryWarning;
+
+  /// No description provided for @p06AdminWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'{childName}\'s account on this computer is an administrator, so it can turn OSRA off. Use a standard account for full protection.'**
+  String p06AdminWarning(String childName);
+
+  /// No description provided for @p06NotYetIphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet available on iPhone'**
+  String get p06NotYetIphone;
+
   /// No description provided for @onboardingFinishSetupTitle.
   ///
   /// In en, this message translates to:
@@ -5353,6 +5413,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Calls and texts'**
   String get phoneSetupFeatureCallSmsLog;
+
+  /// No description provided for @phoneSetupFeatureChildAccountAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard account'**
+  String get phoneSetupFeatureChildAccountAdmin;
 
   /// No description provided for @phoneSetupStateReady.
   ///

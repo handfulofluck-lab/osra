@@ -1337,6 +1337,10 @@ camera-ready state and the denial fallback, and the typed path was paired end-to
 API. The camera → review → confirm steps remain covered by the JVM state machine and are still part of
 the open 3.2 hardware row.
 
+## P-06 finish-setup widget contract
+
+Run `flutter test --no-pub test/onboarding_test.dart test/device_setup_model_test.dart test/phone_setup_section_test.dart`. The P-06 cases pin first-device-only completion, the seven-grant Play gate and the eight-grant Full gate (notification access included), mixed/missing/malformed capability states and flavours, iOS availability, multiple devices, child identity, the instruction sheet, and Windows/Mac administrator warnings. The existing full happy-path fixture includes all seven Play grants so it proves the route still completes only after confirmed setup. Pull-to-refresh and the 30-second visible-screen timer invalidate the same family provider; neither changes the completion rule.
+
 ## CI staging Parent APK (synthetic CI proof, private real build)
 
 `scripts/build-parent-staging-apk.sh` is the single command for both proofs of the staging Parent APK. It requires `API_BASE=https://api.staging.osratech.com` and a positive `BUILD_NUMBER`, then checks the Firebase release task, package/versionCode, `INTERNET`, `POST_NOTIFICATIONS`, and the APK signature. `scripts/check-parent-staging-build.mjs --selftest` proves the contract checker itself; the normal invocation fails if the workflow stops being synthetic-only, gains a public APK artifact, or loses one of those assertions.

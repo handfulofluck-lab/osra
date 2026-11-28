@@ -650,6 +650,54 @@
   "onboardingDonePendingTitle": "بقيت خطوة واحدة",
   "onboardingDonePendingBody": "تمت إضافة طفلك، لكن هاتفه غير مقرون بعد. يمكنك إقرانه في أي وقت من لوحة التحكم.",
   "onboardingGoToDashboard": "الانتقال إلى لوحة التحكم",
+  "p06ProgressTitle": "إكمال إعداد جهاز {childName}",
+  "@p06ProgressTitle": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06ProgressCount": "المؤكَّد: {confirmed} من {total}",
+  "@p06ProgressCount": {
+    "placeholders": {
+      "confirmed": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "p06ConfirmedOnPhone": "مؤكَّد",
+  "p06WaitingForPhone": "بانتظار التأكيد",
+  "p06ShowMeHow": "عرض الخطوات",
+  "p06GuideTitle": "أكمِل هذه الخطوات على جهاز {childName}",
+  "@p06GuideTitle": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06GuideBody": "افتح تطبيق أسرة للأطفال على جهاز {childName} واسمح بكل عنصر هناك. تتحدّث هذه الشاشة تلقائيًا عند تأكيد كل عنصر.",
+  "@p06GuideBody": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06BatteryWarning": "قد يوقف هذا الهاتف تطبيق أسرة للأطفال لتوفير البطارية. اسمح للتطبيق بالعمل في الخلفية.",
+  "p06AdminWarning": "حساب {childName} على هذا الكمبيوتر حساب مسؤول، لذا يمكنه إيقاف تطبيق أسرة للأطفال. استخدم حسابًا قياسيًا لحماية كاملة.",
+  "@p06AdminWarning": {
+    "placeholders": {
+      "childName": {
+        "type": "String"
+      }
+    }
+  },
+  "p06NotYetIphone": "غير متاح بعد على آيفون",
   "onboardingFinishSetupTitle": "أكمل الإعداد",
   "onboardingFinishSetupBody": "أقرن هاتف {childName} لتبدأ الحماية.",
   "@onboardingFinishSetupBody": {
@@ -1086,6 +1134,7 @@
   "phoneSetupFeatureUninstallGuard": "حماية من الإزالة",
   "phoneSetupFeatureNotificationScan": "فحص الإشعارات",
   "phoneSetupFeatureCallSmsLog": "المكالمات والرسائل",
+  "phoneSetupFeatureChildAccountAdmin": "حساب قياسي",
   "phoneSetupStateReady": "جاهز",
   "phoneSetupStateDegraded": "محدود",
   "phoneSetupStateUnavailable": "غير متاح",
