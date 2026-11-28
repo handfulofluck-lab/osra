@@ -72,6 +72,11 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   /// (`GET /v1/devices/pair/:code/claim`), read every two seconds while the code is shown.
   Map<String, dynamic>? _claim;
   Timer? _claimTimer;
+  /// The QR generation whose claim read is open, or null. Keyed by generation rather than a plain flag: a read
+  /// still pending for a code the parent has replaced must not silence the poll for the code now on screen
+  /// (Codex, #1149). One read at a time per code, so a server slower than the two-second tick is slow rather
+  /// than silent, and an older answer can never land after a newer one for that code.
+  int? _claimReadGeneration;
   bool _deciding = false;
   bool _decisionFailed = false;
 
@@ -207,6 +212,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       _claimTimer?.cancel();
       return;
     }
+    if (_claimReadGeneration == generation) return;
+    _claimReadGeneration = generation;
     final readSeq = ++_claimReadSeq;
     try {
       final res = await ref
@@ -227,6 +234,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       }
       final data = Map<String, dynamic>.from(res.data as Map);
       final incomingStatus = data['status'];
+      // Pairing is final for this code: once the phone has its token the QR is spent, and nothing that arrives
+      // afterwards may bring the code back on screen (Codex, #1149 `7184806902`).
       if (_claimStatusRank(incomingStatus) < _claimStatusRank(currentStatus)) {
         return;
       }
@@ -243,6 +252,8 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
       }
     } catch (_) {
       // Missed tick.
+    } finally {
+      if (_claimReadGeneration == generation) _claimReadGeneration = null;
     }
   }
 
@@ -343,6 +354,42 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
   bool _paired(FamilyOverview? overview) =>
       overview?.devicesFor(widget.childId).isNotEmpty ?? false;
 
+  /// #1134: a standalone screen — opened from the child card or `/child/:id/pair` — has no wizard step to
+  /// advance to, so a confirmed pairing left the parent on the scan instructions with nothing to press. The
+  /// claim watch already knows the phone has its token; this is where that becomes a screen that ends.
+  Widget _pairedScaffold(BuildContext context) {
+    final l10n = context.l10n;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.pairADevice)),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_outline, size: 56, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: AppSpace.md),
+                Text(
+                  l10n.pairClaimPaired(pairClaimDeviceLabel(_claim!)),
+                  key: const ValueKey('pairPairedTitle'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpace.lg),
+                FilledButton(
+                  key: const ValueKey('pairPairedDone'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: Text(l10n.close),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // #1179 P-05 Pair behind switch (legacy PairingQrScreen stays as fallback).
@@ -359,6 +406,10 @@ class _PairingQrScreenState extends ConsumerState<PairingQrScreen> {
     final l10n = context.l10n;
     final overview = ref.watch(familyProvider).valueOrNull;
     final paired = widget.onboarding && _paired(overview);
+    // Standalone only: the wizard keeps its own Continue flow below (#1134).
+    if (!widget.onboarding && _claim?['status'] == 'paired') {
+      return _pairedScaffold(context);
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.pairADevice),
