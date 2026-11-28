@@ -7,6 +7,7 @@ that appears in a commit is considered leaked and must be rotated.
 | Secret | Used by | Purpose |
 |---|---|---|
 | `MAPS_API_KEY` | parent-app (Android manifest placeholder) | Google Maps SDK key; restrict it to the app's package + SHA-1 in Google Cloud Console |
+| `MAPS_IOS_API_KEY` | parent-app iOS build | Restricted to the `com.osratech.parent` iOS bundle and Maps SDK for iOS. Pull request builds use the key-free path. |
 | `OSRA_UPLOAD_KEYSTORE_B64` | parent-app, child-android CI | Base64 of the Play upload keystore (`upload.jks`) |
 | `OSRA_UPLOAD_KEYSTORE_PASSWORD`, `OSRA_UPLOAD_KEY_ALIAS`, `OSRA_UPLOAD_KEY_PASSWORD` | same | Keystore credentials |
 | `GOOGLE_SERVICES_JSON_B64` | child-android, parent-app | Firebase config for FCM (Phase 1-C / 2) |

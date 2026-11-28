@@ -314,8 +314,12 @@ jobs:
           test -f ios/Podfile || { echo "ios/Podfile is missing" >&2; exit 1; }
           echo "CocoaPods target confirmed: no SPM reference, Podfile present"
       - run: flutter pub get
+      - name: Verify iOS Maps build inputs
+        run: bash ios/build-with-maps-test.sh
       - name: Build the iOS target unsigned
-        run: flutter build ios --release --no-codesign --dart-define=OSRA_UX_FINAL=true
+        env:
+          MAPS_IOS_API_KEY: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MAPS_IOS_API_KEY || '' }}
+        run: bash ios/build-with-maps.sh ios --release --no-codesign --dart-define=OSRA_UX_FINAL=true
       - name: The bundle identifiers are the Play ids (decision 2B)
         run: |
           # The App Store id equals the Android applicationId, com.osratech.parent (#452); the test
