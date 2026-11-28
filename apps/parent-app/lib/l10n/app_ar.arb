@@ -1273,22 +1273,52 @@
   "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
   "alertsOffTurnOnAction": "تفعيل التنبيهات",
   "pairP05Title": "ربط هاتف {child}",
-  "@pairP05Title": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05Title": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05TitleGeneric": "ربط هاتف الطفل",
   "pairP05Subtitle": "ثبّت تطبيق أسرة للأطفال على هاتف {child} ثم امسح هذا الرمز.",
-  "@pairP05Subtitle": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05Subtitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05SubtitleGeneric": "ثبّت تطبيق أسرة للأطفال على هاتف الطفل ثم امسح هذا الرمز.",
   "pairP05OrTypeCode": "أو أدخل هذا الرمز",
   "pairP05ValidFor": "صالح لمدة {time}",
-  "@pairP05ValidFor": { "placeholders": { "time": { "type": "String" } } },
+  "@pairP05ValidFor": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05CodeExpired": "انتهت صلاحية الرمز",
   "pairP05NewCode": "رمز جديد",
   "pairP05WaitingFor": "بانتظار هاتف {child}…",
-  "@pairP05WaitingFor": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05WaitingFor": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05WaitingGeneric": "بانتظار هاتف الطفل…",
   "pairP05ConfirmDeviceTitle": "تأكيد هذا الجهاز؟",
   "pairP05ConfirmDeviceBody": "يطلب {model} الاتصال. أكّد الربط للمتابعة.",
-  "@pairP05ConfirmDeviceBody": { "placeholders": { "model": { "type": "String" } } },
+  "@pairP05ConfirmDeviceBody": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05ConfirmLink": "التأكيد والربط",
   "pairP05Decline": "رفض",
   "pairP05Connected": "تم ربط الهاتف.",
@@ -1522,5 +1552,7 @@
   "appsFilterAllowed": "مسموح ({count})",
   "appsLimitSheetTitle": "الحد اليومي لتطبيق {app}",
   "appsNoLimit": "بلا حد",
-  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد."
+  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد.",
+  "p14DayToday": "اليوم",
+  "p14DayYesterday": "أمس"
 }
