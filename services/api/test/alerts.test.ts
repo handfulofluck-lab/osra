@@ -124,8 +124,12 @@ describe("alerts routes", () => {
     });
     expect(res.statusCode).toBe(201);
     const stored = (prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
-    expect(stored.metadata).toEqual({ reason: "blocked_domain", day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
-    expect(stored.dedupeKey).toBe(`web:${(stored.metadata as { day: string }).day}`);
+    // #1222: the run key replaces the per-day key; neither it nor the metadata names a site.
+    const meta = stored.metadata as Record<string, unknown>;
+    expect(meta).toMatchObject({ reason: "blocked_domain", day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    for (const k of ["domain", "host", "url", "site"]) expect(meta).not.toHaveProperty(k);
+    expect(stored.dedupeKey).toMatch(/^grp:web::\d{4}-\d{2}-\d{2}:\d+$/);
+    expect(JSON.stringify(stored)).not.toContain("tiktok");
     // No client text either: a title or body could carry the name.
     expect(stored.title).toBe("Blocked site opened");
     expect(stored.body).toBe("Your child tried to open a blocked site.");
@@ -157,7 +161,7 @@ describe("alerts routes", () => {
     expect(res.statusCode).toBe(201);
     const stored = (prismaMock.alert.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
     expect(stored.metadata).toMatchObject({ domain: "tiktok.com", reason: "blocked_domain:tiktok.com" });
-    expect(stored.dedupeKey).toBe("domain:tiktok.com:2026-11-16");
+    expect(stored.dedupeKey).toMatch(/^grp:web:tiktok\.com:\d{4}-\d{2}-\d{2}:\d+$/);
     delete process.env.SITE_NAMES_ENABLED;
     await app.close();
   });
