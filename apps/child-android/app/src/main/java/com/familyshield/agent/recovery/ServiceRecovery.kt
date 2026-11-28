@@ -40,15 +40,29 @@ object ServiceRecovery {
      * Reads the device, decides, acts, and returns the gaps it saw. Safe to call on any worker tick: when
      * everything is already up the plan is empty and this costs a handful of in-process reads.
      */
-    fun run(context: Context): ServiceRecoveryPolicy.Plan {
-        val state = readState(context)
+    fun run(context: Context): ServiceRecoveryPolicy.Plan =
+        runWith(
+            readState = { readState(context) },
+            restartFilter = { step("web filter") { FilterVpnService.start(context) } },
+            restartLocation = { step("location service") { startLocation(context) } },
+            showLock = { step("lock screen") { showLock(context, LockState.mode(context)) } },
+        )
+
+    internal fun runWith(
+        readState: () -> ServiceRecoveryPolicy.State,
+        restartFilter: () -> Unit,
+        restartLocation: () -> Unit,
+        showLock: () -> Unit,
+        logInfo: (String) -> Unit = { runCatching { Log.i(TAG, it) } },
+    ): ServiceRecoveryPolicy.Plan {
+        val state = readState()
         val plan = ServiceRecoveryPolicy.plan(state)
         if (plan.isEmpty) return plan
 
-        Log.i(TAG, "recovering after a restart: gaps=${plan.gaps}")
-        if (plan.restartFilter) step("web filter") { FilterVpnService.start(context) }
-        if (plan.restartLocation) step("location service") { startLocation(context) }
-        if (plan.showLock) step("lock screen") { showLock(context, LockState.mode(context)) }
+        logInfo("recovering after a restart: gaps=${plan.gaps}")
+        if (plan.restartFilter) restartFilter()
+        if (plan.restartLocation) restartLocation()
+        if (plan.showLock) showLock()
         return plan
     }
 
@@ -56,9 +70,11 @@ object ServiceRecovery {
     internal fun readState(context: Context): ServiceRecoveryPolicy.State {
         val settings = EntryPointAccessors.fromApplication(context, WorkerEntryPoint::class.java).agentSettings()
         val isPaired = settings.isPairedSync()
+        val unlinkPending = settings.unlinkPendingSync()
         return ServiceRecoveryPolicy.State(
             isPaired = isPaired,
             consentPaused = EntryPointAccessors.fromApplication(context, WorkerEntryPoint::class.java).consentState().isPaused(),
+            unlinkPending = unlinkPending,
             filterWanted = VpnState.isEnabled(context),
             // Hydrogen's #1098 review: `VpnState.isEstablished` is a persisted flag cleared only in
             // `onDestroy`, so after a kill it reads `true` for a tunnel that no longer exists and the filter

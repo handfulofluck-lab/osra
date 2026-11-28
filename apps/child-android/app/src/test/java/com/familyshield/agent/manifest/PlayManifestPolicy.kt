@@ -208,8 +208,14 @@ object PlayManifestPolicy {
             problems += "$expectedClass must require android.permission.BIND_DEVICE_ADMIN, " +
                 "found ${receiver.permission ?: "no android:permission"}"
         }
-        if ("android.app.action.DEVICE_ADMIN_ENABLED" !in receiver.intentActions) {
-            problems += "$expectedClass has no android.app.action.DEVICE_ADMIN_ENABLED intent filter"
+        for (requiredAction in listOf(
+            "android.app.action.DEVICE_ADMIN_ENABLED",
+            "android.app.action.DEVICE_ADMIN_DISABLE_REQUESTED",
+            "android.app.action.DEVICE_ADMIN_DISABLED",
+        )) {
+            if (requiredAction !in receiver.intentActions) {
+                problems += "$expectedClass has no $requiredAction intent filter"
+            }
         }
         return problems
     }

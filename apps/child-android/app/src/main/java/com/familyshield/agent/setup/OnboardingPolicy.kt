@@ -117,10 +117,17 @@ object OnboardingPolicy {
         ),
     }
 
-    data class Row(val grant: Grant, val granted: Boolean)
+    data class Row(val grant: Grant, val granted: Boolean, val required: Boolean = grant.required)
 
     /** The progress line's resource and its two numbers, so the screen can format it in its own language. */
     data class ProgressLine(@StringRes val textRes: Int, val done: Int, val total: Int)
+
+    /**
+     * osra-security#78: Xiaomi/Redmi/POCO requires unrestricted battery + Autostart (`Grant.BATTERY`)
+     * before setup can mark the phone protected, while non-Xiaomi families keep `Grant.BATTERY` optional.
+     */
+    fun isGrantRequired(grant: Grant, manufacturer: String? = null): Boolean =
+        grant.required || (grant == Grant.BATTERY && MiuiBackgroundPopupPolicy.isXiaomiFamily(manufacturer))
 
     /**
      * The rows in the order the parent should grant them (cheapest and most important first).
@@ -130,13 +137,17 @@ object OnboardingPolicy {
      * permission the build cannot use — and a store reviewer sees the request (ADR-0016 §4). Full passes
      * `true`, Play `false`, from `BuildConfig.CAPTURE_NOTIFICATIONS`.
      */
-    fun rows(notificationCaptureAvailable: Boolean = true, granted: (Grant) -> Boolean): List<Row> =
+    fun rows(
+        notificationCaptureAvailable: Boolean = true,
+        manufacturer: String? = null,
+        granted: (Grant) -> Boolean,
+    ): List<Row> =
         Grant.values()
             .filter { it != Grant.NOTIFICATION_LISTENER || notificationCaptureAvailable }
-            .map { Row(it, granted(it)) }
+            .map { Row(it, granted(it), required = isGrantRequired(it, manufacturer)) }
 
     /** Grants still missing among the required ones; empty means pairing may be called complete. */
-    fun missingRequired(rows: List<Row>): List<Grant> = rows.filter { it.grant.required && !it.granted }.map { it.grant }
+    fun missingRequired(rows: List<Row>): List<Grant> = rows.filter { it.required && !it.granted }.map { it.grant }
 
     fun canComplete(rows: List<Row>): Boolean = missingRequired(rows).isEmpty()
 
@@ -227,7 +238,7 @@ object OnboardingPolicy {
     private data class Counts(val done: Int, val total: Int)
 
     private fun counts(rows: List<Row>): Counts {
-        val required = rows.filter { it.grant.required }
+        val required = rows.filter { it.required }
         return Counts(done = required.count { it.granted }, total = required.size)
     }
 

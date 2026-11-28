@@ -19,6 +19,8 @@ object ServiceRecoveryPolicy {
     data class State(
         val isPaired: Boolean,
         val consentPaused: Boolean,
+        /** True while DeviceUnlinker is mid-sequence before clearPairing() finishes (#1303 review). */
+        val unlinkPending: Boolean = false,
         /** The parent asked for the web filter (`VpnState.isEnabled`). */
         val filterWanted: Boolean,
         /** The tunnel is actually carrying traffic. */
@@ -79,8 +81,8 @@ object ServiceRecoveryPolicy {
     }
 
     fun plan(state: State): Plan {
-        // A de-linked phone has no family to protect: nothing to restart, nothing to report (issue #472).
-        if (!state.isPaired || state.consentPaused) return Plan(false, false, false, emptyList())
+        // A de-linked or mid-unlink phone has no family to protect: nothing to restart, nothing to report (issue #472).
+        if (!state.isPaired || state.consentPaused || state.unlinkPending) return Plan(false, false, false, emptyList())
 
         val restartFilter = state.filterWanted && !state.tunnelRunning
         val restartLocation = state.locationMayStart && !state.locationRunning

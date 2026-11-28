@@ -38,6 +38,64 @@ class TamperScreenPolicyTest {
     fun `app info for our package is APP_INFO`() {
         assertEquals(TamperScreen.APP_INFO, classify("com.android.settings", "App info", "OSRA", "Force stop", "Storage", "Permissions"))
         assertEquals(TamperScreen.APP_INFO, classify("com.android.settings", "OSRA", "com.familyshield.agent", "Clear data", "Clear cache"))
+        // osra-security#78: Xiaomi/MIUI App-info class (ApplicationsDetailsActivity) is matched by class,
+        // language-independently, even when no English/Arabic removal verb has scrolled into view yet.
+        assertEquals(
+            TamperScreen.APP_INFO,
+            TamperScreenPolicy.classify(
+                "com.miui.securitycenter",
+                listOf<CharSequence>("OSRA", "Stockage", "Autorisations", "Notifications"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "com.miui.appmanager.ApplicationsDetailsActivity",
+            ),
+        )
+        assertEquals(
+            "another app's MIUI ApplicationsDetailsActivity stays NONE",
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.miui.securitycenter",
+                listOf<CharSequence>("YouTube", "Stockage", "Autorisations"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "com.miui.appmanager.ApplicationsDetailsActivity",
+            ),
+        )
+        // MIUI AppManagerMainActivity: plain app list is NONE; selected OSRA action bar with verb is guarded.
+        assertEquals(
+            TamperScreen.NONE,
+            TamperScreenPolicy.classify(
+                "com.miui.securitycenter",
+                listOf<CharSequence>("Manage apps", "OSRA", "YouTube"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "com.miui.appmanager.AppManagerMainActivity",
+            ),
+        )
+        assertEquals(
+            TamperScreen.UNINSTALL,
+            TamperScreenPolicy.classify(
+                "com.miui.securitycenter",
+                listOf<CharSequence>("OSRA", "Uninstall", "Clear data"),
+                agent, admin, pkg,
+                ourAdminActive = true,
+                windowClass = "com.miui.appmanager.AppManagerMainActivity",
+            ),
+        )
+        // MIUI package installers
+        for (miuiInstaller in listOf("com.miui.packageinstaller", "com.miui.globalpackageinstaller")) {
+            assertEquals(
+                miuiInstaller,
+                TamperScreen.UNINSTALL,
+                TamperScreenPolicy.classify(
+                    miuiInstaller,
+                    listOf<CharSequence>("OSRA", "Annuler", "OK"),
+                    agent, admin, pkg,
+                    ourAdminActive = true,
+                    windowClass = "com.android.packageinstaller.UninstallerActivity",
+                ),
+            )
+        }
     }
 
     /**

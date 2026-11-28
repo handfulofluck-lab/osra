@@ -125,13 +125,16 @@ class DeviceUnlinker @Inject constructor(
                     // uploads the previous child's open period as the new child's first lock.
                     com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
                 },
-                stopLocation = { context.stopService(Intent(context, LocationService::class.java)) },
+                stopLocation = { LocationService.stop(context) },
                 clearPairing = { settings.clearPairing() },
                 forgetRules = { rules.forgetRules() },
                 removeAdmin = { admin.removeAdmin() },
                 notify = { UnlinkedNotice.show(context) },
             ),
-            markPending = { settings.setUnlinkPending(true) },
+            markPending = {
+                settings.setUnlinkPending(true)
+                com.familyshield.agent.recovery.ServiceRevivalScheduler.cancelAll(context)
+            },
             clearPending = { settings.setUnlinkPending(false) },
             isAdminActive = { admin.isAdminActive() },
         )

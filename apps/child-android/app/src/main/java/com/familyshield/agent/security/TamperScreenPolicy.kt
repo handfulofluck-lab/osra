@@ -23,12 +23,14 @@ object TamperScreenPolicy {
     private val VPN_CONSENT_TITLES = setOf("connection request", "طلب الاتصال")
     private val VPN_DISCONNECT_ACTIONS = setOf("disconnect", "قطع الاتصال")
 
-    /** System packages that host the three screens (AOSP, Google and Samsung variants). */
+    /** System packages that host the three screens (AOSP, Google, Samsung and Xiaomi/MIUI variants). */
     internal val SYSTEM_PACKAGES = setOf(
         "com.android.settings",
         "com.android.packageinstaller",
         "com.google.android.packageinstaller",
         "com.samsung.android.packageinstaller",
+        "com.miui.packageinstaller",
+        "com.miui.globalpackageinstaller",
         "com.miui.securitycenter",
         // osra-security#30: the Permission manager lives in its own package on Android 11 and later.
         "com.android.permissioncontroller",
@@ -72,10 +74,10 @@ object TamperScreenPolicy {
     // of the same activity all match. These do not depend on the phone's language.
     // The admin sheet serves activation AND deactivation under one class (AOSP `DeviceAdminAdd`, Samsung
     // `SecDeviceAdminAdd`, seen on the Flip4), so it counts only while our admin is active ([classify]).
-    private val ADMIN_CLASSES = setOf("DeviceAdminAdd", "SecDeviceAdminAdd")
+    internal val ADMIN_CLASSES = setOf("DeviceAdminAdd", "SecDeviceAdminAdd")
     // The admin LIST is never a protection screen; in Arabic its intro text carries «إلغاء تفعيل» and the list
     // names us, so the word path would misfire without this.
-    private val NEVER_CLASSES = setOf(
+    internal val NEVER_CLASSES = setOf(
         "DeviceAdminSettingsActivity",
         // Review of osra-security#29/#30: the list of every installed service and the runtime permission dialog.
         // Gating the list would block access to assistive tools (ADR-0021), and the runtime prompt is what a
@@ -84,8 +86,13 @@ object TamperScreenPolicy {
         "AccessibilitySettingsActivity",
         "GrantPermissionsActivity",
     )
-    private val UNINSTALL_CLASSES = setOf("UninstallerActivity")
-    private val APP_INFO_CLASSES = setOf("InstalledAppDetails", "InstalledAppDetailsTop", "AppInfoDashboardActivity")
+    internal val UNINSTALL_CLASSES = setOf("UninstallerActivity")
+    internal val APP_INFO_CLASSES = setOf(
+        "InstalledAppDetails",
+        "InstalledAppDetailsTop",
+        "AppInfoDashboardActivity",
+        "ApplicationsDetailsActivity",
+    )
 
     /**
      * osra-security#29, Part 2 (Antigravity's scope, agreed on #813): the *other* system surfaces that decide what
@@ -206,13 +213,13 @@ object TamperScreenPolicy {
      * both from the Flip4 capture (`topResumedActivity`, One UI, SDK 36). They never name the agent, so this
      * is the one place the class alone decides; the package pins it to the one system app that hosts it.
      */
-    private val SPACE_SETUP_SCREENS = setOf(
+    internal val SPACE_SETUP_SCREENS = setOf(
         "com.samsung.android.da.daagent" to "DualAppActivity",
         "com.samsung.knox.securefolder" to "WelcomeActivity",
     )
 
     /** The simple name of a window class (`com.android.settings.DeviceAdminAdd` → `DeviceAdminAdd`, `Settings$X` → `X`). */
-    private fun simpleName(windowClass: String?): String? =
+    internal fun simpleName(windowClass: String?): String? =
         windowClass?.substringAfterLast('.')?.substringAfterLast('$')?.takeIf { it.isNotEmpty() }
 
     /**

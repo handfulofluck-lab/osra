@@ -237,6 +237,21 @@ class PairingActivity : ComponentActivity() {
     /** Plan 1.6: live grant state, asked of the OS on every render. */
     private val grants: GrantChecks by lazy { GrantChecks(this, deviceAdmin) }
 
+    private fun currentOnboardingRows(): List<OnboardingPolicy.Row> =
+        OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS, Build.MANUFACTURER) { grants.isGranted(it) }
+
+    private fun syncRecentsExclusion() {
+        if (!MiuiBackgroundPopupPolicy.isXiaomiFamily(Build.MANUFACTURER)) return
+        val paired = settings.isPairedSync()
+        val setupCompleted = SetupCompletionStore.isCompletedForDevice(this, settings.deviceIdSync())
+        val exclude = RecentsExclusionPolicy.shouldExcludeFromRecents(Build.MANUFACTURER, paired, setupCompleted)
+        runCatching {
+            getSystemService(android.app.ActivityManager::class.java)
+                ?.appTasks
+                ?.forEach { it.setExcludeFromRecents(exclude) }
+        }
+    }
+
     /** Roadmap 3.2: scan → review → confirm, with no pairing request until [PairingScanFlow.confirm]. */
     // Plan 2.7: a release build pairs only with OSRA's own servers (PairingApproval.isReleasePairingHost).
     private val scanFlow = PairingScanFlow(releaseHostsOnly = !BuildConfig.DEBUG)
@@ -291,6 +306,7 @@ class PairingActivity : ComponentActivity() {
             OnboardingPolicy.Grant.values().firstOrNull { it.name == name }?.let { skippedPermissionSteps.add(it) }
         }
         onBackPressedDispatcher.addCallback(this, guidedBackCallback)
+        consumeOpenDeviceSetupIntent(intent)
         // NOTE: reading the token (not the cache) — a fresh process has empty caches.
         lifecycleScope.launch {
             if (settings.isPaired()) {
@@ -309,6 +325,23 @@ class PairingActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (consumeOpenDeviceSetupIntent(intent)) {
+            lifecycleScope.launch {
+                if (settings.isPaired()) showStatus()
+            }
+        }
+    }
+
+    private fun consumeOpenDeviceSetupIntent(incoming: Intent?): Boolean {
+        if (incoming?.getBooleanExtra(EXTRA_OPEN_DEVICE_SETUP, false) != true) return false
+        incoming.removeExtra(EXTRA_OPEN_DEVICE_SETUP)
+        forceLegacyStatusView = true
+        return true
     }
 
     /**
@@ -343,7 +376,7 @@ class PairingActivity : ComponentActivity() {
     private val guidedBackCallback: androidx.activity.OnBackPressedCallback =
         object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                val rows = currentOnboardingRows()
                 val hasRemainingStep = nextUngrantedPermissionStep(rows) != null
                 when (SetupResumePolicy.backAction(activeGuidedStage, guidedFirstRun, hasRemainingStep)) {
                     BackAction.TO_PERMISSION_STEP -> {
@@ -435,6 +468,7 @@ class PairingActivity : ComponentActivity() {
         activityResumed = true
         // Issue #229: a grant made in Settings (not through this screen) reaches the logger here.
         commsCapture.onPermissionsChanged()
+        syncRecentsExclusion()
         lifecycleScope.launch {
             if (settings.isPaired()) {
                 startLocationServiceIfPermitted()
@@ -473,7 +507,7 @@ class PairingActivity : ComponentActivity() {
                 renderUnpairedStage()
                 return@launch
             }
-            val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+            val rows = currentOnboardingRows()
             val next = SetupResumePolicy.stageAfterPermissionReturn(
                 pinConfigured = pinStore.isConfigured(),
                 currentStage = activeGuidedStage,
@@ -494,7 +528,7 @@ class PairingActivity : ComponentActivity() {
         hasTypedOrScanned: Boolean = scanned != null ||
             prefillServer.isNotEmpty() || prefillCode.isNotEmpty() || prefillName.isNotEmpty(),
     ) {
-        val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+        val rows = currentOnboardingRows()
         when (
             FirstRunOrderPolicy.resolveUnpairedStage(
                 welcomeCompleted = welcomeCompleted,
@@ -524,12 +558,12 @@ class PairingActivity : ComponentActivity() {
             GuidedStage.STALE_KNOX_ADMIN -> showStaleKnoxAdmin()
             GuidedStage.PERMISSION_STEP -> {
                 forceChecklistView = false
-                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                val rows = currentOnboardingRows()
                 if (!OnboardingPolicy.canComplete(rows)) showChecklist(rows, firstRun = guidedFirstRun) else showComplete()
             }
             GuidedStage.CHECKLIST -> {
                 forceChecklistView = true
-                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                val rows = currentOnboardingRows()
                 showChecklist(rows, firstRun = guidedFirstRun)
             }
             GuidedStage.COMPLETE -> showComplete()
@@ -573,6 +607,7 @@ class PairingActivity : ComponentActivity() {
         statusScreenShown = false
         activeGuidedStage = null
         skippedPermissionSteps.clear()
+        syncRecentsExclusion()
         val brand = "${getString(R.string.app_name)} · ${getString(R.string.app_name_ar)}"
         val c05 = ChildUxFlags.c05FirstRunEnabled
         replaceWithCompose {
@@ -637,6 +672,7 @@ class PairingActivity : ComponentActivity() {
         statusScreenShown = false
         activeGuidedStage = null
         skippedPermissionSteps.clear()
+        syncRecentsExclusion()
         if (ChildUxFlags.c05FirstRunEnabled) {
             formServer = null
             formCode = null
@@ -933,7 +969,7 @@ class PairingActivity : ComponentActivity() {
             onError(null)
             result.onSuccess { pairing ->
                 if (settings.savePairing(pairing.baseUrl, pairing.token, pairing.deviceId, pairing.childId, pairing.hmacSecret)) {
-                    val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                    val rows = currentOnboardingRows()
                     if (OnboardingPolicy.canComplete(rows)) {
                         SetupCompletionStore.markCompleted(this@PairingActivity, pairing.deviceId)
                     }
@@ -1089,11 +1125,12 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun showComplete() {
-        val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+        val rows = currentOnboardingRows()
         if (!OnboardingPolicy.canComplete(rows)) { showChecklist(rows, firstRun = guidedFirstRun); return }
         if (settings.isPairedSync()) {
             SetupCompletionStore.markCompleted(this, settings.deviceIdSync())
         }
+        syncRecentsExclusion()
         statusScreenShown = false
         activeGuidedStage = GuidedStage.COMPLETE
         if (ChildUxFlags.c05FirstRunEnabled) {
@@ -1171,8 +1208,8 @@ class PairingActivity : ComponentActivity() {
                     title = getString(if (c05) g.c05TitleRes else g.titleRes),
                     whyOneSentence = getString(if (c05) g.c05WhyRes else g.whyRes),
                     granted = row.granted,
-                    required = g.required,
-                    optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
+                    required = row.required,
+                    optionalBadge = if (row.required) null else getString(R.string.setup_recommended),
                     oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
                     grantLabel = if (c05) {
                         getString(g.c05ButtonRes)
@@ -1206,7 +1243,7 @@ class PairingActivity : ComponentActivity() {
     }
 
     private fun nextUngrantedPermissionStep(rows: List<OnboardingPolicy.Row>): OnboardingPolicy.Row? =
-        rows.firstOrNull { !it.granted && it.grant.required && it.grant !in skippedPermissionSteps }
+        rows.firstOrNull { !it.granted && it.required && it.grant !in skippedPermissionSteps }
             ?: rows.firstOrNull { !it.granted && it.grant !in skippedPermissionSteps }
 
     private fun showPermissionStep(
@@ -1247,6 +1284,9 @@ class PairingActivity : ComponentActivity() {
         val showMiuiConfirm = g == OnboardingPolicy.Grant.OVERLAY &&
             !row.granted &&
             MiuiBackgroundPopupPolicy.needsParentConfirmation(this)
+        val showMiuiAutostartConfirm = g == OnboardingPolicy.Grant.BATTERY &&
+            !row.granted &&
+            MiuiAutostartPolicy.needsParentConfirmation(this)
         val copy = PermissionStepCopy(
             brandLabel = brand,
             progressLine = progressLine(rows),
@@ -1257,12 +1297,20 @@ class PairingActivity : ComponentActivity() {
             } else {
                 getString(R.string.setup_grant_button, getString(g.titleRes))
             },
-            optionalBadge = if (g.required) null else getString(R.string.setup_recommended),
+            optionalBadge = if (row.required) null else getString(R.string.setup_recommended),
             oemHint = OnboardingPolicy.oemHint(g, Build.MANUFACTURER),
             restrictedSettingsGuide = restrictedGuide,
-            confirmHint = if (showMiuiConfirm) getString(R.string.miui_popup_confirm_hint) else null,
-            confirmButton = if (showMiuiConfirm) getString(R.string.miui_popup_confirm_button) else null,
-            skipLabel = if (!g.required) getString(R.string.setup_skip) else null,
+            confirmHint = when {
+                showMiuiConfirm -> getString(R.string.miui_popup_confirm_hint)
+                showMiuiAutostartConfirm -> OnboardingPolicy.oemHint(g, Build.MANUFACTURER)
+                else -> null
+            },
+            confirmButton = when {
+                showMiuiConfirm -> getString(R.string.miui_popup_confirm_button)
+                showMiuiAutostartConfirm -> getString(R.string.setup_done)
+                else -> null
+            },
+            skipLabel = if (!row.required) getString(R.string.setup_skip) else null,
             checklistLabel = getString(R.string.setup_checklist_button),
         )
         replaceWithCompose {
@@ -1274,15 +1322,22 @@ class PairingActivity : ComponentActivity() {
                 } else {
                     null
                 },
-                onConfirm = if (showMiuiConfirm) {
-                    {
-                        MiuiBackgroundPopupPolicy.confirmByParent(this@PairingActivity)
-                        onPermissionOrActionReturned()
+                onConfirm = when {
+                    showMiuiConfirm -> {
+                        {
+                            MiuiBackgroundPopupPolicy.confirmByParent(this@PairingActivity)
+                            onPermissionOrActionReturned()
+                        }
                     }
-                } else {
-                    null
+                    showMiuiAutostartConfirm -> {
+                        {
+                            MiuiAutostartPolicy.confirmByParent(this@PairingActivity)
+                            onPermissionOrActionReturned()
+                        }
+                    }
+                    else -> null
                 },
-                onSkip = if (!g.required) {
+                onSkip = if (!row.required) {
                     {
                         skippedPermissionSteps.add(g)
                         val remaining = nextUngrantedPermissionStep(rows)
@@ -1327,11 +1382,11 @@ class PairingActivity : ComponentActivity() {
 
     private fun addGrantRow(container: LinearLayout, row: OnboardingPolicy.Row) {
         val g = row.grant
-        val mark = if (row.granted) "✓" else if (g.required) "⚠️" else "○"
-        val suffix = if (g.required) "" else " " + getString(R.string.setup_recommended)
+        val mark = if (row.granted) "✓" else if (row.required) "⚠️" else "○"
+        val suffix = if (row.required) "" else " " + getString(R.string.setup_recommended)
         container.addView(
             label("$mark ${getString(g.titleRes)}$suffix").apply {
-                setTextColor(if (row.granted) 0xFF2E7D32.toInt() else if (g.required) 0xFFB00020.toInt() else 0xFF616161.toInt())
+                setTextColor(if (row.granted) 0xFF2E7D32.toInt() else if (row.required) 0xFFB00020.toInt() else 0xFF616161.toInt())
             },
         )
         if (row.granted) return
@@ -1394,6 +1449,7 @@ class PairingActivity : ComponentActivity() {
         }
         activeGuidedStage = GuidedStage.STATUS
         statusScreenShown = true
+        syncRecentsExclusion()
         val forceLegacy = forceLegacyStatusView
         forceLegacyStatusView = false
         lifecycleScope.launch {
@@ -1537,7 +1593,7 @@ class PairingActivity : ComponentActivity() {
                         setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     },
                 )
-                val rows = OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }
+                val rows = currentOnboardingRows()
                 val missing = OnboardingPolicy.missingRequired(rows)
                 addView(
                     label(
@@ -1564,7 +1620,7 @@ class PairingActivity : ComponentActivity() {
                         } else {
                             resources.getQuantityString(R.plurals.setup_finish_protection, missing.size, missing.size)
                         }
-                        setOnClickListener { showChecklist(OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS) { grants.isGranted(it) }, firstRun = false) }
+                        setOnClickListener { showChecklist(currentOnboardingRows(), firstRun = false) }
                     },
                 )
                 addWebFilterRow(this)
@@ -1785,6 +1841,18 @@ class PairingActivity : ComponentActivity() {
         startLocationServiceIfPermitted()
         WorkScheduler.scheduleAll(this)
         CommandPollWorker.requestFetchNow(this)
+        runCatching {
+            val consentPaused = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                applicationContext,
+                com.familyshield.agent.di.WorkerEntryPoint::class.java,
+            ).consentState().isPaused()
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.armStandingWatchdogIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentPaused,
+                unlinkPending = settings.unlinkPendingSync(),
+            )
+        }
     }
 
     private val childHomeSendState = androidx.compose.runtime.mutableStateOf(
@@ -2277,6 +2345,9 @@ class PairingActivity : ComponentActivity() {
     )
 
     companion object {
+        /** Launched after a parent-PIN-verified `manageSpaceActivity` gate to open OSRA's reset/setup controls. */
+        const val EXTRA_OPEN_DEVICE_SETUP = "open_device_setup"
+
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         /** Roadmap 3.2: the reviewed payload survives an activity recreation. */

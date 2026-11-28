@@ -97,6 +97,7 @@ class LocationService : Service() {
     @Volatile private var intervalMs = STATIONARY_INTERVAL_MS
     @Volatile private var flushLoopStarted = false
     @Volatile private var commandLoopStarted = false
+    @Volatile private var explicitStopRequested = false
 
     /** #353: the server's poll interval from the last answer; [IdleCadence.DEFAULT_POLL_MS] until then. */
     @Volatile private var serverPollMs = IdleCadence.DEFAULT_POLL_MS
@@ -117,13 +118,32 @@ class LocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val fgsStarted = startForegroundCompat()
-        if (!fgsStarted) {
+        if (intent?.action == ACTION_STOP) {
+            explicitStopRequested = true
+            stopRequestedFromCaller = true
             isServiceRunning = false
             stopSelf()
             return START_NOT_STICKY
         }
+        val fgsStarted = startForegroundCompat()
+        if (!fgsStarted) {
+            explicitStopRequested = true
+            isServiceRunning = false
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        explicitStopRequested = false
+        stopRequestedFromCaller = false
         isServiceRunning = true
+        com.familyshield.agent.security.UnboundTamperWatch.ensureStarted(applicationContext)
+        runCatching {
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.armStandingWatchdogIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentState.isPaused(),
+                unlinkPending = settings.unlinkPendingSync(),
+            )
+        }
         // #1151: a recreated foreground service must refresh rules immediately after process death.
         WorkScheduler.syncNowAtStartup(this)
         startUpdates(STATIONARY_INTERVAL_MS)
@@ -178,8 +198,34 @@ class LocationService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val wasExplicitStop = explicitStopRequested || stopRequestedFromCaller
+        runCatching {
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.scheduleIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentState.isPaused(),
+                unlinkPending = settings.unlinkPendingSync(),
+                explicitlyStopping = wasExplicitStop,
+            )
+        }.onFailure { Log.w(TAG, "could not schedule revival on task removal", it) }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        val wasExplicitStop = explicitStopRequested || stopRequestedFromCaller
+        stopRequestedFromCaller = false
         isServiceRunning = false
+        com.familyshield.agent.security.UnboundTamperWatch.stopIfNoHostRunning()
+        runCatching {
+            com.familyshield.agent.recovery.ServiceRevivalScheduler.scheduleIfNeeded(
+                context = applicationContext,
+                paired = settings.isPairedSync(),
+                consentPaused = consentState.isPaused(),
+                unlinkPending = settings.unlinkPendingSync(),
+                explicitlyStopping = wasExplicitStop,
+            )
+        }.onFailure { Log.w(TAG, "could not schedule revival on location service destroy", it) }
         fused.removeLocationUpdates(callback)
         serviceScope.cancel()
         super.onDestroy()
@@ -578,6 +624,22 @@ class LocationService : Service() {
 
         /** Action that triggers an immediate single ping + flush (locate_now command). */
         const val ACTION_PING_NOW: String = "com.familyshield.agent.action.PING_NOW"
+
+        /** Action delivered by [stop] so [onDestroy] distinguishes intentional teardown from an OS kill. */
+        const val ACTION_STOP: String = "com.familyshield.agent.action.STOP_LOCATION"
+
+        @Volatile
+        private var stopRequestedFromCaller: Boolean = false
+
+        fun stop(context: android.content.Context) {
+            stopRequestedFromCaller = true
+            if (isServiceRunning) {
+                runCatching {
+                    context.startService(Intent(context, LocationService::class.java).setAction(ACTION_STOP))
+                }
+            }
+            runCatching { context.stopService(Intent(context, LocationService::class.java)) }
+        }
 
         /** Issue #231: durable `DeviceCommand.id` carried from the dispatcher for the deferred ack. */
         const val EXTRA_COMMAND_ID: String = "com.familyshield.agent.extra.COMMAND_ID"

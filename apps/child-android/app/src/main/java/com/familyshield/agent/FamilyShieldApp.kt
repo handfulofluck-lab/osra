@@ -31,7 +31,21 @@ class FamilyShieldApp : Application() {
         // phone holding a grant nobody can remove — no device id means no poll ever calls the unlinker.
         val entry = EntryPointAccessors.fromApplication(this, WorkerEntryPoint::class.java)
         appScope.launch {
-            if (entry.agentSettings().unlinkPending()) entry.deviceUnlinker().unlink()
+            val unlinkPending = entry.agentSettings().unlinkPending()
+            if (unlinkPending) {
+                com.familyshield.agent.recovery.ServiceRevivalScheduler.cancelAll(this@FamilyShieldApp)
+                entry.deviceUnlinker().unlink()
+            } else if (com.familyshield.agent.recovery.ServiceRevivalPolicy.shouldRunStartupRecovery(unlinkPending)) {
+                runCatching { com.familyshield.agent.recovery.ServiceRecovery.run(this@FamilyShieldApp) }
+                runCatching {
+                    com.familyshield.agent.recovery.ServiceRevivalScheduler.armStandingWatchdogIfNeeded(
+                        context = this@FamilyShieldApp,
+                        paired = entry.agentSettings().isPairedSync(),
+                        consentPaused = entry.consentState().isPaused(),
+                        unlinkPending = unlinkPending,
+                    )
+                }
+            }
         }
     }
 }

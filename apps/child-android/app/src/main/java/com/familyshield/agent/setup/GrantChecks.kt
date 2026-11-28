@@ -33,7 +33,7 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
         OnboardingPolicy.Grant.WEB_FILTER -> VpnService.prepare(context) == null && VpnState.isEnabled(context)
         OnboardingPolicy.Grant.LOCATION -> locationGranted()
         OnboardingPolicy.Grant.PRIVATE_DNS -> OnboardingPolicy.privateDnsOk(Settings.Global.getString(context.contentResolver, "private_dns_mode"))
-        OnboardingPolicy.Grant.BATTERY -> context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+        OnboardingPolicy.Grant.BATTERY -> batteryIgnoringOptimizations() && MiuiAutostartPolicy.isGranted(context)
         OnboardingPolicy.Grant.USB_DEBUGGING -> OnboardingPolicy.usbDebuggingOff(
             runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED) }.getOrNull(),
         )
@@ -55,11 +55,18 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
             OnboardingPolicy.Grant.WEB_FILTER -> null
             OnboardingPolicy.Grant.LOCATION -> null
             OnboardingPolicy.Grant.PRIVATE_DNS -> Intent(Settings.ACTION_WIRELESS_SETTINGS)
-            OnboardingPolicy.Grant.BATTERY -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
+            OnboardingPolicy.Grant.BATTERY -> if (!batteryIgnoringOptimizations()) {
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
+            } else {
+                MiuiAutostartPolicy.autostartIntent(context)
+            }
             OnboardingPolicy.Grant.USB_DEBUGGING -> Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
             OnboardingPolicy.Grant.NOTIFICATION_LISTENER -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
         }.let { it?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
     }
+
+    private fun batteryIgnoringOptimizations(): Boolean =
+        context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) ?: true
 
     /** Opens OSRA's App info screen so the parent can grant "Allow restricted settings" (#1131). */
     fun appInfoIntent(): Intent = RestrictedSettingsPolicy.appInfoIntent(context.packageName)
