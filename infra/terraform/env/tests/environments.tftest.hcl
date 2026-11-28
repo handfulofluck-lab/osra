@@ -1695,10 +1695,11 @@ run "loadtest_mode_wires_the_stub_the_limit_and_the_generators" {
   command = apply
 
   variables {
-    environment   = "loadtest"
-    api_image     = "example/api:test"
-    loadtest_mode = true
-    allowed_cidrs = ["203.0.113.7/32"]
+    environment    = "loadtest"
+    api_image      = "example/api:test"
+    loadtest_mode  = true
+    allowed_cidrs  = ["203.0.113.7/32"]
+    base_state_key = "loadtest/base/terraform.tfstate"
   }
 
   assert {
@@ -1766,6 +1767,35 @@ run "staging_refuses_loadtest_mode" {
   variables {
     api_image     = "example/api:test"
     loadtest_mode = true
+  }
+
+  expect_failures = [terraform_data.loadtest_guard]
+}
+
+run "loadtest_mode_refuses_staging_base_state" {
+  command = plan
+
+  variables {
+    environment   = "loadtest"
+    api_image     = "example/api:test"
+    loadtest_mode = true
+    allowed_cidrs = ["203.0.113.7/32"]
+    # base_state_key left at its default, staging/base/terraform.tfstate
+  }
+
+  expect_failures = [terraform_data.loadtest_guard]
+}
+
+run "loadtest_mode_refuses_another_state_bucket" {
+  command = plan
+
+  variables {
+    environment    = "loadtest"
+    api_image      = "example/api:test"
+    loadtest_mode  = true
+    allowed_cidrs  = ["203.0.113.7/32"]
+    base_state_key = "loadtest/base/terraform.tfstate"
+    state_bucket   = "osra-terraform-state-000000000000-eu-central-1"
   }
 
   expect_failures = [terraform_data.loadtest_guard]

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # The throw-away load-test stack (loadtest/README.md). Staging AWS account, eu-north-1, its own base and env state.
 # Never staging's stack, never production.
 #
@@ -25,8 +25,10 @@ command -v terraform >/dev/null 2>&1 || { echo "terraform is not on PATH" >&2; e
 command -v aws >/dev/null 2>&1 || { echo "aws CLI is not on PATH" >&2; exit 1; }
 
 # Saturday 28 Nov 2026 family test on staging ends ~17:30 UAE (13:30 UTC): nothing before it (Karim's rule).
-not_before=$(date -u -d '2026-11-28T13:30:00Z' +%s)
-if [ "$(date -u +%s)" -lt "$not_before" ] && [ "$cmd" != down ]; then
+# Compared as YYYYMMDDHHMM digits, because macOS/BSD `date` has no GNU `-d` (Codex's review of #1281). `down` is
+# never blocked by the clock: tearing down must always be possible.
+NOT_BEFORE_UTC=202611281330
+if [ "$cmd" != down ] && [ "$(date -u +%Y%m%d%H%M)" -lt "$NOT_BEFORE_UTC" ]; then
   echo "refusing: no load-test stack before the Saturday family test ends (Sat 28 Nov 17:30 UAE)." >&2
   exit 1
 fi
@@ -42,6 +44,9 @@ for stack in base env; do
   [ -f "$HERE/$stack/loadtest.tfvars" ] || { echo "missing $stack/loadtest.tfvars (copy the .example)" >&2; exit 1; }
   grep -q '^environment *= *"loadtest"' "$HERE/$stack/loadtest.tfvars" || { echo "refusing: $stack/loadtest.tfvars must say environment = \"loadtest\"." >&2; exit 1; }
 done
+# The env must read the load-test base, never staging's (Terraform's loadtest_guard refuses it too).
+grep -q '^base_state_key *= *"loadtest/base/terraform.tfstate"' "$HERE/env/loadtest.tfvars" \
+  || { echo "refusing: env/loadtest.tfvars must say base_state_key = \"loadtest/base/terraform.tfstate\"." >&2; exit 1; }
 
 init_stack() { terraform -chdir="$HERE/$1" init -input=false -reconfigure -backend-config="$HERE/backend/loadtest-$1.hcl" >/dev/null; }
 out() { terraform -chdir="$HERE/env" output -raw "$1"; }
@@ -61,7 +66,7 @@ run_api_task() { # $1 = shell command inside the API image, $2 = extra env JSON 
 
 case "$cmd" in
   up)
-    printf '%s\n' "$(date +%s)" >"$HERE/.loadtest-start"
+    printf '%s\n' "$(date -u +%s)" >"$HERE/.loadtest-start"
     echo "==> load-test base"
     init_stack base
     terraform -chdir="$HERE/base" apply -input=false -var-file=loadtest.tfvars "$@"
@@ -106,7 +111,7 @@ case "$cmd" in
     init_stack base
     terraform -chdir="$HERE/base" destroy -input=false -var-file=loadtest.tfvars "$@"
     if [ -s "$HERE/.loadtest-start" ]; then
-      start=$(cat "$HERE/.loadtest-start"); hours=$(awk -v s="$(( $(date +%s) - start ))" 'BEGIN { printf "%.2f", s / 3600 }')
+      start=$(cat "$HERE/.loadtest-start"); hours=$(awk -v s="$(( $(date -u +%s) - start ))" 'BEGIN { printf "%.2f", s / 3600 }')
       echo "Load-test stack lived ${hours} h. Check the real spend in Cost Explorer (tag Environment=loadtest) the next day."
       rm -f "$HERE/.loadtest-start"
     fi
