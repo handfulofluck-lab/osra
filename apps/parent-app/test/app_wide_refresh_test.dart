@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:familyshield_parent/app.dart';
-import 'package:familyshield_parent/core/alerts_badge_refresh.dart';
 import 'package:familyshield_parent/providers/family_provider.dart';
 
 /// Issue #1056, the wiring rows. `AlertsBadgeRefresh` is tested on its own in `alerts_badge_refresh_test.dart`;
