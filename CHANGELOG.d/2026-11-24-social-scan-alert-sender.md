@@ -1,0 +1,1 @@
+- #1050: a social scan whose sender could not be identified is kept instead of rejected — the API accepts an absent, null or empty `contact` and stores it as "unknown contact", so the capture still reaches the parent's alerts. The sender line and the alert row's rendering shipped separately in #1253 and are unchanged here.
