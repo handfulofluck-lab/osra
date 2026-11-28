@@ -1,7 +1,6 @@
 package com.familyshield.agent.setup
 
 import android.app.AppOpsManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -53,7 +52,10 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
                 )
                 Intent(choice.action).takeIf { choice.withComponent }?.putExtra(
                     Intent.EXTRA_COMPONENT_NAME,
-                    ComponentName(context, AccessibilityMonitorService::class.java),
+                    AccessibilitySettingsIntent.componentExtra(
+                        context.packageName,
+                        AccessibilityMonitorService::class.java.name,
+                    ),
                 ) ?: Intent(choice.action)
             }
             OnboardingPolicy.Grant.USAGE_ACCESS -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)

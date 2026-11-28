@@ -15,6 +15,19 @@ import org.junit.Test
 class AccessibilitySettingsIntentTest {
 
     @Test
+    fun `the component extra is a flattened string, which is what Settings reads`() {
+        // Codex's review of #1301: AOSP's AccessibilityDetailsSettingsFragment unflattens a String; a
+        // ComponentName parcelable extra is ignored and the screen falls back to the general list.
+        assertEquals(
+            "com.osratech.child.full/com.osratech.child.full.services.AccessibilityMonitorService",
+            AccessibilitySettingsIntent.componentExtra(
+                "com.osratech.child.full",
+                "com.osratech.child.full.services.AccessibilityMonitorService",
+            ),
+        )
+    }
+
+    @Test
     fun `on API 33 and later with a resolvable details screen, it chooses our own switch`() {
         val choice = AccessibilitySettingsIntent.chooseAction(
             sdkInt = Build.VERSION_CODES.TIRAMISU,

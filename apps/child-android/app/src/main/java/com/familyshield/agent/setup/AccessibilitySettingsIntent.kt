@@ -20,6 +20,14 @@ object AccessibilitySettingsIntent {
      */
     const val ACTION_DETAILS: String = "android.settings.ACCESSIBILITY_DETAILS_SETTINGS"
 
+    /**
+     * The extra Settings' details screen reads (AOSP `AccessibilityDetailsSettingsFragment`): a **flattened
+     * string**, not a `ComponentName` parcelable — a parcelable extra is ignored and the screen falls back to the
+     * general list, which is what Codex caught on the first version of this change.
+     */
+    fun componentExtra(packageName: String, serviceClassName: String): String =
+        "$packageName/$serviceClassName"
+
     /** What to open, and whether the OSRA service component travels with it. */
     data class Choice(val action: String, val withComponent: Boolean)
 

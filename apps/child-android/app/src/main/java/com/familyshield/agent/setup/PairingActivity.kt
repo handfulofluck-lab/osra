@@ -175,10 +175,15 @@ class PairingActivity : ComponentActivity() {
     // runs at once, so a grant takes effect without a reboot.
     private val commsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) {
+    ) { onCommsPermissionsResult() }
+
+    /**
+     * #1287 finding 5: the step was rendered once, so after granting, "Allow calls and texts" stayed on screen as
+     * if it were still needed. The result retries the registration (as before) and re-renders the agreement stage
+     * so the ask disappears. Named so the wiring test can bind to this handler rather than to a brace shape.
+     */
+    private fun onCommsPermissionsResult() {
         commsCapture.onPermissionsChanged()
-        // #1287 finding 5: the step was rendered once, so after granting, "Allow calls and texts" stayed on
-        // screen as if it were still needed. Re-render the agreement at the same stage with the new state.
         if (activeGuidedStage == GuidedStage.COMPLETE) showComplete()
     }
 
