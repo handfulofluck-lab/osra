@@ -206,8 +206,12 @@
   "p04AgeRange": "أدخل عمرًا من {min} إلى {max}.",
   "@p04AgeRange": {
     "placeholders": {
-      "min": { "type": "String" },
-      "max": { "type": "String" }
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
     }
   },
   "p04AddTitle": "إضافة طفل",
@@ -1556,5 +1560,27 @@
   "appsNoLimit": "بلا حد",
   "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد.",
   "p14DayToday": "اليوم",
-  "p14DayYesterday": "أمس"
+  "p14DayYesterday": "أمس",
+  "locationP13AllChildren": "الكل",
+  "locationP13Refresh": "تحديث",
+  "locationP13Refreshing": "جارٍ التحقق…",
+  "locationP13Directions": "الاتجاهات",
+  "locationP13EarlierToday": "في وقت سابق اليوم",
+  "locationP13EarlierTodayEmpty": "لا توجد أماكن سابقة مسجّلة اليوم.",
+  "locationP13SavedPlacesTitle": "الأماكن المحفوظة",
+  "locationP13AddPlace": "إضافة مكان",
+  "locationP13AlertsEnterLeave": "تنبيه عند الوصول والمغادرة",
+  "locationP13AlertsEnterOnly": "تنبيه عند الوصول",
+  "locationP13AlertsLeaveOnly": "تنبيه عند المغادرة",
+  "locationP13AlertsOff": "التنبيهات متوقفة",
+  "locationP13NoLocationYet": "لم يصل موقع بعد.",
+  "locationP13RingNotYetOnIphone": "غير متاح بعد على آيفون",
+  "locationP13RadiusMeters": "نطاق {meters} م",
+  "@locationP13RadiusMeters": {
+    "placeholders": {
+      "meters": {
+        "type": "String"
+      }
+    }
+  }
 }

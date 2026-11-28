@@ -418,8 +418,12 @@
   "p04AgeRange": "Enter an age from {min} to {max}.",
   "@p04AgeRange": {
     "placeholders": {
-      "min": { "type": "String" },
-      "max": { "type": "String" }
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
     }
   },
   "p04AddTitle": "Add a child",
@@ -2736,5 +2740,27 @@
   "appsNoLimit": "No limit",
   "appsIphoneNoAppList": "The iPhone doesn't send its app list yet.",
   "p14DayToday": "Today",
-  "p14DayYesterday": "Yesterday"
+  "p14DayYesterday": "Yesterday",
+  "locationP13AllChildren": "All",
+  "locationP13Refresh": "Refresh",
+  "locationP13Refreshing": "Checking…",
+  "locationP13Directions": "Directions",
+  "locationP13EarlierToday": "Earlier today",
+  "locationP13EarlierTodayEmpty": "No earlier places recorded today.",
+  "locationP13SavedPlacesTitle": "Saved places",
+  "locationP13AddPlace": "Add place",
+  "locationP13AlertsEnterLeave": "Arrive & leave alerts",
+  "locationP13AlertsEnterOnly": "Arrive alert",
+  "locationP13AlertsLeaveOnly": "Leave alert",
+  "locationP13AlertsOff": "Alerts off",
+  "locationP13NoLocationYet": "No location reported yet.",
+  "locationP13RingNotYetOnIphone": "Not yet available on iPhone",
+  "locationP13RadiusMeters": "{meters} m radius",
+  "@locationP13RadiusMeters": {
+    "placeholders": {
+      "meters": {
+        "type": "String"
+      }
+    }
+  }
 }
