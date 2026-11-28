@@ -94,6 +94,21 @@ void main() {
     });
   });
 
+  test('startPolling starts the timer without reading anything', () {
+    // Mutant: make startPolling reuse onResume — a cold start would then read the count twice (the mount's own
+    // read plus this one), which the wiring row also forbids.
+    fakeAsync((async) {
+      var reads = 0;
+      final badge = build(() => reads++);
+      badge.startPolling();
+      expect(reads, 0, reason: 'no immediate read');
+      expect(badge.polling, isTrue);
+      async.elapse(const Duration(seconds: 120));
+      expect(reads, 1);
+      badge.dispose();
+    });
+  });
+
   test('dispose stops the pending read and the poll, so a disposed owner is not called into', () {
     fakeAsync((async) {
       var reads = 0;

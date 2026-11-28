@@ -40,6 +40,13 @@ class AlertsBadgeRefresh {
   /// The app came to the foreground: read once now, then keep the fallback poll running.
   void onResume() {
     _refetch.schedule();
+    startPolling();
+  }
+
+  /// Starts the fallback poll without an immediate read. Used when the owner mounts while the app is already
+  /// in the foreground, where no lifecycle transition fires (#1056 review: Codex found the poll started only
+  /// after the first trip to the background and back, so a cold start with a quiet socket read the count once).
+  void startPolling() {
     _poll?.cancel();
     _poll = Timer.periodic(pollInterval, (_) => refresh());
   }

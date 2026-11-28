@@ -259,10 +259,10 @@ final router = GoRouter(
 /// coming back to the foreground after a frame the socket missed, left the badge stale until the feed was
 /// opened. Both signals already reached this provider; they refreshed social events only.
 ///
-/// Public rather than private so the wiring itself has a row: the class it calls is tested in
-/// `test/alerts_badge_refresh_test.dart`, and `test/app_wide_refresh_test.dart` drives a real lifecycle change
-/// through this provider and checks that the count is re-read.
-final appWideRefreshProvider = Provider<void>((ref) {
+/// The provider owns the refresh actions; [BadgePollLifecycle] owns *when* the fallback poll runs, because a
+/// timer tied to a provider outlives the widget tree — in a test that leaves a pending timer, and in production
+/// it would keep polling with nothing on screen.
+final appWideRefreshProvider = Provider<AlertsBadgeRefresh>((ref) {
   void refreshSocial() => ref.invalidate(socialEventsProvider);
   final badge = AlertsBadgeRefresh(
     refresh: () {
@@ -278,13 +278,9 @@ final appWideRefreshProvider = Provider<void>((ref) {
     badge.onPush();
   }
 
-  final lifecycle = AppLifecycleListener(
-    onResume: () {
-      refreshSocial();
-      badge.onResume();
-    },
-    onPause: badge.onPause,
-  );
+  // Social concerns keep their own resume listener: the badge's poll is started by the widget below, and the
+  // two signals answer different caches.
+  final lifecycle = AppLifecycleListener(onResume: refreshSocial);
   foregroundAlertWakes.addListener(onWake);
   notificationTapController.addListener(refreshSocial);
   ref.onDispose(() {
@@ -293,18 +289,66 @@ final appWideRefreshProvider = Provider<void>((ref) {
     foregroundAlertWakes.removeListener(onWake);
     notificationTapController.removeListener(refreshSocial);
   });
+  return badge;
 });
+
+/// Starts and stops the badge's fallback poll with the widget tree (#1056 review, Codex).
+///
+/// `AppLifecycleListener` only fires on a **transition**, so a page mounted while the app is already
+/// foregrounded — the ordinary cold start — used to start no poll at all: a quiet socket then meant one read
+/// forever. This widget starts the poll on mount when the app is already resumed (without an extra immediate
+/// read), reads on a resume transition, and stops on pause or when it leaves the tree.
+class BadgePollLifecycle extends StatefulWidget {
+  const BadgePollLifecycle({super.key, required this.badge, required this.child});
+
+  final AlertsBadgeRefresh badge;
+  final Widget child;
+
+  @override
+  State<BadgePollLifecycle> createState() => _BadgePollLifecycleState();
+}
+
+class _BadgePollLifecycleState extends State<BadgePollLifecycle> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state == null || state == AppLifecycleState.resumed) widget.badge.startPolling();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      widget.badge.onResume();
+    } else if (state == AppLifecycleState.paused) {
+      widget.badge.onPause();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.badge.onPause();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
 
 class FamilyShieldApp extends ConsumerWidget {
   const FamilyShieldApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(appWideRefreshProvider);
+    final badge = ref.watch(appWideRefreshProvider);
     ref.watch(notificationLifecycleSyncProvider);
     final mode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
-    return MaterialApp.router(
+    return BadgePollLifecycle(
+      badge: badge,
+      child: MaterialApp.router(
       title: 'OSRA',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
@@ -317,6 +361,7 @@ class FamilyShieldApp extends ConsumerWidget {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       routerConfig: router,
+      ),
     );
   }
 }
