@@ -111,7 +111,8 @@ class RuleEngine {
                 screenTime.dailyLimitMinutes
             }
             val limit = base + bonusMinutes.coerceAtLeast(0)
-            if (minutesUsedToday.values.sum() >= limit) return Verdict(RuleRepository.Decision.TIME_LIMIT_REACHED)
+            val countableMinutes = com.familyshield.agent.enforcement.EssentialPackages.sumDailyBudgetMinutes(minutesUsedToday)
+            if (countableMinutes >= limit) return Verdict(RuleRepository.Decision.TIME_LIMIT_REACHED)
         }
 
         // 5-6. Bedtime (every day), then school hours (their configured days). Issue #473: both live in
