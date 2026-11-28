@@ -175,7 +175,12 @@ class PairingActivity : ComponentActivity() {
     // runs at once, so a grant takes effect without a reboot.
     private val commsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { commsCapture.onPermissionsChanged() }
+    ) {
+        commsCapture.onPermissionsChanged()
+        // #1287 finding 5: the step was rendered once, so after granting, "Allow calls and texts" stayed on
+        // screen as if it were still needed. Re-render the agreement at the same stage with the new state.
+        if (activeGuidedStage == GuidedStage.COMPLETE) showComplete()
+    }
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -2135,6 +2140,13 @@ class PairingActivity : ComponentActivity() {
             BuildConfig.CAPTURE_NOTIFICATIONS,
             BuildConfig.CAPTURE_CALL_SMS,
         )
+        // #1287 finding 5: only offer the optional grant while it is actually missing. Once both dangerous
+        // permissions are held, the section is hidden rather than shown as still-needed; a named done state
+        // ("Calls and texts: on") is UI/UX copy and lands when the Bureau supplies it.
+        val callSmsGranted = COMMS_PERMISSIONS.all {
+            checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        val offerCallSms = BuildConfig.CAPTURE_CALL_SMS && !callSmsGranted
         val copy = FamilyAgreementCopy(
             brandLabel = brand,
             stepBadge = getString(R.string.c05_step_badge_3),
@@ -2143,14 +2155,14 @@ class PairingActivity : ComponentActivity() {
             progressLine = progressLine(rows),
             rulesCard = buildFamilyRulesCard(ruleSet),
             captureNotice = noticeRes?.let { getString(it) },
-            optionalCallSmsPrompt = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_call_sms_invite) else null,
-            optionalCallSmsButton = if (BuildConfig.CAPTURE_CALL_SMS) getString(R.string.setup_grant_call_sms) else null,
+            optionalCallSmsPrompt = if (offerCallSms) getString(R.string.setup_call_sms_invite) else null,
+            optionalCallSmsButton = if (offerCallSms) getString(R.string.setup_grant_call_sms) else null,
             finishButton = getString(R.string.c05_agreement_finish),
         )
         replaceWithCompose {
             OnboardingFamilyAgreementScreen(
                 copy = copy,
-                onGrantCallSms = if (BuildConfig.CAPTURE_CALL_SMS) {
+                onGrantCallSms = if (offerCallSms) {
                     { commsPermissionLauncher.launch(COMMS_PERMISSIONS) }
                 } else {
                     null

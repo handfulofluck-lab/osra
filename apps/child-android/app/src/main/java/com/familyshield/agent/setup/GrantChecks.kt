@@ -1,6 +1,7 @@
 package com.familyshield.agent.setup
 
 import android.app.AppOpsManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -44,7 +45,17 @@ class GrantChecks(private val context: Context, private val deviceAdmin: DeviceA
     fun fixIntent(grant: OnboardingPolicy.Grant): Intent? {
         val pkg = Uri.parse("package:${context.packageName}")
         return when (grant) {
-            OnboardingPolicy.Grant.ACCESSIBILITY -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            OnboardingPolicy.Grant.ACCESSIBILITY -> {
+                val choice = AccessibilitySettingsIntent.chooseAction(
+                    resolvesDetails = context.packageManager.resolveActivity(
+                        Intent(AccessibilitySettingsIntent.ACTION_DETAILS), 0,
+                    ) != null,
+                )
+                Intent(choice.action).takeIf { choice.withComponent }?.putExtra(
+                    Intent.EXTRA_COMPONENT_NAME,
+                    ComponentName(context, AccessibilityMonitorService::class.java),
+                ) ?: Intent(choice.action)
+            }
             OnboardingPolicy.Grant.USAGE_ACCESS -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
             OnboardingPolicy.Grant.OVERLAY -> if (!Settings.canDrawOverlays(context)) {
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg)
