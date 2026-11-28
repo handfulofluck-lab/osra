@@ -171,6 +171,10 @@ open class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
     /// on a day it doesn't run shields nothing (5.5 PR C).
     public override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
+        if #available(iOS 17.4, *), activity == DailyScreenTimeMonitor.activity {
+            DailyScreenTimeMonitor.intervalChanged()
+            return
+        }
         let store = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         // The day the interval starts on decides, so an overnight routine is judged by its first day.
         let weekday = Calendar.current.component(.weekday, from: Date())
@@ -194,6 +198,10 @@ open class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
     /// Does NOT clear `parentRules` or other overlapping routines.
     public override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
+        if #available(iOS 17.4, *), activity == DailyScreenTimeMonitor.activity {
+            DailyScreenTimeMonitor.intervalChanged()
+            return
+        }
         let routineStore = ManagedSettingsStore(named: ManagedSettingsStore.Name(activity.rawValue))
         routineStore.clearAllSettings()
     }
@@ -201,6 +209,8 @@ open class FamilyShieldDeviceActivityMonitor: DeviceActivityMonitor {
     /// Reports a screen-time threshold breach with category "screen_time_exceeded".
     public override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         super.eventDidReachThreshold(event, activity: activity)
+        if #available(iOS 17.4, *), activity == DailyScreenTimeMonitor.activity,
+           !DailyScreenTimeMonitor.reached(event) { return }
         reporter.report(
             category: "screen_time_exceeded",
             severity: "warning",

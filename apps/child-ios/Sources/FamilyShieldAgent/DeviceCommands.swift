@@ -7,6 +7,38 @@ import os
 public struct DeviceCommand: Decodable, Equatable {
     public var id: String
     public var type: String
+    /// The grant in a well-formed `bonus_time` command. A malformed grant leaves the command poll usable.
+    let bonusGrant: DailyScreenTimeGrant?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, payload, ts
+    }
+
+    private struct BonusPayload: Decodable {
+        let minutes: Int
+    }
+
+    public init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        id = try fields.decode(String.self, forKey: .id)
+        type = try fields.decode(String.self, forKey: .type)
+        guard type == "bonus_time",
+              let payload = try? fields.decode(BonusPayload.self, forKey: .payload), payload.minutes > 0,
+              let timestamp = try? fields.decode(String.self, forKey: .ts),
+              let issuedAt = Self.bonusIssuedAt(timestamp) else {
+            bonusGrant = nil
+            return
+        }
+        bonusGrant = DailyScreenTimeGrant(id: id, minutes: payload.minutes, issuedAt: issuedAt)
+    }
+
+    private static func bonusIssuedAt(_ timestamp: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: timestamp) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: timestamp)
+    }
 }
 
 /// What the iOS agent does with a command. iOS enforces through Screen Time, so it handles what changes the
@@ -14,6 +46,8 @@ public struct DeviceCommand: Decodable, Equatable {
 public enum CommandAction: Equatable {
     /// Fetch the rules again; a withdrawn consent then answers 428 and clears everything.
     case syncRules
+    /// Extends the current local day's cumulative Screen Time limit.
+    case bonusTime
     /// A fresh point for the parent's map, uploaded before the ack (5.5 PR E).
     case locateNow
     /// Not something this agent can do; acked `failed` with the reason.
@@ -22,6 +56,7 @@ public enum CommandAction: Equatable {
     public static func forType(_ type: String) -> CommandAction {
         switch type {
         case "rules_updated", "consent_revoked", "consent_granted": return .syncRules
+        case "bonus_time": return .bonusTime
         case "locate_now": return .locateNow
         default: return .unsupported
         }
@@ -171,6 +206,37 @@ public enum CommandDrainer {
                 try? await client.ack(identity, commandId: command.id, ok: ok,
                                       detail: ok ? [:] : ["reason": "rule_sync_failed"])
                 result.handled.append(command.type)
+            case .bonusTime:
+                let outcome: DailyScreenTimeGrantOutcome
+                if let grant = command.bonusGrant {
+                    #if os(iOS)
+                    if #available(iOS 17.4, *) {
+                        if firstSync == nil { firstSync = await sync() }
+                        switch firstSync {
+                        case .synced(let rules): outcome = DailyScreenTimeMonitor.grant(grant, for: identity, rules: rules)
+                        case .consentWithdrawn: outcome = .refused("consent_withdrawn")
+                        case .notPaired: outcome = .refused("not_paired")
+                        case .failed, nil: outcome = .retry
+                        }
+                    } else {
+                        outcome = .refused("not_supported")
+                    }
+                    #else
+                    outcome = .refused("not_supported")
+                    #endif
+                } else {
+                    outcome = .refused("invalid_payload")
+                }
+                switch outcome {
+                case .refused(let reason):
+                    try? await client.ack(identity, commandId: command.id, ok: false, detail: ["reason": reason])
+                    result.refused.append(command.type)
+                case .applied:
+                    try? await client.ack(identity, commandId: command.id, ok: true)
+                    result.handled.append(command.type)
+                case .retry:
+                    break // Transport or local registration failed. The server can redeliver the unacked grant.
+                }
             case .locateNow:
                 // Several in one drain share one fix and one upload.
                 if !located {

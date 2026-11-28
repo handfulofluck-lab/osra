@@ -125,7 +125,7 @@ public final class ScreenTimeController {
     /// #475: throws when the rules were not put in force, so the caller does not report them as applied:
     /// `notAuthorized` without Screen Time authorization, `unscheduled` when the system refused a bedtime or
     /// routine activity.
-    public func applyRules(_ rules: RuleSet) throws {
+    public func applyRules(_ rules: RuleSet, forDeviceID deviceID: String? = nil) throws {
         applyBlockedApps(packageIds: rules.blockedBundleIdentifiers)
         applyGroups(AppGroupStore<FamilyActivitySelection>().load(), serverBlocked: Set(rules.blockedGroupIds))
         applyWebFilter(blockedCategories: rules.webFilter.blockedCategories,
@@ -145,6 +145,13 @@ public final class ScreenTimeController {
             }
         }
         refused += scheduleRoutines(RuleStore.routineSchedules())
+        if #available(iOS 17.4, *), let deviceID = deviceID ?? AlertReporter.pairedDeviceId() {
+            do {
+                try DailyScreenTimeMonitor.configure(rules, deviceID: deviceID)
+            } catch {
+                refused.append("daily screen time: \(error.localizedDescription)")
+            }
+        }
         RuleStore.recordUnscheduled(refused)
         if !refused.isEmpty {
             Self.logger.error("\(refused.count) activities not monitored: \(refused.joined(separator: "; "), privacy: .public)")
