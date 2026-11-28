@@ -93,6 +93,7 @@ object UnboundTamperWatch {
             }
             val settings = entry.agentSettings()
             val paired = settings.isPairedSync()
+            val unlinkPending = settings.unlinkPendingSync()
             val deviceId = settings.deviceIdSync()
             val setupCompleted = SetupCompletionStore.isCompletedForDevice(appContext, deviceId)
             val pinConfigured = entry.parentPinStore().isConfigured()
@@ -102,6 +103,7 @@ object UnboundTamperWatch {
 
             val monitor = UnboundTamperPolicy.shouldMonitor(
                 paired = paired,
+                unlinkPending = unlinkPending,
                 setupCompletedOnce = setupCompleted,
                 pinConfigured = pinConfigured,
                 consentPaused = consentPaused,

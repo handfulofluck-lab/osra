@@ -12,12 +12,22 @@ import android.util.Log
 class ServiceRevivalReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action != ServiceRevivalPolicy.ACTION_REVIVE_SERVICES) return
-        runCatching { ServiceRecovery.run(context.applicationContext) }
-            .onFailure { Log.w(TAG, "service revival failed", it) }
+        handleBroadcast(intent?.action) {
+            ServiceRecovery.run(context.applicationContext)
+        }
     }
 
     companion object {
         private const val TAG = "ServiceRevivalReceiver"
+
+        internal fun handleBroadcast(
+            action: String?,
+            runRecovery: () -> ServiceRecoveryPolicy.Plan,
+        ): ServiceRecoveryPolicy.Plan? {
+            if (action != ServiceRevivalPolicy.ACTION_REVIVE_SERVICES) return null
+            return runCatching { runRecovery() }
+                .onFailure { Log.w(TAG, "service revival failed", it) }
+                .getOrNull()
+        }
     }
 }

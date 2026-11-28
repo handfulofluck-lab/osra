@@ -176,6 +176,7 @@ class FilterVpnService : VpnService() {
         }
         val wanted = intent?.getStringExtra(EXTRA_MODE) ?: VpnState.mode(this)
         explicitStopRequested = false
+        stopRequestedFromCaller = false
         serviceStopping = false
         authorizedMode = wanted
         VpnState.setMode(this, wanted)
@@ -187,12 +188,14 @@ class FilterVpnService : VpnService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        val wasExplicitStop = explicitStopRequested || stopRequestedFromCaller
         runCatching {
             com.familyshield.agent.recovery.ServiceRevivalScheduler.scheduleIfNeeded(
                 context = applicationContext,
                 paired = settings.isPairedSync() && VpnState.isEnabled(this),
                 consentPaused = consent.isPaused(),
-                explicitlyStopping = explicitStopRequested,
+                unlinkPending = settings.unlinkPendingSync(),
+                explicitlyStopping = wasExplicitStop,
             )
         }.onFailure { Log.w(TAG, "could not schedule revival on VPN task removal", it) }
         super.onTaskRemoved(rootIntent)
@@ -201,6 +204,7 @@ class FilterVpnService : VpnService() {
     override fun onRevoke() {
         lifecycleHandler.post {
             Log.w(TAG, "VPN revoked")
+            explicitStopRequested = true
             serviceStopping = true
             try {
                 if (VpnState.recordFilterLoss(this, settings, consent, hadEstablishedTunnel.getAndSet(false))) {
@@ -215,7 +219,8 @@ class FilterVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        val wasExplicitStop = explicitStopRequested
+        val wasExplicitStop = explicitStopRequested || stopRequestedFromCaller
+        stopRequestedFromCaller = false
         serviceStopping = true
         transientResetController.handleServiceStopOnServiceThread()
         completeAllPendingResets(WebFilterConnectionReset.TransitionOutcome.STOPPED)
@@ -230,6 +235,7 @@ class FilterVpnService : VpnService() {
                 context = applicationContext,
                 paired = settings.isPairedSync() && VpnState.isEnabled(this),
                 consentPaused = consent.isPaused(),
+                unlinkPending = settings.unlinkPendingSync(),
                 explicitlyStopping = wasExplicitStop,
             )
         }.onFailure { Log.w(TAG, "could not schedule revival on VPN destroy", it) }
@@ -753,7 +759,10 @@ class FilterVpnService : VpnService() {
             context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_RELOAD))
         }
 
+        @Volatile private var stopRequestedFromCaller: Boolean = false
+
         fun stop(context: Context) {
+            stopRequestedFromCaller = true
             VpnState.clearFilterLoss(context)
             if (!isRunning) return
             context.startService(Intent(context, FilterVpnService::class.java).setAction(ACTION_STOP))

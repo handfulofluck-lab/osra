@@ -59,6 +59,8 @@ class AgentSettings @Inject constructor(
     // restart the confirmation clock. Same cold-start pattern as the token cache above.
     @Volatile private var firstRevokedCache: Long? = null
     @Volatile private var firstRevokedLoaded: Boolean = false
+    @Volatile private var unlinkPendingCache: Boolean = false
+    @Volatile private var unlinkPendingLoaded: Boolean = false
 
     /** Returns the enrolled device id, or null when not yet provisioned. */
     suspend fun deviceId(): String? = read(KEY_DEVICE_ID).also {
@@ -150,11 +152,29 @@ class AgentSettings @Inject constructor(
      * idempotent, so re-running it is safe.
      */
     suspend fun setUnlinkPending(pending: Boolean) {
+        unlinkPendingCache = pending
+        unlinkPendingLoaded = true
         store.edit { it[KEY_UNLINK_PENDING] = pending }
     }
 
     /** True when an unlink was started and not finished; see [setUnlinkPending]. */
-    suspend fun unlinkPending(): Boolean = store.data.first()[KEY_UNLINK_PENDING] ?: false
+    suspend fun unlinkPending(): Boolean = (store.data.first()[KEY_UNLINK_PENDING] ?: false).also {
+        unlinkPendingCache = it
+        unlinkPendingLoaded = true
+    }
+
+    /** Synchronous snapshot of durable unlink-pending state for service teardown and recovery gates. */
+    fun unlinkPendingSync(): Boolean {
+        if (!unlinkPendingLoaded) {
+            synchronized(this) {
+                if (!unlinkPendingLoaded) {
+                    unlinkPendingCache = runBlocking { store.data.first()[KEY_UNLINK_PENDING] ?: false }
+                    unlinkPendingLoaded = true
+                }
+            }
+        }
+        return unlinkPendingCache
+    }
 
     /**
      * Synchronous snapshot of the persisted first revocation answer, for [com.familyshield.agent.network
@@ -320,6 +340,7 @@ class AgentSettings @Inject constructor(
         com.familyshield.agent.enforcement.LockPeriodTracker.clear(context)
         com.familyshield.agent.enforcement.AttemptCounter.clear(context)
         com.familyshield.agent.setup.MiuiBackgroundPopupPolicy.clearParentConfirmation(context)
+        com.familyshield.agent.setup.MiuiAutostartPolicy.clearParentConfirmation(context)
         // osra-security#24 / #792 (Antigravity B2): and a new enrolment inherits no wrong-PIN debt. Left
         // behind, eight tries from the previous PIN would refuse the new one during the old window and lock
         // for an hour on the first typo afterwards.

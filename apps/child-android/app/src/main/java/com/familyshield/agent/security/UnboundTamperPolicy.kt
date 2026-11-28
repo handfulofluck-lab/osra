@@ -7,12 +7,16 @@ package com.familyshield.agent.security
  * window-content classification in [TamperScreenPolicy.classify] owns the tamper guard and this
  * fallback stays completely dormant (`shouldMonitor == false`).
  *
- * When a paired, setup-completed device has `AccessibilityMonitorService.isRunning == false` while
- * holding overlay + usage-access grants, foreground-service [android.app.usage.UsageEvents] polling
- * still observes the latest `ACTIVITY_RESUMED` component. This policy gates the dedicated
- * device-admin sheet (while our admin is active), the package-installer uninstaller, and the
- * App-info detail classes behind [TamperGuardTaskActivity], while deliberately leaving the
- * Accessibility settings hub and service toggle pages ungated so a parent can re-bind the service.
+ * When Accessibility is unbound on a paired, setup-completed device, `UsageStatsManager.queryEvents`
+ * exposes `(packageName, className)` without the visible window text. Shared multi-app host screens
+ * (`ADMIN_CLASSES`, `UNINSTALL_CLASSES`, `APP_INFO_CLASSES`) exist for every installed app on the
+ * phone, so [classifyUnboundTop] matches them **only** when a target-aware signal identifies
+ * [targetPackage] as [ownPackage] — keeping an unrelated app's App Info, `DeviceAdminAdd`, and
+ * package-installer uninstall flow usable without a PIN overlay, and deferring OSRA's own
+ * deactivation / clear-storage interception to OSRA's own-component callbacks
+ * ([GuardianAdminReceiver.onDisableRequested] and `android:manageSpaceActivity` on
+ * [TamperGuardTaskActivity]) whenever `targetPackage` is unavailable. Phone-wide second-space setup
+ * screens ([TamperScreenPolicy.SPACE_SETUP_SCREENS]) have no per-app target and remain covered.
  */
 object UnboundTamperPolicy {
 
@@ -46,6 +50,7 @@ object UnboundTamperPolicy {
 
     fun shouldMonitor(
         paired: Boolean,
+        unlinkPending: Boolean = false,
         setupCompletedOnce: Boolean,
         pinConfigured: Boolean,
         consentPaused: Boolean,
@@ -55,6 +60,7 @@ object UnboundTamperPolicy {
         interactive: Boolean,
     ): Boolean =
         paired &&
+            !unlinkPending &&
             setupCompletedOnce &&
             pinConfigured &&
             !consentPaused &&
@@ -87,19 +93,28 @@ object UnboundTamperPolicy {
     }
 
     /**
-     * Classifies a resumed top activity from `(packageName, className)` alone when Accessibility
-     * window text is unavailable.
+     * Classifies a resumed top activity when Accessibility window text is unavailable.
+     *
+     * Shared multi-app host classes (`ADMIN_CLASSES`, `UNINSTALL_CLASSES`, `APP_INFO_CLASSES`)
+     * require [targetPackage] `==` [ownPackage]; when [targetPackage] is `null` or names another
+     * app, this returns [TamperScreen.NONE] so unrelated apps remain usable and OSRA's own-component
+     * callbacks handle OSRA-targeted actions.
      */
     fun classifyUnboundTop(
         top: TopActivity?,
         ownPackage: String,
         ourAdminActive: Boolean,
+        targetPackage: String? = null,
     ): TamperScreen {
         if (top == null) return TamperScreen.NONE
         if (top.packageName == ownPackage) return TamperScreen.NONE
+        val simple = TamperScreenPolicy.simpleName(top.className)
+        if ((top.packageName to simple) in TamperScreenPolicy.SPACE_SETUP_SCREENS) {
+            return TamperScreen.SPACE_SETUP
+        }
         if (top.packageName !in TamperScreenPolicy.SYSTEM_PACKAGES) return TamperScreen.NONE
-        val simple = TamperScreenPolicy.simpleName(top.className) ?: return TamperScreen.NONE
-        if (simple in TamperScreenPolicy.NEVER_CLASSES) return TamperScreen.NONE
+        if (simple == null || simple in TamperScreenPolicy.NEVER_CLASSES) return TamperScreen.NONE
+        if (targetPackage == null || targetPackage != ownPackage) return TamperScreen.NONE
         return when (simple) {
             in TamperScreenPolicy.ADMIN_CLASSES ->
                 if (ourAdminActive) TamperScreen.DEACTIVATE_ADMIN else TamperScreen.NONE

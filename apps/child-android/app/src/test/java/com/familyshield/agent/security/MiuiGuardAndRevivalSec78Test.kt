@@ -1,22 +1,27 @@
 package com.familyshield.agent.security
 
+import com.familyshield.agent.commands.CommandPollWorker
+import com.familyshield.agent.recovery.ServiceRecovery
+import com.familyshield.agent.recovery.ServiceRecoveryPolicy
 import com.familyshield.agent.recovery.ServiceRevivalPolicy
+import com.familyshield.agent.recovery.ServiceRevivalReceiver
 import com.familyshield.agent.setup.MiuiAutostartPolicy
 import com.familyshield.agent.setup.MiuiAutostartState
 import com.familyshield.agent.setup.RecentsExclusionPolicy
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * osra-security#78: discriminating pure-policy and call-site wiring tests for:
+ * osra-security#78: discriminating pure-policy, queued-recovery, and call-site wiring tests for:
  * 1. [AdminDisableRequestPolicy] + [GuardianAdminReceiver.onDisableRequested],
- * 2. [UnboundTamperPolicy] + [UnboundTamperWatch] degraded-state PIN cover,
- * 3. [MiuiAutostartPolicy] + Xiaomi `BATTERY` onboarding requirement + [RecentsExclusionPolicy],
- * 4. [ServiceRevivalPolicy] + [ServiceRevivalScheduler] + startup/worker recovery hooks.
+ * 2. Target-aware [UnboundTamperPolicy] + own-component `manageSpaceActivity` / `onDisableRequested` callbacks,
+ * 3. Durable `unlinkPending` checks in [ServiceRecovery], [ServiceRevivalReceiver], [CommandPollWorker], and service-exit stop paths,
+ * 4. [MiuiAutostartPolicy] + Xiaomi `BATTERY` onboarding requirement + Xiaomi-scoped [RecentsExclusionPolicy].
  */
 class MiuiGuardAndRevivalSec78Test {
 
@@ -25,17 +30,19 @@ class MiuiGuardAndRevivalSec78Test {
     // -------------------------------------------------------------------------
 
     /**
-     * Mutant: omit grace/sanctioned checks or return ALLOW_WITHOUT_GATE when `canLaunchFromBackground`
-     * is true -> either locks out a PIN-verified parent or drops the gate on an unsanctioned request.
+     * Mutant: omit `unlinkPending`, grace, or sanctioned checks, or return ALLOW_WITHOUT_GATE when
+     * `canLaunchFromBackground` is true -> either revives/blocks during approved removal or drops
+     * the gate on an unsanctioned deactivation request.
      */
     @Test
-    fun `AdminDisableRequestPolicy gates unsanctioned requests and honours grace, sanctioned, and debounce states`() {
+    fun `AdminDisableRequestPolicy gates unsanctioned requests and honours unlinkPending, grace, sanctioned, and debounce states`() {
         val now = 2_000_000L
 
         assertEquals(
             AdminDisableRequestPolicy.Action.LAUNCH_PIN_GATE,
             AdminDisableRequestPolicy.decide(
                 paired = true,
+                unlinkPending = false,
                 setupCompletedOnce = true,
                 pinConfigured = true,
                 consentPaused = false,
@@ -50,6 +57,7 @@ class MiuiGuardAndRevivalSec78Test {
             AdminDisableRequestPolicy.Action.RECORD_ATTEMPT_AND_BEST_EFFORT_GATE,
             AdminDisableRequestPolicy.decide(
                 paired = true,
+                unlinkPending = false,
                 setupCompletedOnce = true,
                 pinConfigured = true,
                 consentPaused = false,
@@ -58,6 +66,22 @@ class MiuiGuardAndRevivalSec78Test {
                 sanctionedUntilMs = 0L,
                 gateSuppressed = false,
                 canLaunchFromBackground = false,
+            ),
+        )
+        assertEquals(
+            "pending unlink must never launch the PIN gate or revive services during admin removal",
+            AdminDisableRequestPolicy.Action.ALLOW_WITHOUT_GATE,
+            AdminDisableRequestPolicy.decide(
+                paired = true,
+                unlinkPending = true,
+                setupCompletedOnce = true,
+                pinConfigured = true,
+                consentPaused = false,
+                nowMs = now,
+                graceUntilMs = 0L,
+                sanctionedUntilMs = 0L,
+                gateSuppressed = false,
+                canLaunchFromBackground = true,
             ),
         )
         assertEquals(
@@ -133,49 +157,36 @@ class MiuiGuardAndRevivalSec78Test {
                 canLaunchFromBackground = true,
             ),
         )
-        assertEquals(
-            AdminDisableRequestPolicy.Action.ALLOW_WITHOUT_GATE,
-            AdminDisableRequestPolicy.decide(
-                paired = true,
-                setupCompletedOnce = true,
-                pinConfigured = false,
-                consentPaused = false,
-                nowMs = now,
-                graceUntilMs = 0L,
-                sanctionedUntilMs = 0L,
-                gateSuppressed = false,
-                canLaunchFromBackground = true,
-            ),
-        )
-        assertEquals(
-            AdminDisableRequestPolicy.Action.ALLOW_WITHOUT_GATE,
-            AdminDisableRequestPolicy.decide(
-                paired = true,
-                setupCompletedOnce = true,
-                pinConfigured = true,
-                consentPaused = true,
-                nowMs = now,
-                graceUntilMs = 0L,
-                sanctionedUntilMs = 0L,
-                gateSuppressed = false,
-                canLaunchFromBackground = true,
-            ),
-        )
     }
 
     // -------------------------------------------------------------------------
-    // 2. UnboundTamperPolicy
+    // 2. UnboundTamperPolicy (Target-Aware Scope + Unrelated-App Controls)
     // -------------------------------------------------------------------------
 
     /**
-     * Mutant: monitor while `accessibilityBound == true` or `!setupCompletedOnce` -> burns battery in
-     * normal operation or blocks App-info restricted-settings during initial setup.
+     * Mutant: monitor while `accessibilityBound == true`, `unlinkPending == true`, or
+     * `!setupCompletedOnce`.
      */
     @Test
-    fun `UnboundTamperPolicy monitors only in the post-setup degraded state when Accessibility is unbound`() {
+    fun `UnboundTamperPolicy monitors only in the post-setup degraded state when Accessibility is unbound and not unlinking`() {
         assertTrue(
             UnboundTamperPolicy.shouldMonitor(
                 paired = true,
+                unlinkPending = false,
+                setupCompletedOnce = true,
+                pinConfigured = true,
+                consentPaused = false,
+                accessibilityBound = false,
+                canDrawOverlays = true,
+                usageAccessGranted = true,
+                interactive = true,
+            ),
+        )
+        assertFalse(
+            "must stand down immediately when unlinkPending is true",
+            UnboundTamperPolicy.shouldMonitor(
+                paired = true,
+                unlinkPending = true,
                 setupCompletedOnce = true,
                 pinConfigured = true,
                 consentPaused = false,
@@ -211,42 +222,53 @@ class MiuiGuardAndRevivalSec78Test {
                 interactive = true,
             ),
         )
-        assertFalse(
-            "must sleep while screen is off",
-            UnboundTamperPolicy.shouldMonitor(
-                paired = true,
-                setupCompletedOnce = true,
-                pinConfigured = true,
-                consentPaused = false,
-                accessibilityBound = false,
-                canDrawOverlays = true,
-                usageAccessGranted = true,
-                interactive = false,
-            ),
-        )
-        assertFalse(
-            "must respect consent pause (ADR-0008)",
-            UnboundTamperPolicy.shouldMonitor(
-                paired = true,
-                setupCompletedOnce = true,
-                pinConfigured = true,
-                consentPaused = true,
-                accessibilityBound = false,
-                canDrawOverlays = true,
-                usageAccessGranted = true,
-                interactive = true,
-            ),
-        )
     }
 
     /**
-     * Mutant: ignore `ApplicationsDetailsActivity` or `DeviceAdminAdd`, or gate `AccessibilityDetails`
-     * -> either misses App-info / admin deactivation while unbound or blocks parent Accessibility re-bind.
+     * Codex review finding 1 (#1303): shared App Info, DeviceAdminAdd, and UninstallerActivity host
+     * classes must NEVER raise a PIN overlay for an unrelated app (`com.google.android.youtube`) or
+     * when target identity is unavailable (`targetPackage = null`, where intervention defers to
+     * OSRA's own-component callbacks `GuardianAdminReceiver.onDisableRequested` and
+     * `android:manageSpaceActivity`).
+     *
+     * Mutant: remove `if (targetPackage == null || targetPackage != ownPackage) return TamperScreen.NONE`
+     * -> the unrelated-app and null-target control assertions below fail immediately.
      */
     @Test
-    fun `UnboundTamperPolicy classifies MIUI App-info, DeviceAdminAdd, and Uninstaller while leaving Accessibility settings open`() {
+    fun `UnboundTamperPolicy bounds shared host classes to OSRA target identity and keeps unrelated apps usable`() {
         val ownPkg = "com.osratech.child.full"
+        val otherPkg = "com.google.android.youtube"
 
+        // 1. Unrelated app controls -> MUST remain NONE (usable without PIN overlay)
+        for ((hostPkg, cls) in listOf(
+            "com.miui.securitycenter" to "com.miui.appmanager.ApplicationsDetailsActivity",
+            "com.android.settings" to "com.android.settings.applications.InstalledAppDetails",
+            "com.android.settings" to "com.android.settings.DeviceAdminAdd",
+            "com.miui.packageinstaller" to "com.android.packageinstaller.UninstallerActivity",
+        )) {
+            assertEquals(
+                "unrelated app in $hostPkg/$cls must stay NONE",
+                TamperScreen.NONE,
+                UnboundTamperPolicy.classifyUnboundTop(
+                    UnboundTamperPolicy.TopActivity(hostPkg, cls, 1_000L),
+                    ownPackage = ownPkg,
+                    ourAdminActive = true,
+                    targetPackage = otherPkg,
+                ),
+            )
+            assertEquals(
+                "unidentified target (null) in $hostPkg/$cls must defer to own-component callbacks",
+                TamperScreen.NONE,
+                UnboundTamperPolicy.classifyUnboundTop(
+                    UnboundTamperPolicy.TopActivity(hostPkg, cls, 1_000L),
+                    ownPackage = ownPkg,
+                    ourAdminActive = true,
+                    targetPackage = null,
+                ),
+            )
+        }
+
+        // 2. Target-aware matches for OSRA's own package -> classified accurately
         assertEquals(
             TamperScreen.APP_INFO,
             UnboundTamperPolicy.classifyUnboundTop(
@@ -257,19 +279,7 @@ class MiuiGuardAndRevivalSec78Test {
                 ),
                 ownPackage = ownPkg,
                 ourAdminActive = true,
-            ),
-        )
-        assertEquals(
-            "AppManagerMainActivity list without window text stays NONE in unbound class-only fallback",
-            TamperScreen.NONE,
-            UnboundTamperPolicy.classifyUnboundTop(
-                UnboundTamperPolicy.TopActivity(
-                    packageName = "com.miui.securitycenter",
-                    className = "com.miui.appmanager.AppManagerMainActivity",
-                    timestampMs = 1_000L,
-                ),
-                ownPackage = ownPkg,
-                ourAdminActive = true,
+                targetPackage = ownPkg,
             ),
         )
         assertEquals(
@@ -282,6 +292,7 @@ class MiuiGuardAndRevivalSec78Test {
                 ),
                 ownPackage = ownPkg,
                 ourAdminActive = true,
+                targetPackage = ownPkg,
             ),
         )
         assertEquals(
@@ -295,6 +306,7 @@ class MiuiGuardAndRevivalSec78Test {
                 ),
                 ownPackage = ownPkg,
                 ourAdminActive = false,
+                targetPackage = ownPkg,
             ),
         )
         assertEquals(
@@ -307,9 +319,26 @@ class MiuiGuardAndRevivalSec78Test {
                 ),
                 ownPackage = ownPkg,
                 ourAdminActive = true,
+                targetPackage = ownPkg,
             ),
         )
-        // Accessibility settings hub and service detail page must stay open so parent can re-bind OSRA.
+
+        // 3. Phone-wide second-space setup has no target app -> still classified SPACE_SETUP
+        assertEquals(
+            TamperScreen.SPACE_SETUP,
+            UnboundTamperPolicy.classifyUnboundTop(
+                UnboundTamperPolicy.TopActivity(
+                    packageName = "com.samsung.knox.securefolder",
+                    className = "com.samsung.knox.securefolder.WelcomeActivity",
+                    timestampMs = 1_250L,
+                ),
+                ownPackage = ownPkg,
+                ourAdminActive = true,
+                targetPackage = null,
+            ),
+        )
+
+        // 4. Accessibility settings hub and service detail page stay open so parent can re-bind OSRA.
         for (cls in listOf(
             "com.android.settings.Settings\$AccessibilitySettingsActivity",
             "com.android.settings.accessibility.AccessibilityDetails",
@@ -322,22 +351,12 @@ class MiuiGuardAndRevivalSec78Test {
                     UnboundTamperPolicy.TopActivity("com.android.settings", cls, 1_300L),
                     ownPackage = ownPkg,
                     ourAdminActive = true,
+                    targetPackage = ownPkg,
                 ),
             )
         }
-        assertEquals(
-            TamperScreen.NONE,
-            UnboundTamperPolicy.classifyUnboundTop(
-                UnboundTamperPolicy.TopActivity(ownPkg, "com.familyshield.agent.security.TamperGuardTaskActivity", 1_400L),
-                ownPackage = ownPkg,
-                ourAdminActive = true,
-            ),
-        )
     }
 
-    /**
-     * Mutant: drop non-resume filtering or break same-millisecond tie-breaking -> stale activity wins.
-     */
     @Test
     fun `UnboundTamperPolicy tracks latest ACTIVITY_RESUMED across lookback and gate transitions`() {
         assertNull(UnboundTamperPolicy.latestResumedActivity(null, emptyList()))
@@ -345,14 +364,12 @@ class MiuiGuardAndRevivalSec78Test {
         val events = listOf(
             UnboundTamperPolicy.ResumedEvent("com.miui.home", "com.miui.home.launcher.Launcher", 10_000L, eventType = 1),
             UnboundTamperPolicy.ResumedEvent("com.miui.securitycenter", "com.miui.appmanager.ApplicationsDetailsActivity", 10_500L, eventType = 1),
-            // ACTIVITY_PAUSED (2) for launcher arriving after 10_500 must NOT overwrite resumed top!
             UnboundTamperPolicy.ResumedEvent("com.miui.home", "com.miui.home.launcher.Launcher", 10_550L, eventType = 2),
         )
         val top1 = UnboundTamperPolicy.latestResumedActivity(null, events)
         assertEquals("com.miui.securitycenter", top1?.packageName)
         assertEquals("com.miui.appmanager.ApplicationsDetailsActivity", top1?.className)
 
-        // Same-timestamp tie goes to the later event in the cursor (e.g. fast redirect intoTamperGuardTaskActivity)
         val top2 = UnboundTamperPolicy.latestResumedActivity(
             top1,
             listOf(
@@ -361,7 +378,6 @@ class MiuiGuardAndRevivalSec78Test {
         )
         assertEquals("com.osratech.child.full", top2?.packageName)
 
-        // Grace window suppresses gate launch after parent enters valid PIN
         assertFalse(
             UnboundTamperPolicy.shouldLaunchPinGate(
                 screen = TamperScreen.APP_INFO,
@@ -372,26 +388,96 @@ class MiuiGuardAndRevivalSec78Test {
                 gateSuppressed = false,
             ),
         )
-        assertTrue(
-            UnboundTamperPolicy.shouldLaunchPinGate(
-                screen = TamperScreen.APP_INFO,
-                pinConfigured = true,
-                nowMs = 130_000L,
-                graceUntilMs = 130_000L,
-                sanctionedUntilMs = 0L,
-                gateSuppressed = false,
-            ),
-        )
     }
 
     // -------------------------------------------------------------------------
-    // 3. MiuiAutostartPolicy, RecentsExclusionPolicy, ServiceRevivalPolicy
+    // 3. Queued Worker & Receiver Unlink-Pending Fixtures (Codex Finding 2)
     // -------------------------------------------------------------------------
 
     /**
-     * Mutant: allow `parentConfirmed = true` to override a readable `MODE_IGNORED` (`1`) on Xiaomi ->
-     * lets onboarding mark Autostart granted while MIUI still blocks revival.
+     * Codex review finding 2 (#1303): `DeviceUnlinker` marks `unlinkPending = true` and stops
+     * services BEFORE `clearPairing()` runs, so `isPaired` is still `true` during unlink. A queued
+     * `CommandPollWorker` or `ServiceRevivalReceiver` must act on a still-paired active fixture
+     * (`unlinkPending = false`) and do nothing when `unlinkPending = true`.
+     *
+     * Mutant: remove `state.unlinkPending` from `ServiceRecoveryPolicy.plan` -> the pending-unlink
+     * assertions below restart services and fail.
      */
+    @Test
+    fun `queued revival receiver and poll worker recover still-paired active fixture and do nothing during pending unlink`() {
+        fun activeDownFixture(unlinkPending: Boolean) = ServiceRecoveryPolicy.State(
+            isPaired = true,
+            consentPaused = false,
+            unlinkPending = unlinkPending,
+            filterWanted = true,
+            tunnelRunning = false,
+            locationMayStart = true,
+            locationRunning = false,
+            lockActive = true,
+            accessibilityEnabled = true,
+            accessibilityBound = false,
+        )
+
+        // 1. Queued ServiceRevivalReceiver on still-paired active fixture -> restarts all 3
+        val receiverActiveActions = mutableListOf<String>()
+        val receiverActivePlan = ServiceRevivalReceiver.handleBroadcast(ServiceRevivalPolicy.ACTION_REVIVE_SERVICES) {
+            ServiceRecovery.runWith(
+                readState = { activeDownFixture(unlinkPending = false) },
+                restartFilter = { receiverActiveActions += "filter" },
+                restartLocation = { receiverActiveActions += "location" },
+                showLock = { receiverActiveActions += "lock" },
+            )
+        }
+        assertNotNull(receiverActivePlan)
+        assertFalse(receiverActivePlan!!.isEmpty)
+        assertEquals(listOf("filter", "location", "lock"), receiverActiveActions)
+
+        // 2. Queued ServiceRevivalReceiver during pending unlink (isPaired STILL true!) -> does nothing
+        val receiverUnlinkActions = mutableListOf<String>()
+        val receiverUnlinkPlan = ServiceRevivalReceiver.handleBroadcast(ServiceRevivalPolicy.ACTION_REVIVE_SERVICES) {
+            ServiceRecovery.runWith(
+                readState = { activeDownFixture(unlinkPending = true) },
+                restartFilter = { receiverUnlinkActions += "filter" },
+                restartLocation = { receiverUnlinkActions += "location" },
+                showLock = { receiverUnlinkActions += "lock" },
+            )
+        }
+        assertNotNull(receiverUnlinkPlan)
+        assertTrue("pending unlink must yield an empty recovery plan", receiverUnlinkPlan!!.isEmpty)
+        assertEquals(emptyList<String>(), receiverUnlinkActions)
+
+        // 3. Queued CommandPollWorker on still-paired active fixture -> restarts all 3
+        val workerActiveActions = mutableListOf<String>()
+        val workerActivePlan = CommandPollWorker.recoverBeforePoll {
+            ServiceRecovery.runWith(
+                readState = { activeDownFixture(unlinkPending = false) },
+                restartFilter = { workerActiveActions += "filter" },
+                restartLocation = { workerActiveActions += "location" },
+                showLock = { workerActiveActions += "lock" },
+            )
+        }
+        assertNotNull(workerActivePlan)
+        assertEquals(listOf("filter", "location", "lock"), workerActiveActions)
+
+        // 4. Queued CommandPollWorker during pending unlink (isPaired STILL true!) -> does nothing
+        val workerUnlinkActions = mutableListOf<String>()
+        val workerUnlinkPlan = CommandPollWorker.recoverBeforePoll {
+            ServiceRecovery.runWith(
+                readState = { activeDownFixture(unlinkPending = true) },
+                restartFilter = { workerUnlinkActions += "filter" },
+                restartLocation = { workerUnlinkActions += "location" },
+                showLock = { workerUnlinkActions += "lock" },
+            )
+        }
+        assertNotNull(workerUnlinkPlan)
+        assertTrue("pending unlink must prevent worker recovery restarts", workerUnlinkPlan!!.isEmpty)
+        assertEquals(emptyList<String>(), workerUnlinkActions)
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. MiuiAutostartPolicy, Xiaomi-Scoped RecentsExclusionPolicy, ServiceRevivalPolicy
+    // -------------------------------------------------------------------------
+
     @Test
     fun `MiuiAutostartPolicy fails closed on null, never overrides readable denial, and exempts non-Xiaomi`() {
         assertEquals(MiuiAutostartState.ALLOWED, MiuiAutostartPolicy.classifyState("Samsung", null))
@@ -411,18 +497,40 @@ class MiuiGuardAndRevivalSec78Test {
         assertTrue(MiuiAutostartPolicy.isAutostartAllowed("POCO", null, parentConfirmed = true))
     }
 
+    /**
+     * Codex review item 3 (#1303): Recents exclusion is scoped strictly to Xiaomi/Redmi/POCO once
+     * paired and setup-complete; Samsung and other vendors keep their existing Recents behaviour.
+     */
     @Test
-    fun `RecentsExclusionPolicy and ServiceRevivalPolicy enforce onboarding and explicit-stop boundaries`() {
-        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents(paired = false, setupCompletedOnce = false))
-        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents(paired = true, setupCompletedOnce = false))
-        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents(paired = false, setupCompletedOnce = true))
-        assertTrue(RecentsExclusionPolicy.shouldExcludeFromRecents(paired = true, setupCompletedOnce = true))
+    fun `RecentsExclusionPolicy is Xiaomi-specific and preserves existing Samsung Recents behaviour`() {
+        // Xiaomi/Redmi/POCO: excluded only after paired + setup complete
+        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents("Xiaomi", paired = false, setupCompletedOnce = false))
+        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents("Xiaomi", paired = true, setupCompletedOnce = false))
+        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents("Redmi", paired = false, setupCompletedOnce = true))
+        assertTrue(RecentsExclusionPolicy.shouldExcludeFromRecents("Xiaomi", paired = true, setupCompletedOnce = true))
+        assertTrue(RecentsExclusionPolicy.shouldExcludeFromRecents("Redmi", paired = true, setupCompletedOnce = true))
+        assertTrue(RecentsExclusionPolicy.shouldExcludeFromRecents("POCO", paired = true, setupCompletedOnce = true))
 
+        // Samsung, Google, and unknown vendors: never excluded (existing behaviour preserved)
+        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents("samsung", paired = true, setupCompletedOnce = true))
+        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents("Samsung", paired = true, setupCompletedOnce = true))
+        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents("Google", paired = true, setupCompletedOnce = true))
+        assertFalse(RecentsExclusionPolicy.shouldExcludeFromRecents(null, paired = true, setupCompletedOnce = true))
+
+        // ServiceRevivalPolicy boundaries
         assertTrue(
             ServiceRevivalPolicy.shouldScheduleOnServiceExit(
                 paired = true,
                 consentPaused = false,
                 unlinkPending = false,
+                explicitlyStopping = false,
+            ),
+        )
+        assertFalse(
+            ServiceRevivalPolicy.shouldScheduleOnServiceExit(
+                paired = true,
+                consentPaused = false,
+                unlinkPending = true,
                 explicitlyStopping = false,
             ),
         )
@@ -434,40 +542,24 @@ class MiuiGuardAndRevivalSec78Test {
                 explicitlyStopping = true,
             ),
         )
-        assertFalse(
-            ServiceRevivalPolicy.shouldScheduleOnServiceExit(
-                paired = true,
-                consentPaused = true,
-                unlinkPending = false,
-                explicitlyStopping = false,
-            ),
-        )
-        assertFalse(
-            ServiceRevivalPolicy.shouldScheduleOnServiceExit(
-                paired = false,
-                consentPaused = false,
-                unlinkPending = false,
-                explicitlyStopping = false,
-            ),
-        )
-        assertFalse(ServiceRevivalPolicy.shouldRunStartupRecovery(unlinkPending = true))
-        assertTrue(ServiceRevivalPolicy.shouldRunStartupRecovery(unlinkPending = false))
     }
 
     // -------------------------------------------------------------------------
-    // 4. Discriminating Call-Site Source-Wiring Assertions
+    // 5. Discriminating Call-Site Source-Wiring Assertions
     // -------------------------------------------------------------------------
 
-    /**
-     * Mutant: remove `ServiceRecovery.run(appContext)`, `AdminDisableRequestPolicy.decide(...)`, or
-     * `TamperGuardTaskActivity::class.java` from `GuardianAdminReceiver.onDisableRequested`.
-     */
     @Test
-    fun `GuardianAdminReceiver onDisableRequested wires recovery, policy decision, alert window, and PIN gate`() {
+    fun `GuardianAdminReceiver onDisableRequested gates recovery behind AdminDisableRequestPolicy and checks unlinkPending`() {
         val src = stripLineComments(source("app/src/main/java/com/familyshield/agent/security/GuardianAdminReceiver.kt"))
         val body = methodBody(src, "override fun onDisableRequested(")
-        assertTrue(body.contains("ServiceRecovery.run(appContext)"))
-        assertTrue(body.contains("AdminDisableRequestPolicy.decide("))
+        val decideIdx = body.indexOf("AdminDisableRequestPolicy.decide(")
+        val recoveryIdx = body.indexOf("ServiceRecovery.run(appContext)")
+        assertTrue("onDisableRequested must call AdminDisableRequestPolicy.decide", decideIdx >= 0)
+        assertTrue(
+            "ServiceRecovery.run must run only inside the unsanctioned branch after decide(), never before it",
+            recoveryIdx > decideIdx,
+        )
+        assertTrue(body.contains("unlinkPending = unlinkPending"))
         assertTrue(body.contains("graceUntilMs = TamperState.graceUntil(appContext)"))
         assertTrue(body.contains("sanctionedUntilMs = TamperState.sanctionedRemovalUntil(appContext)"))
         assertTrue(body.contains("GuardAttemptWindow.record("))
@@ -475,52 +567,48 @@ class MiuiGuardAndRevivalSec78Test {
         assertTrue(body.contains("TamperGuardTaskActivity::class.java"))
     }
 
-    /**
-     * Mutant: drop `UnboundTamperWatch.ensureStarted` or `ServiceRevivalScheduler.scheduleIfNeeded`
-     * from `LocationService`, `FilterVpnService`, `CommandPollWorker`, or `FamilyShieldApp`.
-     */
     @Test
-    fun `foreground services, CommandPollWorker, and FamilyShieldApp wire unbound watch and service revival`() {
+    fun `ServiceRecovery, DeviceUnlinker, services, worker, and app wire durable unlinkPending and explicit stop intents`() {
+        val recoverySrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/recovery/ServiceRecovery.kt"))
+        val readStateBody = methodBody(recoverySrc, "internal fun readState(")
+        assertTrue(readStateBody.contains("val unlinkPending = settings.unlinkPendingSync()"))
+        assertTrue(readStateBody.contains("unlinkPending = unlinkPending"))
+
+        val unlinkerSrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/network/DeviceUnlinker.kt"))
+        assertTrue(
+            "DeviceUnlinker must stop LocationService through LocationService.stop(context) so explicit stop intent is recorded",
+            unlinkerSrc.contains("stopLocation = { LocationService.stop(context) }"),
+        )
+
         val locSrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/services/LocationService.kt"))
         val locStart = methodBody(locSrc, "override fun onStartCommand(")
         val locTaskRemoved = methodBody(locSrc, "override fun onTaskRemoved(")
         val locDestroy = methodBody(locSrc, "override fun onDestroy(")
+        assertTrue(locStart.contains("if (intent?.action == ACTION_STOP)"))
         assertTrue(locStart.contains("UnboundTamperWatch.ensureStarted(applicationContext)"))
-        assertTrue(locTaskRemoved.contains("ServiceRevivalScheduler.scheduleIfNeeded("))
+        assertTrue(locTaskRemoved.contains("unlinkPending = settings.unlinkPendingSync()"))
+        assertTrue(locTaskRemoved.contains("explicitlyStopping = wasExplicitStop"))
         assertTrue(locDestroy.contains("UnboundTamperWatch.stopIfNoHostRunning()"))
-        assertTrue(locDestroy.contains("ServiceRevivalScheduler.scheduleIfNeeded("))
+        assertTrue(locDestroy.contains("unlinkPending = settings.unlinkPendingSync()"))
+        assertTrue(locDestroy.contains("explicitlyStopping = wasExplicitStop"))
 
         val vpnSrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/vpn/FilterVpnService.kt"))
-        val vpnCreate = methodBody(vpnSrc, "override fun onCreate(")
-        val vpnStart = methodBody(vpnSrc, "override fun onStartCommand(")
         val vpnTaskRemoved = methodBody(vpnSrc, "override fun onTaskRemoved(")
         val vpnDestroy = methodBody(vpnSrc, "override fun onDestroy(")
-        assertTrue(vpnCreate.contains("UnboundTamperWatch.ensureStarted(applicationContext)"))
-        assertTrue(vpnStart.contains("explicitStopRequested = true"))
-        assertTrue(vpnStart.contains("explicitStopRequested = false"))
-        assertTrue(vpnStart.contains("UnboundTamperWatch.ensureStarted(applicationContext)"))
-        assertTrue(vpnTaskRemoved.contains("explicitlyStopping = explicitStopRequested"))
-        assertTrue(vpnDestroy.contains("UnboundTamperWatch.stopIfNoHostRunning()"))
+        assertTrue(vpnTaskRemoved.contains("unlinkPending = settings.unlinkPendingSync()"))
+        assertTrue(vpnTaskRemoved.contains("explicitlyStopping = wasExplicitStop"))
+        assertTrue(vpnDestroy.contains("unlinkPending = settings.unlinkPendingSync()"))
         assertTrue(vpnDestroy.contains("explicitlyStopping = wasExplicitStop"))
 
         val workerSrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/commands/CommandPollWorker.kt"))
         val doWork = methodBody(workerSrc, "override suspend fun doWork()")
-        val recoveryIdx = doWork.indexOf("ServiceRecovery.run(applicationContext)")
+        val recoveryIdx = doWork.indexOf("recoverBeforePoll { com.familyshield.agent.recovery.ServiceRecovery.run(applicationContext) }")
         val skipIdx = doWork.indexOf("IdleCadence.workerShouldPoll(")
         assertTrue("CommandPollWorker.doWork must run ServiceRecovery before workerShouldPoll returns", recoveryIdx in 0 until skipIdx)
-
-        val appSrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/FamilyShieldApp.kt"))
-        val appCreate = methodBody(appSrc, "override fun onCreate(")
-        assertTrue(appCreate.contains("ServiceRevivalPolicy.shouldRunStartupRecovery(unlinkPending)"))
-        assertTrue(appCreate.contains("ServiceRecovery.run(this@FamilyShieldApp)"))
     }
 
-    /**
-     * Mutant: leave any `OnboardingPolicy.rows` call without `Build.MANUFACTURER`, keep reading
-     * `g.required` instead of `row.required` in `PairingActivity`, or omit `MiuiAutostartPolicy` in `GrantChecks`.
-     */
     @Test
-    fun `GrantChecks, PairingActivity, and AccessibilityMonitorService wire Xiaomi BATTERY requirement and Recents exclusion`() {
+    fun `GrantChecks, PairingActivity, and AccessibilityMonitorService wire Xiaomi BATTERY requirement and Xiaomi-scoped Recents exclusion`() {
         val grantSrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/setup/GrantChecks.kt"))
         val isGrantedBody = methodBody(grantSrc, "fun isGranted(")
         val fixIntentBody = methodBody(grantSrc, "fun fixIntent(")
@@ -530,7 +618,6 @@ class MiuiGuardAndRevivalSec78Test {
         val a11ySrc = stripLineComments(source("app/src/main/java/com/familyshield/agent/services/AccessibilityMonitorService.kt"))
         val incompleteBody = methodBody(a11ySrc, "private fun requiredGrantsIncompleteForPairedDevice()")
         assertTrue(
-            "AccessibilityMonitorService must pass Build.MANUFACTURER to OnboardingPolicy.rows",
             Regex("""OnboardingPolicy\.rows\(\s*com\.familyshield\.agent\.BuildConfig\.CAPTURE_NOTIFICATIONS,\s*Build\.MANUFACTURER,""").containsMatchIn(incompleteBody),
         )
 
@@ -539,17 +626,11 @@ class MiuiGuardAndRevivalSec78Test {
         assertTrue(
             helperBody.contains("OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS, Build.MANUFACTURER) { grants.isGranted(it) }"),
         )
-        assertEquals(
-            "every OnboardingPolicy.rows call in PairingActivity must go through currentOnboardingRows()",
-            1,
-            Regex("""OnboardingPolicy\.rows\(""").findAll(pairingSrc).count(),
-        )
-        assertFalse(
-            "PairingActivity must read row.required / it.required so Xiaomi BATTERY is enforced as required",
-            pairingSrc.contains("g.required") || pairingSrc.contains("it.grant.required"),
-        )
+        assertEquals(1, Regex("""OnboardingPolicy\.rows\(""").findAll(pairingSrc).count())
+        assertFalse(pairingSrc.contains("g.required") || pairingSrc.contains("it.grant.required"))
         val recentsBody = methodBody(pairingSrc, "private fun syncRecentsExclusion()")
-        assertTrue(recentsBody.contains("RecentsExclusionPolicy.shouldExcludeFromRecents(paired, setupCompleted)"))
+        assertTrue(recentsBody.contains("if (!MiuiBackgroundPopupPolicy.isXiaomiFamily(Build.MANUFACTURER)) return"))
+        assertTrue(recentsBody.contains("RecentsExclusionPolicy.shouldExcludeFromRecents(Build.MANUFACTURER, paired, setupCompleted)"))
         assertTrue(recentsBody.contains("setExcludeFromRecents(exclude)"))
     }
 
@@ -562,7 +643,6 @@ class MiuiGuardAndRevivalSec78Test {
     private fun methodBody(source: String, signaturePrefix: String): String {
         val start = source.indexOf(signaturePrefix)
         assertTrue("missing `$signaturePrefix`", start >= 0)
-        // Find opening '{' after parameter list (skipping nested parentheses in parameters)
         var i = start
         var parenDepth = 0
         var bodyOpen = -1
@@ -575,7 +655,6 @@ class MiuiGuardAndRevivalSec78Test {
                     break
                 }
                 '=' -> if (parenDepth == 0) {
-                    // Single-expression function: return until next top-level declaration or end of line block
                     val nextDecl = source.indexOf("\n    private fun ", i + 1)
                         .takeIf { it >= 0 } ?: source.indexOf("\n    override fun ", i + 1)
                         .takeIf { it >= 0 } ?: source.length

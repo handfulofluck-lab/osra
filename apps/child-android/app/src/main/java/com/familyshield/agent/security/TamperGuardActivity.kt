@@ -347,4 +347,55 @@ open class TamperGuardActivity : ComponentActivity() {
  */
 class TamperGuardTaskActivity : TamperGuardActivity() {
     override val guardGate: Boolean = true
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        if (savedInstanceState == null && !intent.hasExtra(EXTRA_REASON)) {
+            val allowWithoutGate = runCatching {
+                val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    applicationContext,
+                    com.familyshield.agent.di.WorkerEntryPoint::class.java,
+                )
+                val settings = entry.agentSettings()
+                val paired = settings.isPairedSync()
+                val unlinkPending = settings.unlinkPendingSync()
+                val setupCompleted = com.familyshield.agent.setup.SetupCompletionStore.isCompletedForDevice(
+                    applicationContext,
+                    settings.deviceIdSync(),
+                )
+                val pinReady = entry.parentPinStore().isConfigured()
+                val consentPaused = entry.consentState().isPaused()
+                val nowMs = System.currentTimeMillis()
+                val inGraceOrSanctioned =
+                    nowMs < TamperState.graceUntil(applicationContext) ||
+                        nowMs < TamperState.sanctionedRemovalUntil(applicationContext)
+                if (!paired || unlinkPending || !setupCompleted || !pinReady || consentPaused || inGraceOrSanctioned) {
+                    true
+                } else {
+                    val attempt = GuardAttemptWindow.record(
+                        TamperState.guardAttemptWindow(applicationContext),
+                        nowMs,
+                        TamperScreen.APP_INFO.name.lowercase(),
+                    )
+                    TamperState.setGuardAttemptWindow(applicationContext, attempt.state)
+                    runCatching {
+                        TamperAlertWorker.enqueue(
+                            applicationContext,
+                            TamperAlertWorker.TYPE_GUARD_TRIGGERED,
+                            detail = "Screen: app_info manage_space",
+                            windowStartMs = attempt.state.windowStartMs,
+                            attemptCount = attempt.state.count,
+                            screens = attempt.state.screens,
+                        )
+                    }
+                    false
+                }
+            }.getOrDefault(false)
+            if (allowWithoutGate) {
+                super.onCreate(savedInstanceState)
+                finish()
+                return
+            }
+        }
+        super.onCreate(savedInstanceState)
+    }
 }

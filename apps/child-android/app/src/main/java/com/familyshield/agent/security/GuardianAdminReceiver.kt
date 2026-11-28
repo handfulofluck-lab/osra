@@ -45,13 +45,11 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         val appContext = context.applicationContext
-        runCatching { ServiceRecovery.run(appContext) }
-            .onFailure { Log.w(TAG, "service recovery on disable request failed", it) }
-
         runCatching {
             val entry = EntryPointAccessors.fromApplication(appContext, WorkerEntryPoint::class.java)
             val settings = entry.agentSettings()
             val paired = settings.isPairedSync()
+            val unlinkPending = settings.unlinkPendingSync()
             val setupCompleted = SetupCompletionStore.isCompletedForDevice(appContext, settings.deviceIdSync())
             val pinConfigured = entry.parentPinStore().isConfigured()
             val consentPaused = entry.consentState().isPaused()
@@ -67,6 +65,7 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
             when (
                 AdminDisableRequestPolicy.decide(
                     paired = paired,
+                    unlinkPending = unlinkPending,
                     setupCompletedOnce = setupCompleted,
                     pinConfigured = pinConfigured,
                     consentPaused = consentPaused,
@@ -85,6 +84,8 @@ class GuardianAdminReceiver : DeviceAdminReceiver() {
                 AdminDisableRequestPolicy.Action.RECORD_ATTEMPT_AND_BEST_EFFORT_GATE,
                 -> {
                     lastDisableGuardMs = nowMs
+                    runCatching { ServiceRecovery.run(appContext) }
+                        .onFailure { Log.w(TAG, "service recovery on disable request failed", it) }
                     val attempt = GuardAttemptWindow.record(
                         TamperState.guardAttemptWindow(appContext),
                         nowMs,

@@ -241,9 +241,10 @@ class PairingActivity : ComponentActivity() {
         OnboardingPolicy.rows(BuildConfig.CAPTURE_NOTIFICATIONS, Build.MANUFACTURER) { grants.isGranted(it) }
 
     private fun syncRecentsExclusion() {
+        if (!MiuiBackgroundPopupPolicy.isXiaomiFamily(Build.MANUFACTURER)) return
         val paired = settings.isPairedSync()
         val setupCompleted = SetupCompletionStore.isCompletedForDevice(this, settings.deviceIdSync())
-        val exclude = RecentsExclusionPolicy.shouldExcludeFromRecents(paired, setupCompleted)
+        val exclude = RecentsExclusionPolicy.shouldExcludeFromRecents(Build.MANUFACTURER, paired, setupCompleted)
         runCatching {
             getSystemService(android.app.ActivityManager::class.java)
                 ?.appTasks

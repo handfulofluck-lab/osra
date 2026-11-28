@@ -38,8 +38,7 @@ class CommandPollWorker(
 
     /** Runs one poll pass; a failed fetch is retried up to three attempts, then fails the work. */
     override suspend fun doWork(): Result {
-        runCatching { com.familyshield.agent.recovery.ServiceRecovery.run(applicationContext) }
-            .onFailure { Log.w(TAG, "service recovery before command poll failed", it) }
+        recoverBeforePoll { com.familyshield.agent.recovery.ServiceRecovery.run(applicationContext) }
         val wake = inputData.getBoolean(KEY_WAKE, false)
         if (!IdleCadence.workerShouldPoll(LocationService.isServiceRunning, wake)) return Result.success()
         val entryPoint = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
@@ -93,6 +92,13 @@ class CommandPollWorker(
         const val KEY_WAKE: String = "wake"
 
         private const val TAG: String = "CommandPollWorker"
+
+        internal fun recoverBeforePoll(
+            runRecovery: () -> com.familyshield.agent.recovery.ServiceRecoveryPolicy.Plan,
+        ): com.familyshield.agent.recovery.ServiceRecoveryPolicy.Plan? =
+            runCatching { runRecovery() }
+                .onFailure { Log.w(TAG, "service recovery before command poll failed", it) }
+                .getOrNull()
         private const val WAKE_CHANNEL: String = "command_poll_wake"
         private const val WAKE_NOTIFICATION_ID: Int = 44
 

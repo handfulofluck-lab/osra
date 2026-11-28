@@ -91,6 +91,13 @@ class AdminReceiverContractTest {
             .firstOrNull { it.attr("android:name") == ".recovery.ServiceRevivalReceiver" }
         assertNotNull("ServiceRevivalReceiver must be registered in AndroidManifest.xml", revival)
         assertEquals("ServiceRevivalReceiver must stay internal (not exported)", "false", revival!!.attr("android:exported"))
+
+        val application = manifest.children("application").single()
+        assertEquals(
+            "OSRA's App Info Manage-space callback must route to TamperGuardTaskActivity",
+            ".security.TamperGuardTaskActivity",
+            application.attr("android:manageSpaceActivity"),
+        )
     }
 
     @Test

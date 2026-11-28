@@ -213,7 +213,7 @@ object TamperScreenPolicy {
      * both from the Flip4 capture (`topResumedActivity`, One UI, SDK 36). They never name the agent, so this
      * is the one place the class alone decides; the package pins it to the one system app that hosts it.
      */
-    private val SPACE_SETUP_SCREENS = setOf(
+    internal val SPACE_SETUP_SCREENS = setOf(
         "com.samsung.android.da.daagent" to "DualAppActivity",
         "com.samsung.knox.securefolder" to "WelcomeActivity",
     )
