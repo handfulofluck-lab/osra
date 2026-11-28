@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { registerRawBodyParser, authenticateInternalRequest } from "../lib/internalAuth.js";
 import { redactedBlockedSiteKey, redactBlockedSiteHost, siteNamesEnabled } from "../lib/siteNames.js";
 import { raiseAlertOnce, type RaiseAlertInput } from "../lib/alerts.js";
+import { recordBlockedAttempt } from "../lib/blockedAttemptWindow.js";
 import { incompleteDedupeKey, shouldHoldTamperDuringSetup, type SetupDevice } from "../lib/deviceSetup.js";
 import { AWAIT_REPORT, raisePhoneSetupNotice } from "../lib/deviceSetupTransitions.js";
 import { sanitizeAlertMetadata, withoutAlertLocation } from "../lib/alertLocation.js";
@@ -169,7 +170,7 @@ export async function alertsRoutes(app: FastifyInstance) {
       }
     }
 
-    const child = await prisma.child.findUnique({ where: { id: childId } });
+    const child = await prisma.child.findUnique({ where: { id: childId }, include: { family: { select: { timezone: true } } } });
     if (!child) return reply.code(404).send({ error: "child_not_found" });
     // ADR-0008 §2b: withdrawal of consent stops collection.
     if (!(await assertProcessingAllowed(childId, reply))) return;
@@ -193,6 +194,28 @@ export async function alertsRoutes(app: FastifyInstance) {
     // ADR-0047: held retries share a separate namespace so a real post-setup event with the
     // producer's original key creates a new visible row instead of deduplicating the held one.
     const safeDedupeKey = redactSite ? redactedBlockedSiteKey() : heldDuringSetup && dedupeKey ? `held|${dedupeKey}` : dedupeKey;
+
+    // #1222 (Karim, 26 Nov): blocked sites and apps follow the #1139 grouped-alert rule. The first attempts
+    // push, later ones are grouped and summarised every window, a quiet window starts a new row, and the day
+    // follows the family's zone. The producer's per-UTC-day key only recognises a lost-response retry now.
+    if ((category === "web_threat" || category === "app_blocked") && !heldDuringSetup) {
+      const result = await recordBlockedAttempt({
+        childId,
+        familyId: child.familyId,
+        childName: child.displayName,
+        deviceId: effectiveDeviceId,
+        timeZone: (child as { family?: { timezone?: string | null } | null }).family?.timezone ?? null,
+        category,
+        severity,
+        title: redactSite ? "Blocked site opened" : title,
+        body: redactSite ? "Your child tried to open a blocked site." : body,
+        metadata: sanitizeAlertMetadata(safeMetadata) ?? {},
+        siteNames: !redactSite,
+        producerKey: dedupeKey ?? null,
+        producerAttemptCount: attemptCount ?? null,
+      });
+      return reply.code(result.created ? 201 : 200).send({ alert: result.alert });
+    }
 
     // Phase 2a: one path creates the row, publishes the WS event and pushes to the parents' phones.
     // Issue #225: a repeated dedupeKey is a retry, not a new alert — 200 with the existing row.

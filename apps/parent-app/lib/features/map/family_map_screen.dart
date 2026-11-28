@@ -19,6 +19,7 @@ import '../../api/permission_errors.dart';
 import '../../widgets/error_retry_view.dart';
 import '../children/command_messages.dart';
 import 'child_location_view.dart';
+import 'location_p13_screen.dart';
 
 /// Marker hue per device status.
 double _statusHue(String status) => switch (status) {
@@ -94,6 +95,11 @@ class FamilyMapScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // #1179 P-13 Location behind switch (old FamilyMapScreen stays as fallback;
+    // SOS-focused map opens keep legacy focus behavior unless P-13 is off).
+    if (focus == null && ref.watch(p13LocationEnabledProvider)) {
+      return const LocationP13Screen();
+    }
     ref.watch(wsProvider); // keep the live channel subscribed while on this screen
     final family = ref.watch(familyProvider);
     final overview = family.valueOrNull;

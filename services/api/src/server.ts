@@ -28,6 +28,7 @@ import { startMfaResetExpiryScheduler } from "./jobs/mfaResetExpiry.js";
 import { startRevokedTokenPruneScheduler } from "./jobs/revokedTokenPrune.js";
 import { startPendingDeviceScheduler } from "./jobs/pendingDevices.js";
 import { startSocialAlertSummaryScheduler } from "./jobs/socialAlertSummary.js";
+import { startBlockedAttemptSummaryScheduler } from "./jobs/blockedAttemptSummary.js";
 import { sessionGuardHook } from "./middleware/sessionGuard.js";
 import { registerPairedAtHook } from "./middleware/pairedAt.js";
 import { healthRoutes } from "./routes/health.js";
@@ -179,3 +180,4 @@ startRevokedTokenPruneScheduler();
 startPendingDeviceScheduler();
 // Issue #1029: window-close summary push when throttled per-contact social alerts accumulate.
 startSocialAlertSummaryScheduler();
+startBlockedAttemptSummaryScheduler();

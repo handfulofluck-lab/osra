@@ -206,8 +206,12 @@
   "p04AgeRange": "أدخل عمرًا من {min} إلى {max}.",
   "@p04AgeRange": {
     "placeholders": {
-      "min": { "type": "String" },
-      "max": { "type": "String" }
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
     }
   },
   "p04AddTitle": "إضافة طفل",
@@ -1273,22 +1277,52 @@
   "alertsOffBannerBody": "التنبيهات متوقفة، فلن يصلك أي تنبيه عاجل.",
   "alertsOffTurnOnAction": "تفعيل التنبيهات",
   "pairP05Title": "ربط هاتف {child}",
-  "@pairP05Title": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05Title": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05TitleGeneric": "ربط هاتف الطفل",
   "pairP05Subtitle": "ثبّت تطبيق أسرة للأطفال على هاتف {child} ثم امسح هذا الرمز.",
-  "@pairP05Subtitle": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05Subtitle": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05SubtitleGeneric": "ثبّت تطبيق أسرة للأطفال على هاتف الطفل ثم امسح هذا الرمز.",
   "pairP05OrTypeCode": "أو أدخل هذا الرمز",
   "pairP05ValidFor": "صالح لمدة {time}",
-  "@pairP05ValidFor": { "placeholders": { "time": { "type": "String" } } },
+  "@pairP05ValidFor": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05CodeExpired": "انتهت صلاحية الرمز",
   "pairP05NewCode": "رمز جديد",
   "pairP05WaitingFor": "بانتظار هاتف {child}…",
-  "@pairP05WaitingFor": { "placeholders": { "child": { "type": "String" } } },
+  "@pairP05WaitingFor": {
+    "placeholders": {
+      "child": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05WaitingGeneric": "بانتظار هاتف الطفل…",
   "pairP05ConfirmDeviceTitle": "تأكيد هذا الجهاز؟",
   "pairP05ConfirmDeviceBody": "يطلب {model} الاتصال. أكّد الربط للمتابعة.",
-  "@pairP05ConfirmDeviceBody": { "placeholders": { "model": { "type": "String" } } },
+  "@pairP05ConfirmDeviceBody": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
   "pairP05ConfirmLink": "التأكيد والربط",
   "pairP05Decline": "رفض",
   "pairP05Connected": "تم ربط الهاتف.",
@@ -1522,5 +1556,29 @@
   "appsFilterAllowed": "مسموح ({count})",
   "appsLimitSheetTitle": "الحد اليومي لتطبيق {app}",
   "appsNoLimit": "بلا حد",
-  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد."
+  "appsIphoneNoAppList": "لا يرسل هاتف آيفون قائمة التطبيقات بعد.",
+  "p14DayToday": "اليوم",
+  "p14DayYesterday": "أمس",
+  "locationP13AllChildren": "الكل",
+  "locationP13Refresh": "تحديث",
+  "locationP13Refreshing": "جارٍ التحقق…",
+  "locationP13Directions": "الاتجاهات",
+  "locationP13EarlierToday": "في وقت سابق اليوم",
+  "locationP13EarlierTodayEmpty": "لا توجد أماكن سابقة مسجّلة اليوم.",
+  "locationP13SavedPlacesTitle": "الأماكن المحفوظة",
+  "locationP13AddPlace": "إضافة مكان",
+  "locationP13AlertsEnterLeave": "تنبيه عند الوصول والمغادرة",
+  "locationP13AlertsEnterOnly": "تنبيه عند الوصول",
+  "locationP13AlertsLeaveOnly": "تنبيه عند المغادرة",
+  "locationP13AlertsOff": "التنبيهات متوقفة",
+  "locationP13NoLocationYet": "لم يصل موقع بعد.",
+  "locationP13RingNotYetOnIphone": "غير متاح بعد على آيفون",
+  "locationP13RadiusMeters": "نطاق {meters} م",
+  "@locationP13RadiusMeters": {
+    "placeholders": {
+      "meters": {
+        "type": "String"
+      }
+    }
+  }
 }

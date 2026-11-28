@@ -379,7 +379,7 @@ describe("controls routes (features #10/#11)", () => {
 
     const redis = getRedis() as unknown as MockRedis;
     for (const deviceId of ["dev-1", "dev-2"]) {
-      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "bonus_time", payload: { minutes: 15 } }));
+      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "bonus_time", payload: { minutes: 15, byName: "Parent One" } }));
     }
     expect(redis.publish).toHaveBeenCalledWith(
       "child:child-1:rules",
@@ -433,7 +433,7 @@ describe("controls routes (features #10/#11)", () => {
         `device:${deviceId}:commands`,
         expect.stringContaining('"type":"wind_down"'),
       );
-      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "wind_down", payload: { minutes: 30 } }));
+      expect(queuedCommands()).toContainEqual(expect.objectContaining({ deviceId, type: "wind_down", payload: { minutes: 30, byName: "Parent One" } }));
     }
     await app.close();
   });

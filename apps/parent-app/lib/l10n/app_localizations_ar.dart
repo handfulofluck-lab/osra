@@ -4546,4 +4546,58 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get appsIphoneNoAppList => 'لا يرسل هاتف آيفون قائمة التطبيقات بعد.';
+
+  @override
+  String get p14DayToday => 'اليوم';
+
+  @override
+  String get p14DayYesterday => 'أمس';
+
+  @override
+  String get locationP13AllChildren => 'الكل';
+
+  @override
+  String get locationP13Refresh => 'تحديث';
+
+  @override
+  String get locationP13Refreshing => 'جارٍ التحقق…';
+
+  @override
+  String get locationP13Directions => 'الاتجاهات';
+
+  @override
+  String get locationP13EarlierToday => 'في وقت سابق اليوم';
+
+  @override
+  String get locationP13EarlierTodayEmpty =>
+      'لا توجد أماكن سابقة مسجّلة اليوم.';
+
+  @override
+  String get locationP13SavedPlacesTitle => 'الأماكن المحفوظة';
+
+  @override
+  String get locationP13AddPlace => 'إضافة مكان';
+
+  @override
+  String get locationP13AlertsEnterLeave => 'تنبيه عند الوصول والمغادرة';
+
+  @override
+  String get locationP13AlertsEnterOnly => 'تنبيه عند الوصول';
+
+  @override
+  String get locationP13AlertsLeaveOnly => 'تنبيه عند المغادرة';
+
+  @override
+  String get locationP13AlertsOff => 'التنبيهات متوقفة';
+
+  @override
+  String get locationP13NoLocationYet => 'لم يصل موقع بعد.';
+
+  @override
+  String get locationP13RingNotYetOnIphone => 'غير متاح بعد على آيفون';
+
+  @override
+  String locationP13RadiusMeters(String meters) {
+    return 'نطاق $meters م';
+  }
 }
